@@ -1,6 +1,6 @@
 data_image0
-_chemical_formula_structural       Cu65
-_chemical_formula_sum              "Cu65"
+_chemical_formula_structural       Cu64Ag
+_chemical_formula_sum              "Cu64 Ag1"
 _cell_length_a       10.2239
 _cell_length_b       10.2239
 _cell_length_c       35.422
@@ -87,4 +87,4 @@ loop_
   Cu  Cu62      1.0  0.25000  0.75000  0.57653  1.0000
   Cu  Cu63      1.0  0.50000  0.75000  0.57653  1.0000
   Cu  Cu64      1.0  0.75000  0.75000  0.57653  1.0000
-  Cu  Cu65      1.0  0.25000  0.25000  0.65106  1.0000
+  Ag  Ag1       1.0  0.12500  0.87500  0.61563  1.0000

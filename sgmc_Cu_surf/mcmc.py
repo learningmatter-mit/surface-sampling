@@ -21,6 +21,7 @@ import ase
 import catkit
 from catkit.gen.adsorption import get_adsorption_sites
 import random
+from collections import Counter
 
 from ase.calculators.eam import EAM
 
@@ -75,7 +76,7 @@ def slab_energy(slab):
     energy = slab.get_potential_energy()
     return energy
 
-def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False):
+def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name="."):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
 
     Parameters
@@ -102,8 +103,8 @@ def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, 
         site_idx = get_random_idx(connectivity)
     rand_site = coords[site_idx]
 
-    print(f"\n we are at iter {iter} with connecitivity")
-    print(f"idx is {site_idx} at {rand_site} with connectivity {connectivity[site_idx]}")
+    print(f"\n we are at iter {iter}")
+    print(f"idx is {site_idx} with connectivity {connectivity[site_idx]} at {rand_site}")
 
     # determine if site vacant or filled
     filled = (state > 0)[site_idx]
@@ -147,8 +148,11 @@ def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, 
         del proposed_slab[int(adsorbate_idx)] #networkxx needs python int 
         # import pdb;pdb.set_trace()
 
-        # lower the index
-        proposed_state = np.where(state>0, state-1, 0)
+        # lower the index for higher index items
+        proposed_state = np.where(state>=int(adsorbate_idx), state-1, state)
+        # remove negatives
+        proposed_state = np.where(proposed_state<0, 0, proposed_state)
+
         # remove the adsorbate from tracking
         proposed_state[site_idx] = 0
 
@@ -158,9 +162,12 @@ def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, 
     print(proposed_state)
 
     if save_cif:
-        write(f'proposed_slab_iter_{iter:03}.cif', proposed_slab)
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+        write(f'{folder_name}/proposed_slab_iter_{iter:03}.cif', proposed_slab)
 
     # to test, always accept
+    accept = False
     if testing:
         slab = proposed_slab.copy()
         state = proposed_state.copy()
@@ -192,12 +199,14 @@ def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, 
             state = proposed_state.copy()
             print("state changed!")
             energy = curr_energy
+            accept = True
         else:
             # failed, keep current state
             print("state kept the same")
             energy = prev_energy
+            accept = False
             
-    return state, slab, energy
+    return state, slab, energy, accept
 
 def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
@@ -223,9 +232,14 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
     # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab 
     state = np.zeros(len(coords), dtype=int)
     
-    history = np.random.rand(num_runs, len(coords))
+    history = []
     energy_hist = np.random.rand(num_runs)
-    energy_sq_hist = np.random.rand(num_runs)
+    # energy_sq_hist = np.random.rand(num_runs)
+
+    adsorption_count_hist = []
+
+    frac_accept_hist = np.random.rand(num_runs)
+    
 
     # sweep over # sites
     sweep_size = len(coords)
@@ -234,7 +248,10 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
 
     print(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
 
+    run_folder = f"runs{num_runs}_temp{temp}_pot{pot}"
+
     for i in range(num_runs):
+        num_accept = 0
         for j in range(sweep_size):
             # possible actions are:
             # 1) add -- choose an element with equal prob and bias the config away from closest existing atom
@@ -242,13 +259,43 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
             # 3) swap -- add + remove, then relax
             # According to SI flow chart, there are only 2 actions, add & remove. After each action, relax structure
 
-            state, slab, energy = spin_flip(state, slab, temp, pot, prev_energy=energy, save_cif=True, iter=j+1, testing=False)
+            run_idx = sweep_size*i + j+1
+
+            state, slab, energy, accept = spin_flip(state, slab, temp, pot, prev_energy=energy, save_cif=True, iter=run_idx, testing=False, folder_name=run_folder)
+            num_accept += accept
 
         # end of sweep; append to history
-        history[i] = slab.copy()
+        history.append(slab.copy())
+        # save cif file
+        write(f'{run_folder}/final_slab_run_{i+1:03}.cif', slab)
 
         # append values
         energy_hist[i] = energy
-        energy_sq_hist[i] = energy**2
+        # energy_sq_hist[i] = energy**2
+        # import pdb; pdb.set_trace()
+        ads_counts = count_adsorption_sites(slab, state)
+        adsorption_count_hist.append(ads_counts)
 
-    return history, energy_hist, energy_sq_hist
+        frac_accept = num_accept/sweep_size
+        frac_accept_hist[i] = frac_accept
+
+        
+
+    return history, energy_hist, frac_accept_hist, adsorption_count_hist
+
+def count_adsorption_sites(slab, state):
+    _, connectivity, _ = get_adsorption_sites(slab, symmetry_reduced=False)
+    occ_idx = state > 0
+    return Counter(connectivity[occ_idx])
+
+
+
+if __name__ == "__main__":
+    from time import perf_counter
+
+    start = perf_counter()
+    # chem pot 0 to less complicate things
+    # temp in terms of kbT
+    history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=3, temp=1, pot=0, slab=None)
+    stop = perf_counter()
+    print(f"Time taken = {stop - start} seconds")

@@ -1,6 +1,6 @@
 data_image0
-_chemical_formula_structural       Cu68
-_chemical_formula_sum              "Cu68"
+_chemical_formula_structural       Cu64
+_chemical_formula_sum              "Cu64"
 _cell_length_a       10.2239
 _cell_length_b       10.2239
 _cell_length_c       35.422
@@ -87,7 +87,3 @@ loop_
   Cu  Cu62      1.0  0.25000  0.75000  0.57653  1.0000
   Cu  Cu63      1.0  0.50000  0.75000  0.57653  1.0000
   Cu  Cu64      1.0  0.75000  0.75000  0.57653  1.0000
-  Cu  Cu65      1.0  0.25000  0.25000  0.65106  1.0000
-  Cu  Cu66      1.0  0.12500  0.62500  0.61380  1.0000
-  Cu  Cu67      1.0  0.75000  0.50000  0.65106  1.0000
-  Cu  Cu68      1.0  0.75000  0.87500  0.64175  1.0000
