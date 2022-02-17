@@ -1,0 +1,58 @@
+LAMMPS (7 Aug 2019)
+Reading data file ...
+  orthogonal box = (0 0 0) to (10.2239 10.2239 35.422)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  64 atoms
+  read_data CPU = 0.000197172 secs
+Reading potential file /home/pleon/mylammps/potentials/Cu_u3.eam with DATE: 2007-06-11
+WARNING: No fixes defined, atoms won't move (../verlet.cpp:52)
+Neighbor list info ...
+  update every 1 steps, delay 10 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 6.95
+  ghost atom cutoff = 6.95
+  binsize = 3.475, bins = 3 3 11
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Setting up Verlet run ...
+  Unit style    : metal
+  Current step  : 0
+  Time step     : 0.001
+Per MPI rank memory allocation (min/avg/max) = 2.939 | 2.939 | 2.939 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz 
+       0   -209.71595    10.223916    10.223916     35.42205   -7722.0112   -10084.368   -10084.368   -2997.2976 
+Loop time of 9.53674e-07 on 1 procs for 0 steps with 64 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 9.537e-07  |            |       |100.00
+
+Nlocal:    64 ave 64 max 64 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    298 ave 298 max 298 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    2656 ave 2656 max 2656 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 2656
+Ave neighs/atom = 41.5
+Neighbor list builds = 0
+Dangerous builds = 0
+Total energy (eV) = -209.71594947459
+Number of atoms = 64
+Cohesive energy = -3.27681171054047
+Lattice constant (Angstoms) = 10.2239155278201
+Total wall time: 0:00:00
