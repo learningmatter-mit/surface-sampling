@@ -7,7 +7,6 @@ Produces a temperature/structure map
 
 import os
 import sys
-sys.path.append("/home/dux/")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -208,7 +207,7 @@ def spin_flip(state, slab, temp, pot, prev_energy=None, save_cif=False, iter=1, 
             
     return state, slab, energy, accept
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -239,7 +238,6 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
     adsorption_count_hist = []
 
     frac_accept_hist = np.random.rand(num_runs)
-    
 
     # sweep over # sites
     sweep_size = len(coords)
@@ -248,20 +246,16 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
 
     print(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
 
-    run_folder = f"runs{num_runs}_temp{temp}_pot{pot}"
+    run_folder = f"runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}"
 
     for i in range(num_runs):
         num_accept = 0
+        # simulated annealing schedule
+        curr_temp = temp * alpha**i
         for j in range(sweep_size):
-            # possible actions are:
-            # 1) add -- choose an element with equal prob and bias the config away from closest existing atom
-            # 2) remove -- randomly remove an element
-            # 3) swap -- add + remove, then relax
-            # According to SI flow chart, there are only 2 actions, add & remove. After each action, relax structure
-
             run_idx = sweep_size*i + j+1
 
-            state, slab, energy, accept = spin_flip(state, slab, temp, pot, prev_energy=energy, save_cif=True, iter=run_idx, testing=False, folder_name=run_folder)
+            state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, prev_energy=energy, save_cif=True, iter=run_idx, testing=False, folder_name=run_folder)
             num_accept += accept
 
         # end of sweep; append to history
@@ -279,15 +273,12 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, slab=None):
         frac_accept = num_accept/sweep_size
         frac_accept_hist[i] = frac_accept
 
-        
-
     return history, energy_hist, frac_accept_hist, adsorption_count_hist
 
 def count_adsorption_sites(slab, state):
     _, connectivity, _ = get_adsorption_sites(slab, symmetry_reduced=False)
     occ_idx = state > 0
     return Counter(connectivity[occ_idx])
-
 
 
 if __name__ == "__main__":
