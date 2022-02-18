@@ -1,7 +1,0 @@
-.DS_Store
-*/runs*
-*/test*
-*__pycache__*
-*.pyc
-*.cif
-__pycache__/
