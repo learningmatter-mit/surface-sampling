@@ -1,6 +1,3 @@
-from pprint import PrettyPrinter
-import numpy as np  
-
 """Performs Semi-Grand Monte Carlo (SGMC) reconstruction of Cu surface.
 Produces a temperature/structure map
 """
@@ -12,9 +9,8 @@ from time import perf_counter
 
 import cProfile
 from pstats import Stats, SortKey
+import numpy as np  
 
-# from labutil.src.plugins.lammps import (lammps_run, get_lammps_energy)
-# from labutil.src.objects import (ClassicalPotential, Struc, ase2struc, Dir)
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
 from ase.io import write
@@ -244,6 +240,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
     obversables are calculated also after each run.
     """
 
+    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
+
+    logger.info(f"Running with num_runs = {num_runs}, temp = {temp}, pot = {pot}, alpha = {alpha}")
     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
     if type(slab) is not catkit.gratoms.Gratoms or ase.Atoms:
         # initialize slab
@@ -284,7 +283,6 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
 
     run_folder = f"runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
-
     for i in range(num_runs):
         num_accept = 0
         # simulated annealing schedule
@@ -306,8 +304,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
         # energy_sq_hist[i] = energy**2
         # import pdb; pdb.set_trace()
         ads_counts = count_adsorption_sites(slab, state)
-        for key, val in ads_counts.items():
-            adsorption_count_hist[key].append(val)
+        for key in [1, 2, 4]:
+            if ads_counts[key]:
+                adsorption_count_hist[key].append(ads_counts[key])
+            else:
+                adsorption_count_hist[key].append(0)
 
         frac_accept = num_accept/sweep_size
         frac_accept_hist[i] = frac_accept
