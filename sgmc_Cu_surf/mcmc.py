@@ -396,7 +396,7 @@ if __name__ == "__main__":
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc='EAM')
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc='LAMMPS')
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
