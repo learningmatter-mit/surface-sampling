@@ -4,6 +4,10 @@ Produces a temperature/structure map
 
 import os
 
+os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
+os.environ["ASE_LAMMPSRUN_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
+
+
 import matplotlib.pyplot as plt
 from time import perf_counter
 
