@@ -5,3 +5,4 @@
 *.pyc
 *.cif
 __pycache__/
+*tmp_files/*

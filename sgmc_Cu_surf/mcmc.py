@@ -5,8 +5,8 @@ Produces a temperature/structure map
 import os
 
 os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
+os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
 os.environ["ASE_LAMMPSRUN_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
-
 
 import matplotlib.pyplot as plt
 from time import perf_counter
@@ -14,6 +14,8 @@ from time import perf_counter
 import cProfile
 from pstats import Stats, SortKey
 import numpy as np  
+
+
 
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
@@ -25,6 +27,8 @@ import random
 from collections import Counter, defaultdict
 
 from ase.calculators.eam import EAM
+from ase.calculators.lammpsrun import LAMMPS
+
 from datetime import datetime
 import logging
 
@@ -276,7 +280,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -295,12 +299,24 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None):
         Cu_alat = 3.6147
         slab = initialize_slab(Cu_alat)
     
-    # if not slab.calc:
     # attach slab calculator
-    potential = EAM(potential='Cu2.eam.fs')
-    slab.calc = potential
+    if 'EAM' in calc:
+        # use EAM
+        potential = EAM(potential='Cu2.eam.fs')
+        slab.calc = potential
+    else:
+        # use LAMMPS
+        parameters = {
+            'pair_style': 'eam',
+            'pair_coeff': ['* * Cu_u3.eam']
+        }
 
-    print(f"slab calc {slab.calc}")
+        potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Cu_u3.eam')
+        calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=True, tmp_dir="/home/dux/surface_sampling/tmp_files")
+        calc.set(**parameters)
+        slab.calc = calc
+
+    print(f"using slab calc {slab.calc}")
 
     # get ALL the adsorption sites
     # top should have connectivity 1, bridge should be 2 and hollow more like 4
@@ -380,7 +396,7 @@ if __name__ == "__main__":
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None)
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc='EAM')
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
