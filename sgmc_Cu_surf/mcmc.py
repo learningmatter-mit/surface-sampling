@@ -2,20 +2,19 @@
 Produces a temperature/structure map
 """
 
+from operator import methodcaller
 import os
 
-os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
-os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
-os.environ["ASE_LAMMPSRUN_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
+os.environ["LAMMPS_COMMAND"] = "/home/jurgis/lammps/src/lmp_serial"
+os.environ["LAMMPS_POTENTIALS"] = "/home/jurgis/lammps/potentials/"
+os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"] 
 
 import matplotlib.pyplot as plt
 from time import perf_counter
 
 import cProfile
 from pstats import Stats, SortKey
-import numpy as np  
-
-
+import numpy as np
 
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
@@ -49,7 +48,7 @@ screen_handler.setFormatter(screen_formatter)
 logger.addHandler(screen_handler)
 '''
 
-def initialize_slab(alat, elem='Cu', vacuum=15.0):
+def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0)):
     """Creates the slab structure using ASE.
 
     Parameters
@@ -61,9 +60,9 @@ def initialize_slab(alat, elem='Cu', vacuum=15.0):
 
     # TODO: adjust size of surface if necessary
     a1 = bulk(elem, 'fcc', a=alat)
-    catkit_slab = catkit.build.surface(a1, size=(4,4,4), miller=(1,0,0), termination=0, fixed=0, vacuum=vacuum, orthogonal=False)
+    catkit_slab = catkit.build.surface(a1, size=(4,4,4), miller=miller, termination=0, fixed=0, vacuum=vacuum, orthogonal=False)
 
-    write('catkit_slab.cif', catkit_slab)
+    # write('catkit_slab.cif', catkit_slab)
     return catkit_slab
 
 
@@ -89,26 +88,12 @@ def get_random_idx(connectivity, type=None):
 def slab_energy(slab):
     """Calculate slab energy.
     """
-
-    # potential = EAM(potential='Cu2.eam.fs')
-    # slab.calc = potential
-    # import pdb; pdb.set_trace()
-    start = perf_counter()
     energy = slab.get_potential_energy()
-    time1 = perf_counter()-start
-    energy = slab.get_potential_energy()
-    time2 = perf_counter()-start
-    energy = slab.get_potential_energy()
-    time3 = perf_counter()-start
-    energy = slab.get_potential_energy()
-    time4 = perf_counter()-start
-    # logger.debug(time1, time2, time3, time4)
-    # import pdb; pdb.set_trace()
 
     return energy
 
 
-def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name="."):
+def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu'):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
 
     Parameters
@@ -120,7 +105,7 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     temp : float
         temperature
     pot : float
-        chemical potential of metal (Cu)
+        chemical potential of metal
 
     Returns
     -------
@@ -144,19 +129,19 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     logger.debug(f"before proposed state is")
     logger.debug(state)
 
-    # change in number of adsorbates (Cu atoms)
+    # change in number of adsorbates (atoms)
     delta_N = 0
 
     # case site is vacant (spin down)
     if not filled:
-        delta_N = 1 # add one Cu atom
+        delta_N = 1 # add one atom
         logger.debug("site is not filled, attempting to adsorb")
         logger.debug(f"current slab has {len(slab)} atoms")
 
         # tag the atom to be adsorbed with its to-be index (last position on slab)    
         adsorbate_idx = len(slab)
         state[site_idx] = adsorbate_idx
-        slab.append('Cu')
+        slab.append(adsorbate)
         slab.positions[-1] = coords[site_idx]
 
         # import pdb; pdb.set_trace()
@@ -243,7 +228,7 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
                 # add back removed
                 adsorbate_idx = len(slab)
                 state[site_idx] = adsorbate_idx
-                slab.append('Cu')
+                slab.append(adsorbate)
                 slab.positions[-1] = coords[site_idx]
                 
             logger.debug("state kept the same")
@@ -280,7 +265,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu'):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -292,7 +277,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
 
     logger.info(f"Running with num_runs = {num_runs}, temp = {temp}, pot = {pot}, alpha = {alpha}")
     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
-    if type(slab) is not catkit.gratoms.Gratoms or ase.Atoms:
+    if type(slab) is not (catkit.gratoms.Gratoms or ase.Atoms):
         # initialize slab
         logger.info("initializing slab")
         # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
@@ -300,21 +285,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
         slab = initialize_slab(Cu_alat)
     
     # attach slab calculator
-    if 'EAM' in calc:
-        # use EAM
-        potential = EAM(potential='Cu2.eam.fs')
-        slab.calc = potential
-    else:
-        # use LAMMPS
-        parameters = {
-            'pair_style': 'eam',
-            'pair_coeff': ['* * Cu_u3.eam']
-        }
-
-        potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Cu_u3.eam')
-        calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=True, tmp_dir="/home/dux/surface_sampling/tmp_files")
-        calc.set(**parameters)
-        slab.calc = calc
+    slab.calc = calc
 
     print(f"using slab calc {slab.calc}")
 
@@ -327,8 +298,8 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
     state = np.zeros(len(coords), dtype=int)
 
     # get absolute adsorption coords
-    Cu = catkit.gratoms.Gratoms('Cu')
-    ads_coords = get_adsorption_coords(slab, Cu, connectivity)
+    metal = catkit.gratoms.Gratoms(element)
+    ads_coords = get_adsorption_coords(slab, metal, connectivity)
     
     history = []
     energy_hist = np.random.rand(num_runs)
@@ -345,7 +316,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
 
     start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
-    run_folder = f"runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
+    run_folder = f"{element}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
     for i in range(num_runs):
         num_accept = 0
@@ -355,12 +326,14 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc='EAM'):
         for j in range(sweep_size):
             run_idx = sweep_size*i + j+1
 
-            state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=True, iter=run_idx, testing=False, folder_name=run_folder)
+            state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
             num_accept += accept
 
         # end of sweep; append to history
         history.append(slab.copy())
         # save cif file
+        if not os.path.exists(run_folder):
+            os.makedirs(run_folder)
         write(f'{run_folder}/final_slab_run_{i+1:03}.cif', slab)
 
         # append values
@@ -391,12 +364,26 @@ if __name__ == "__main__":
 
     do_profiling = True
 
+    # use EAM
+    eam_calc = EAM(potential='Cu2.eam.fs')
+
+    # use LAMMPS
+    parameters = {
+        'pair_style': 'eam',
+        'pair_coeff': ['* * Cu_u3.eam']
+    }
+
+    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Cu_u3.eam')
+    lammps_calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=True, tmp_dir="/home/dux/surface_sampling/tmp_files")
+    lammps_calc.set(**parameters)
+
+
     if do_profiling:
         with cProfile.Profile() as pr:
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc='LAMMPS')
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc=lammps_calc, element='Cu')
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
