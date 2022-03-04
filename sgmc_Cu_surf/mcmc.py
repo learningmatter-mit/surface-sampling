@@ -70,53 +70,7 @@ def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0), termination=0,
     a1 = bulk(elem, 'fcc', a=alat)
     write(f'{elem}_a1_bulk.cif', a1)
     catkit_slab = catkit.build.surface(a1, size=(2,4,6), miller=miller, termination=termination, fixed=0, vacuum=vacuum, orthogonal=orthogonal, **kwargs)
-    """
-    Documentation for surface
-    
-    A helper function to return the surface associated with a
-    given set of input parameters to the general surface generator.
 
-    Parameters
-    ----------
-    elements : str or object
-        The atomic symbol to be passed to the as bulk builder function
-        or an atoms object representing the bulk structure to use.
-    size : list (3,)
-        Number of time to expand the x, y, and z primitive cell.
-    miller : list (3,) or (4,)
-        The miller index to cleave the surface structure from. If 4 values
-        are used, assume Miller-Bravis convention.
-    termination : int
-        The index associated with a specific slab termination.
-    fixed : int
-        Number of layers to constrain.
-    vacuum : float
-        Angstroms of vacuum to add to the unit cell.
-    orthogonal : bool
-        Force the slab generator to produce the most orthogonal slab.
-
-    Returns
-    -------
-    slab : Gratoms object
-        Return a slab generated from the specified bulk structure.
-    
-    ****
-    Then calls
-    ****
-
-     generator = catkit.gen.surface.SlabGenerator(
-        bulk=atoms,
-        miller_index=miller,
-        layers=size[-1],
-        vacuum=vacuum,
-        fixed=fixed,
-        layer_type=kwargs.get('layer_type', 'trim'),
-        attach_graph=kwargs.get('attach_graph', True),
-        standardize_bulk=kwargs.get('standardize_bulk', True),
-        tol=kwargs.get('tol', 1e-8)
-    )
-    
-    """
     write(f'{elem}_pristine_slab.cif', catkit_slab)
     return catkit_slab
 
@@ -147,6 +101,182 @@ def slab_energy(slab):
 
     return energy
 
+
+def spin_flip_modular(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu'):
+    """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
+
+    Parameters
+    ----------
+    state : np.array
+        dimension the number of sites
+    slab : catkit.gratoms.Gratoms
+        model of the surface slab
+    temp : float
+        temperature
+    pot : float
+        chemical potential of metal
+
+    Returns
+    -------
+    np.array, float
+        new state, energy change
+    """
+
+    # choose a site to flip
+    # coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
+
+    if not site_idx:
+        site_idx = get_random_idx(connectivity)
+    rand_site = coords[site_idx]
+
+    logger.debug(f"\n we are at iter {iter}")
+    logger.debug(f"idx is {site_idx} with connectivity {connectivity[site_idx]} at {rand_site}")
+
+    # determine if site vacant or filled
+    filled = (state > 0)[site_idx]
+    old_state = state.copy()
+    logger.debug(f"before proposed state is")
+    logger.debug(state)
+
+    # change in number of adsorbates (atoms)
+    delta_N = 0
+
+    # case site is vacant (spin down)
+    if not filled:
+        delta_N = 1 # add one atom
+
+        # modularize
+        logger.debug("site is not filled, attempting to adsorb")
+        logger.debug(f"current slab has {len(slab)} atoms")
+
+        # tag the atom to be adsorbed with its to-be index (last position on slab)    
+        # adsorbate_idx = len(slab)
+        # state[site_idx] = adsorbate_idx
+        # slab.append(adsorbate)
+        # slab.positions[-1] = coords[site_idx]
+
+        state, slab = add_to_slab(slab, state, adsorbate, coords, site_idx)
+
+        # import pdb; pdb.set_trace()
+        logger.debug(f"proposed slab has {len(slab)} atoms")
+
+    # case site is filled (spin up)
+    else:
+        delta_N = -1 # remove one Cu atom
+        logger.debug("site is filled, attempting to desorb")
+        logger.debug(f"current slab has {len(slab)} atoms")
+        # adsorbate_idx = state[site_idx]
+        # # slab_tags = slab.get_tags()
+
+        # assert len(np.argwhere(state==adsorbate_idx)) <= 1, "more than 1 site found"
+        # assert len(np.argwhere(state==adsorbate_idx)) == 1, "no sites found"
+        # # np.argwhere(state==adsorbate_idx)[0,0]
+
+        # # import pdb;pdb.set_trace()
+
+        # # proposed_slab = slab.copy()
+        # # import pdb; pdb.set_trace()
+        # del slab[int(adsorbate_idx)] #networkxx needs python int 
+        # # import pdb; pdb.set_trace()
+        # # import pdb; pdb.set_trace()
+
+        # # lower the index for higher index items
+        # state = np.where(state>=int(adsorbate_idx), state-1, state)
+        # # remove negatives
+        # state = np.where(state<0, 0, state)
+
+        # # remove the adsorbate from tracking
+        # state[site_idx] = 0
+
+        state, slab = remove_from_slab(slab, state, site_idx)
+
+        logger.debug(f"proposed slab has {len(slab)} atoms")
+    
+    logger.debug(f"after proposed state is")
+    logger.debug(state)
+
+    if save_cif:
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+        write(f'{folder_name}/proposed_slab_iter_{iter:03}.cif', slab)
+
+    # to test, always accept
+    accept = False
+    if testing:
+        # state = state.copy() # obviously inefficient but here for a reason
+        energy = 0
+    else:
+        if not prev_energy:
+            # calculate energy of current state
+            prev_energy = slab_energy(slab)
+
+        curr_energy = slab_energy(slab)
+
+        logger.debug(f"prev energy is {prev_energy}")
+        logger.debug(f"curr energy is {curr_energy}")
+
+        # energy change due to flipping spin
+        energy_diff = curr_energy - prev_energy
+
+        # check if transition succeeds
+        # min(1, exp(-(\delta_E-(delta_N*pot))))
+        logger.debug(f"energy diff is {energy_diff}")
+        logger.debug(f"potential is {pot}")
+        logger.debug(f"delta_N {delta_N}")
+        logger.debug(f"k_b T {temp}")
+        base_prob = np.exp(-(energy_diff-pot*delta_N)/temp)
+        logger.debug(f"base probability is {base_prob}")
+        if np.random.rand() < base_prob:
+            # succeeds! keep already changed slab
+            # state = state.copy()
+            logger.debug("state changed!")
+            energy = curr_energy
+            accept = True
+        else:
+            # failed, keep current state and revert slab back to original
+            if not filled:
+                # removed filled
+                # del slab[int(adsorbate_idx)]
+                # # remove the adsorbate from tracking
+                # state[site_idx] = 0
+                state, slab = remove_from_slab(slab, state, site_idx)
+            else:
+                # add back removed
+
+                # adsorbate_idx = len(slab)
+                # state[site_idx] = adsorbate_idx
+                # slab.append(adsorbate)
+                # slab.positions[-1] = coords[site_idx]
+                state, slab = add_to_slab(slab, state, adsorbate, coords, site_idx)
+
+            logger.debug("state kept the same")
+            energy = prev_energy
+            accept = False
+            
+    return state, slab, energy, accept
+
+def add_to_slab(slab, state, adsorbate, coords, site_idx):
+    adsorbate_idx = len(slab)
+    state[site_idx] = adsorbate_idx
+    slab.append(adsorbate)
+    slab.positions[-1] = coords[site_idx]
+    return state, slab
+
+def remove_from_slab(slab, state, site_idx):
+    adsorbate_idx = state[site_idx]
+    assert len(np.argwhere(state==adsorbate_idx)) <= 1, "more than 1 site found"
+    assert len(np.argwhere(state==adsorbate_idx)) == 1, "no sites found"
+
+    del slab[int(adsorbate_idx)]
+
+    # lower the index for higher index items
+    state = np.where(state>=int(adsorbate_idx), state-1, state)
+    # remove negatives
+    state = np.where(state<0, 0, state)
+
+    # remove the adsorbate from tracking
+    state[site_idx] = 0
+    return state, slab
 
 def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu'):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
@@ -180,7 +310,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
 
     # determine if site vacant or filled
     filled = (state > 0)[site_idx]
-    old_state = state.copy()
     logger.debug(f"before proposed state is")
     logger.debug(state)
 
@@ -320,7 +449,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu'):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -342,6 +471,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     # attach slab calculator
     slab.calc = calc
 
+
+    print(f"there are {len(slab)} atoms ")
+
     print(f"using slab calc {slab.calc}")
 
     # get ALL the adsorption sites
@@ -351,6 +483,10 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab 
     state = np.zeros(len(coords), dtype=int)
+    if canonical:
+        # perform canonical runs
+        # adsorb num_ads_atoms 
+        assert num_ads_atoms > 0, "for canonical runs, need number of adsorbed atoms greater than 0"
 
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
@@ -380,8 +516,8 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         logger.info(f"In sweep {i+1} out of {num_runs}")
         for j in range(sweep_size):
             run_idx = sweep_size*i + j+1
-
-            state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+            # state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+            state, slab, energy, accept = spin_flip_modular(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
             num_accept += accept
 
         # end of sweep; append to history
