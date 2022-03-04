@@ -9,6 +9,11 @@ os.environ["LAMMPS_COMMAND"] = "/home/jurgis/lammps/src/lmp_serial"
 os.environ["LAMMPS_POTENTIALS"] = "/home/jurgis/lammps/potentials/"
 os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"] 
 
+import sys
+sys.path.append("/home/dux/")
+from htvs.djangochem.pgmols.utils import surfaces
+
+
 import matplotlib.pyplot as plt
 from time import perf_counter
 
@@ -19,14 +24,16 @@ import numpy as np
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
 from ase.io import write
+from ase.calculators.eam import EAM
+from ase.calculators.lammpsrun import LAMMPS
+
+
 import ase
 import catkit
 from catkit.gen.adsorption import get_adsorption_sites
 import random
 from collections import Counter, defaultdict
 
-from ase.calculators.eam import EAM
-from ase.calculators.lammpsrun import LAMMPS
 
 from datetime import datetime
 import logging
@@ -41,14 +48,15 @@ DATE_TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 screen_handler = logging.StreamHandler(stream=sys.stdout)
 screen_handler.setLevel(logging.INFO)
-screen_formatter = logging.Formatter(screen_format)
+screen_formatter = logging.Formatter(screen_format
+
 screen_formatter.datefmt = DATE_TIME_FMT
 
 screen_handler.setFormatter(screen_formatter)
 logger.addHandler(screen_handler)
 '''
 
-def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0)):
+def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0), termination=0, orthogonal=False, **kwargs):
     """Creates the slab structure using ASE.
 
     Parameters
@@ -60,9 +68,56 @@ def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0)):
 
     # TODO: adjust size of surface if necessary
     a1 = bulk(elem, 'fcc', a=alat)
-    catkit_slab = catkit.build.surface(a1, size=(4,4,4), miller=miller, termination=0, fixed=0, vacuum=vacuum, orthogonal=False)
+    write(f'{elem}_a1_bulk.cif', a1)
+    catkit_slab = catkit.build.surface(a1, size=(2,4,6), miller=miller, termination=termination, fixed=0, vacuum=vacuum, orthogonal=orthogonal, **kwargs)
+    """
+    Documentation for surface
+    
+    A helper function to return the surface associated with a
+    given set of input parameters to the general surface generator.
 
-    # write('catkit_slab.cif', catkit_slab)
+    Parameters
+    ----------
+    elements : str or object
+        The atomic symbol to be passed to the as bulk builder function
+        or an atoms object representing the bulk structure to use.
+    size : list (3,)
+        Number of time to expand the x, y, and z primitive cell.
+    miller : list (3,) or (4,)
+        The miller index to cleave the surface structure from. If 4 values
+        are used, assume Miller-Bravis convention.
+    termination : int
+        The index associated with a specific slab termination.
+    fixed : int
+        Number of layers to constrain.
+    vacuum : float
+        Angstroms of vacuum to add to the unit cell.
+    orthogonal : bool
+        Force the slab generator to produce the most orthogonal slab.
+
+    Returns
+    -------
+    slab : Gratoms object
+        Return a slab generated from the specified bulk structure.
+    
+    ****
+    Then calls
+    ****
+
+     generator = catkit.gen.surface.SlabGenerator(
+        bulk=atoms,
+        miller_index=miller,
+        layers=size[-1],
+        vacuum=vacuum,
+        fixed=fixed,
+        layer_type=kwargs.get('layer_type', 'trim'),
+        attach_graph=kwargs.get('attach_graph', True),
+        standardize_bulk=kwargs.get('standardize_bulk', True),
+        tol=kwargs.get('tol', 1e-8)
+    )
+    
+    """
+    write(f'{elem}_pristine_slab.cif', catkit_slab)
     return catkit_slab
 
 
@@ -257,7 +312,7 @@ def get_adsorption_coords(slab, atom, connectivity):
                 auto_construct=False,
                 symmetric=False)
 
-    # write('new_slab.cif', new_slab)
+    write(f'{str(atom.symbols)}_all_adsorbed_slab.cif', new_slab)
 
     # store the actual positions of the sides
     logger.debug(f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms.")
