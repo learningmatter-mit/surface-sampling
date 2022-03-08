@@ -23,7 +23,7 @@ import numpy as np
 
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
-from ase.io import write
+from ase.io import read, write
 from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
 
@@ -94,12 +94,114 @@ def get_random_idx(connectivity, type=None):
     return site_idx
 
 
+def get_complementary_idx(state, type=None):
+    """Get two indices, site1 occupied and site2 unoccupied."""
+
+    site1_idx = random.choice(np.argwhere(state != 0).flatten())
+    site2_idx = random.choice(np.argwhere(state == 0).flatten())
+
+    return site1_idx, site2_idx
+
+
 def slab_energy(slab):
     """Calculate slab energy.
     """
     energy = slab.get_potential_energy()
 
     return energy
+
+
+def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=None, save_cif=False, iter=1, testing=False, folder_name=".", adsorbate='Cu'):
+    """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
+
+    Parameters
+    ----------
+    state : np.array
+        dimension the number of sites
+    slab : catkit.gratoms.Gratoms
+        model of the surface slab
+    temp : float
+        temperature
+
+    Returns
+    -------
+    np.array, float
+        new state, energy change
+    """
+
+    # choose 2 complementary sites to flip
+    # site1 occupied, site2 unoccupied
+    site1_idx, site2_idx = get_complementary_idx(state)
+
+    # import pdb; pdb.set_trace()
+
+    site1_coords = coords[site1_idx]
+    site2_coords = coords[site2_idx]
+
+    logger.debug(f"\n we are at iter {iter}")
+    logger.debug(f"idx is {site1_idx} with connectivity {connectivity[site1_idx]} at {site1_coords}")
+    logger.debug(f"idx is {site2_idx} with connectivity {connectivity[site2_idx]} at {site2_coords}")
+
+    logger.debug(f"before proposed state is")
+    logger.debug(state)
+
+    logger.debug(f"current slab has {len(slab)} atoms")
+
+    state, slab = remove_from_slab(slab, state, site1_idx) # desorb from site1
+    state, slab = add_to_slab(slab, state, adsorbate, coords, site2_idx) # adsorb to site2
+
+    # import pdb; pdb.set_trace()
+
+    # make sure num atoms is conserved
+    logger.debug(f"proposed slab has {len(slab)} atoms")
+    
+    logger.debug(f"after proposed state is")
+    logger.debug(state)
+
+    if save_cif:
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+        write(f'{folder_name}/proposed_slab_iter_{iter:03}.cif', slab)
+
+    # to test, always accept
+    accept = False
+    if testing:
+        # state = state.copy() # obviously inefficient but here for a reason
+        energy = 0
+    else:
+        if not prev_energy:
+            # calculate energy of current state
+            prev_energy = slab_energy(slab)
+
+        curr_energy = slab_energy(slab)
+
+        logger.debug(f"prev energy is {prev_energy}")
+        logger.debug(f"curr energy is {curr_energy}")
+
+        # energy change due to flipping spin
+        energy_diff = curr_energy - prev_energy
+
+        # check if transition succeeds
+        logger.debug(f"energy diff is {energy_diff}")
+        logger.debug(f"k_b T {temp}")
+        base_prob = np.exp(-energy_diff/temp)
+        logger.debug(f"base probability is {base_prob}")
+        if np.random.rand() < base_prob:
+            # succeeds! keep already changed slab
+            # state = state.copy()
+            logger.debug("state changed!")
+            energy = curr_energy
+            accept = True
+        else:
+            # failed, keep current state and revert slab back to original
+            state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx) 
+            state, slab = remove_from_slab(slab, state, site2_idx)
+
+            logger.debug("state kept the same")
+            energy = prev_energy
+            accept = False
+            
+    return state, slab, energy, accept
 
 
 def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu'):
@@ -134,7 +236,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
 
     # determine if site vacant or filled
     filled = (state > 0)[site_idx]
-    old_state = state.copy()
     logger.debug(f"before proposed state is")
     logger.debug(state)
 
@@ -327,8 +428,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     # attach slab calculator
     slab.calc = calc
 
+    pristine_atoms = len(slab)
 
-    print(f"there are {len(slab)} atoms ")
+    print(f"there are {pristine_atoms} atoms ")
 
     print(f"using slab calc {slab.calc}")
 
@@ -339,20 +441,31 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab 
     state = np.zeros(len(coords), dtype=int)
+
+    # get absolute adsorption coords
+    metal = catkit.gratoms.Gratoms(element)
+    ads_coords = get_adsorption_coords(slab, metal, connectivity)
+
+    energy = slab_energy(slab)
+    
     if canonical:
         # perform canonical runs
         # adsorb num_ads_atoms 
         assert num_ads_atoms > 0, "for canonical runs, need number of adsorbed atoms greater than 0"
 
-        for i in range(num_ads_atoms):
-            site_idx = get_random_idx(connectivity)
-            state, slab = add_to_slab(slab, state, element, coords, site_idx)
-            
+        # following doesn't work because of infinite energies
+        # for i in range(num_ads_atoms):
+            # site_idx = get_random_idx(connectivity)
+            # state, slab = add_to_slab(slab, state, element, ads_coords, site_idx)
 
-    # get absolute adsorption coords
-    metal = catkit.gratoms.Gratoms(element)
-    ads_coords = get_adsorption_coords(slab, metal, connectivity)
-    
+        # perform grand canonical until num_ads_atoms are obtained
+        while len(slab) < pristine_atoms + num_ads_atoms:
+            state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=False,  adsorbate=element)
+
+        slab.write(f'{element}_canonical_init.cif')
+        
+    # import pdb; pdb.set_trace()
+
     history = []
     energy_hist = np.random.rand(num_runs)
     # energy_sq_hist = np.random.rand(num_runs)
@@ -361,14 +474,14 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # sweep over # sites
     sweep_size = len(coords)
-    
-    energy = slab_energy(slab)
 
     logger.info(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
 
     start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
     run_folder = f"{element}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
+
+    site_types = set(connectivity)
 
     for i in range(num_runs):
         num_accept = 0
@@ -377,11 +490,15 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         logger.info(f"In sweep {i+1} out of {num_runs}")
         for j in range(sweep_size):
             run_idx = sweep_size*i + j+1
-            state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+            if canonical:
+                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+            else:
+                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
             num_accept += accept
 
         # end of sweep; append to history
         history.append(slab.copy())
+        
         # save cif file
         if not os.path.exists(run_folder):
             os.makedirs(run_folder)
@@ -392,7 +509,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         # energy_sq_hist[i] = energy**2
         # import pdb; pdb.set_trace()
         ads_counts = count_adsorption_sites(slab, state)
-        for key in [1, 2, 4]:
+        for key in set(site_types):
             if ads_counts[key]:
                 adsorption_count_hist[key].append(ads_counts[key])
             else:
@@ -411,29 +528,37 @@ def count_adsorption_sites(slab, state):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
+    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %I:%M:%S %p')
 
     do_profiling = True
 
     # use EAM
-    eam_calc = EAM(potential='Cu2.eam.fs')
+    # eam_calc = EAM(potential='Cu2.eam.fs')
 
     # use LAMMPS
     parameters = {
         'pair_style': 'eam',
-        'pair_coeff': ['* * Cu_u3.eam']
+        'pair_coeff': ['* * Au_u3.eam']
     }
 
-    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Cu_u3.eam')
+    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Au_u3.eam')
     lammps_calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=True, tmp_dir="/home/dux/surface_sampling/tmp_files")
     lammps_calc.set(**parameters)
+
+    # Au from standard cell
+    atoms = read('Au_mp-81_conventional_standard.cif')
+    slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1,1,0], size=[4,4])
+    slab.write('Au_110_pristine_slab.cif')
+
+    element = 'Au'
+    num_ads_atoms = 16 + 8
 
     if do_profiling:
         with cProfile.Profile() as pr:
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, slab=None, calc=lammps_calc, element='Cu')
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
