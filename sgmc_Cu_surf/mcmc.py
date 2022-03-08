@@ -69,7 +69,7 @@ def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0), termination=0,
     # TODO: adjust size of surface if necessary
     a1 = bulk(elem, 'fcc', a=alat)
     write(f'{elem}_a1_bulk.cif', a1)
-    catkit_slab = catkit.build.surface(a1, size=(2,4,6), miller=miller, termination=termination, fixed=0, vacuum=vacuum, orthogonal=orthogonal, **kwargs)
+    catkit_slab = catkit.build.surface(a1, size=(4,4,4), miller=miller, termination=termination, fixed=0, vacuum=vacuum, orthogonal=orthogonal, **kwargs)
 
     write(f'{elem}_pristine_slab.cif', catkit_slab)
     return catkit_slab
