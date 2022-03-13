@@ -5,14 +5,21 @@ Produces a temperature/structure map
 from operator import methodcaller
 import os
 
-os.environ["LAMMPS_COMMAND"] = "/home/jurgis/lammps/src/lmp_serial"
-os.environ["LAMMPS_POTENTIALS"] = "/home/jurgis/lammps/potentials/"
+import socket
+hostname = socket.gethostname()
+
+if "kohn" in hostname:
+    os.environ["LAMMPS_COMMAND"] = "/home/jurgis/lammps/src/lmp_serial"
+    os.environ["LAMMPS_POTENTIALS"] = "/home/jurgis/lammps/potentials/"
+elif "lambda" in hostname:
+    os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
+    os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
+
 os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"] 
 
 import sys
 sys.path.append("/home/dux/")
 from htvs.djangochem.pgmols.utils import surfaces
-
 
 import matplotlib.pyplot as plt
 from time import perf_counter
@@ -227,6 +234,8 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     # choose a site to flip
     # coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
 
+    # import pdb; pdb.set_trace()
+
     if not site_idx:
         site_idx = get_random_idx(connectivity)
     rand_site = coords[site_idx]
@@ -406,7 +415,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[]):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -437,14 +446,20 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     # get ALL the adsorption sites
     # top should have connectivity 1, bridge should be 2 and hollow more like 4
     coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
-    logger.info(f"In pristine slab, there are a total of {len(connectivity)} sites")
-
-    # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab 
-    state = np.zeros(len(coords), dtype=int)
 
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
-    ads_coords = get_adsorption_coords(slab, metal, connectivity)
+
+    if not (isinstance(ads_coords, list) or isinstance(ads_coords, np.ndarray)):
+        ads_coords = get_adsorption_coords(slab, metal, connectivity)
+    else:
+        # fake connectivity
+        connectivity = np.ones(len(ads_coords), dtype=int)
+
+    # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab 
+    state = np.zeros(len(ads_coords), dtype=int)
+
+    logger.info(f"In pristine slab, there are a total of {len(ads_coords)} sites")
 
     energy = slab_energy(slab)
     
@@ -473,7 +488,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     frac_accept_hist = np.random.rand(num_runs)
 
     # sweep over # sites
-    sweep_size = len(coords)
+    sweep_size = len(ads_coords)
 
     logger.info(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
 
@@ -508,7 +523,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         energy_hist[i] = energy
         # energy_sq_hist[i] = energy**2
         # import pdb; pdb.set_trace()
-        ads_counts = count_adsorption_sites(slab, state)
+        ads_counts = count_adsorption_sites(slab, state, connectivity)
         for key in set(site_types):
             if ads_counts[key]:
                 adsorption_count_hist[key].append(ads_counts[key])
@@ -521,8 +536,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     return history, energy_hist, frac_accept_hist, adsorption_count_hist
 
 
-def count_adsorption_sites(slab, state):
-    _, connectivity, _ = get_adsorption_sites(slab, symmetry_reduced=False)
+def count_adsorption_sites(slab, state, connectivity):
     occ_idx = state > 0
     return Counter(connectivity[occ_idx])
 
