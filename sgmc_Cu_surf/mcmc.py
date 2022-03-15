@@ -440,7 +440,6 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     pristine_atoms = len(slab)
 
     print(f"there are {pristine_atoms} atoms ")
-
     print(f"using slab calc {slab.calc}")
 
     # get ALL the adsorption sites
@@ -449,8 +448,10 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
+    
+    import pdb; pdb.set_trace()
 
-    if not (isinstance(ads_coords, list) or isinstance(ads_coords, np.ndarray)):
+    if not ((isinstance(ads_coords, list) and len(ads_coords) > 0)or isinstance(ads_coords, np.ndarray)):
         ads_coords = get_adsorption_coords(slab, metal, connectivity)
     else:
         # fake connectivity
