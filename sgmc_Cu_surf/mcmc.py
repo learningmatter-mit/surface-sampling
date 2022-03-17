@@ -15,7 +15,8 @@ elif "lambda" in hostname:
     os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
     os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
 
-os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"] 
+os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"]
+os.environ["PROJECT_DIR"] = os.getcwd()
 
 import sys
 sys.path.append("/home/dux/")
@@ -305,6 +306,8 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     logger.debug(f"after proposed state is")
     logger.debug(state)
 
+    # import pdb; pdb.set_trace()
+
     if save_cif:
         if not os.path.exists(folder_name):
             os.makedirs(folder_name)
@@ -415,7 +418,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[]):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], adsorbate=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -449,7 +452,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
     if not ((isinstance(ads_coords, list) and len(ads_coords) > 0)or isinstance(ads_coords, np.ndarray)):
         ads_coords = get_adsorption_coords(slab, metal, connectivity)
@@ -499,6 +502,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     site_types = set(connectivity)
 
+    # set adsorbate
+    if not adsorbate:
+        adsorbate = element
+    logger.info(f"adsorbate is {adsorbate}")
+
     for i in range(num_runs):
         num_accept = 0
         # simulated annealing schedule
@@ -507,9 +515,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         for j in range(sweep_size):
             run_idx = sweep_size*i + j+1
             if canonical:
-                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
             else:
-                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=element)
+                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
             num_accept += accept
 
         # end of sweep; append to history
@@ -551,29 +559,29 @@ if __name__ == "__main__":
     # eam_calc = EAM(potential='Cu2.eam.fs')
 
     # use LAMMPS
-    parameters = {
-        'pair_style': 'eam',
-        'pair_coeff': ['* * Au_u3.eam']
+    alloy_parameters = {
+        'pair_style': 'eam/alloy',
+        'pair_coeff': ['* * cu_ag_ymwu.eam.alloy Ag']
     }
-
-    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'Au_u3.eam')
-    lammps_calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=True, tmp_dir="/home/dux/surface_sampling/tmp_files")
-    lammps_calc.set(**parameters)
+    alloy_potential_file = os.path.join(os.environ["PROJECT_DIR"], 'cu_ag_ymwu.eam.alloy')
+    alloy_calc = LAMMPS(files=[alloy_potential_file], keep_tmp_files=True, keep_alive=False, tmp_dir="/home/dux/surface_sampling/tmp_files")
+    alloy_calc.set(**alloy_parameters)
 
     # Au from standard cell
-    atoms = read('Au_mp-81_conventional_standard.cif')
-    slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1,1,0], size=[4,4])
-    slab.write('Au_110_pristine_slab.cif')
+    atoms = read('Ag_mp-124_conventional_standard.cif')
+    slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1,1,1], size=[5,5])
+    slab.write('Ag_111_5x5_pristine_slab.cif')
 
-    element = 'Au'
-    num_ads_atoms = 16 + 8
-
+    element = 'Ag'
+    # num_ads_atoms = 16 + 8
+    adsorbate = 'Cu'
     if do_profiling:
         with cProfile.Profile() as pr:
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
+            # history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, alpha=0.99, slab=slab, calc=alloy_calc, element=element, adsorbate=adsorbate)
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
