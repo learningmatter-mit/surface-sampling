@@ -417,7 +417,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -450,6 +450,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
+
+
+    # set surface_name
+    if not surface_name:
+        surface_name = element
     
     # import pdb; pdb.set_trace()
 
@@ -484,10 +489,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         while len(slab) < pristine_atoms + num_ads_atoms:
             state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=False,  adsorbate=element)
 
-        slab.write(f'{element}_canonical_init.cif')
+        slab.write(f'{surface_name}_canonical_init.cif')
         
     # import pdb; pdb.set_trace()
-
     history = []
     energy_hist = np.random.rand(num_runs)
     # energy_sq_hist = np.random.rand(num_runs)
@@ -501,7 +505,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
-    run_folder = f"{element}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
+    run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
     site_types = set(connectivity)
 
