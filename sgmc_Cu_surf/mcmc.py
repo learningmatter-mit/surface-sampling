@@ -35,7 +35,6 @@ from ase.io import read, write
 from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
 
-
 import ase
 import catkit
 from catkit.gen.adsorption import get_adsorption_sites
@@ -418,7 +417,7 @@ def get_adsorption_coords(slab, atom, connectivity):
     return new_slab.get_positions()[len(slab):]
 
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], adsorbate=None):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -442,8 +441,8 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     pristine_atoms = len(slab)
 
-    print(f"there are {pristine_atoms} atoms ")
-    print(f"using slab calc {slab.calc}")
+    logger.info(f"there are {pristine_atoms} atoms ")
+    logger.info(f"using slab calc {slab.calc}")
 
     # get ALL the adsorption sites
     # top should have connectivity 1, bridge should be 2 and hollow more like 4
@@ -465,7 +464,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     logger.info(f"In pristine slab, there are a total of {len(ads_coords)} sites")
 
-    energy = slab_energy(slab)
+    # sometimes slab.calc is fake
+    if slab.calc:
+        energy = slab_energy(slab)
+    else:
+        energy = 0
     
     if canonical:
         # perform canonical runs
@@ -517,7 +520,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
             if canonical:
                 state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
             else:
-                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
+                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
             num_accept += accept
 
         # end of sweep; append to history
