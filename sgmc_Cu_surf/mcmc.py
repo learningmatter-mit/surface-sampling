@@ -409,7 +409,7 @@ def get_adsorption_coords(slab, atom, connectivity):
                 auto_construct=False,
                 symmetric=False)
 
-    write(f'{str(atom.symbols)}_all_adsorbed_slab.cif', new_slab)
+    write(f'{str(slab.symbols)}_{str(atom.symbols)}_all_adsorbed_slab.cif', new_slab)
 
     # store the actual positions of the sides
     logger.debug(f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms.")
