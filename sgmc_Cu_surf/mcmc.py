@@ -41,7 +41,6 @@ from catkit.gen.adsorption import get_adsorption_sites
 import random
 from collections import Counter, defaultdict
 
-
 from datetime import datetime
 import logging
 
@@ -116,7 +115,6 @@ def slab_energy(slab):
     energy = slab.get_potential_energy()
 
     return energy
-
 
 def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=None, save_cif=False, iter=1, testing=False, folder_name=".", adsorbate='Cu'):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
@@ -409,7 +407,7 @@ def get_adsorption_coords(slab, atom, connectivity):
                 auto_construct=False,
                 symmetric=False)
 
-    write(f'{str(slab.symbols)}_{str(atom.symbols)}_all_adsorbed_slab.cif', new_slab)
+    write(f'ads_{str(atom.symbols)}_all_adsorbed_slab.cif', new_slab)
 
     # store the actual positions of the sides
     logger.debug(f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms.")
@@ -520,6 +518,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         curr_temp = temp * alpha**i
         logger.info(f"In sweep {i+1} out of {num_runs}")
         for j in range(sweep_size):
+            logger.info(f"In iter {j+1}")
             run_idx = sweep_size*i + j+1
             if canonical:
                 state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
