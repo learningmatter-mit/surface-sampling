@@ -414,7 +414,6 @@ def get_adsorption_coords(slab, atom, connectivity):
 
     return new_slab.get_positions()[len(slab):]
 
-
 def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
@@ -472,7 +471,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         energy = slab_energy(slab)
     else:
         energy = 0
-    
+
+    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+
+    run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
+
     if canonical:
         # perform canonical runs
         # adsorb num_ads_atoms 
@@ -485,10 +488,13 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
         # perform grand canonical until num_ads_atoms are obtained
         while len(slab) < pristine_atoms + num_ads_atoms:
-            state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=False,  adsorbate=element)
+            state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=testing, adsorbate=element)
 
         slab.write(f'{surface_name}_canonical_init.cif')
-        
+
+        # customize run folder
+        run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_adsatoms{num_ads_atoms:02}_alpha{alpha}_{start_timestamp}"
+
     # import pdb; pdb.set_trace()
     history = []
     energy_hist = np.random.rand(num_runs)
@@ -500,10 +506,6 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     sweep_size = len(ads_coords)
 
     logger.info(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
-
-    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-
-    run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
     site_types = set(connectivity)
 
@@ -521,7 +523,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
             logger.info(f"In iter {j+1}")
             run_idx = sweep_size*i + j+1
             if canonical:
-                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=False, folder_name=run_folder, adsorbate=adsorbate)
+                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
             else:
                 state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
             num_accept += accept
