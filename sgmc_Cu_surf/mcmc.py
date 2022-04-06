@@ -34,6 +34,8 @@ from ase.build import make_supercell, bulk
 from ase.io import read, write
 from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
+from ase.calculators.lammpslib import LAMMPSlib
+
 
 import ase
 import catkit
@@ -206,6 +208,8 @@ def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=Non
             energy = prev_energy
             accept = False
             
+        # import pdb; pdb.set_trace()
+
     return state, slab, energy, accept
 
 
@@ -248,6 +252,23 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
 
     # change in number of adsorbates (atoms)
     delta_N = 0
+
+    # test out for GaAs
+    cmds = [
+        'comm_modify cutoff 15',
+        'pair_style bop save',
+        'pair_coeff * * GaAs.bop.table Ga As',
+    ]
+
+    lammps_calc = LAMMPSlib(lmpcmds=cmds, 
+                            atom_types={'Ga': 1, 'As': 2},
+                            log_file='test.log')
+
+    slab.calc = lammps_calc
+                            
+    if not prev_energy:
+        # calculate energy of current state
+        prev_energy = slab_energy(slab)
 
     # case site is vacant (spin down)
     if not filled:
@@ -304,7 +325,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     logger.debug(state)
 
     # import pdb; pdb.set_trace()
-
     if save_cif:
         if not os.path.exists(folder_name):
             os.makedirs(folder_name)
@@ -316,10 +336,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
         # state = state.copy() # obviously inefficient but here for a reason
         energy = 0
     else:
-        if not prev_energy:
-            # calculate energy of current state
-            prev_energy = slab_energy(slab)
-
         curr_energy = slab_energy(slab)
 
         logger.debug(f"prev energy is {prev_energy}")
@@ -352,7 +368,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
                 state, slab = remove_from_slab(slab, state, site_idx)
             else:
                 # add back removed
-
                 # adsorbate_idx = len(slab)
                 # state[site_idx] = adsorbate_idx
                 # slab.append(adsorbate)
@@ -448,14 +463,13 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
 
-
     # set surface_name
     if not surface_name:
         surface_name = element
     
     # import pdb; pdb.set_trace()
 
-    if not ((isinstance(ads_coords, list) and len(ads_coords) > 0)or isinstance(ads_coords, np.ndarray)):
+    if not ((isinstance(ads_coords, list) and len(ads_coords) > 0) or isinstance(ads_coords, np.ndarray)):
         ads_coords = get_adsorption_coords(slab, metal, connectivity)
     else:
         # fake connectivity
@@ -514,13 +528,15 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         adsorbate = element
     logger.info(f"adsorbate is {adsorbate}")
 
+    # import pdb; pdb.set_trace()
+
     for i in range(num_runs):
         num_accept = 0
         # simulated annealing schedule
         curr_temp = temp * alpha**i
         logger.info(f"In sweep {i+1} out of {num_runs}")
         for j in range(sweep_size):
-            logger.info(f"In iter {j+1}")
+            # logger.info(f"In iter {j+1}")
             run_idx = sweep_size*i + j+1
             if canonical:
                 state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
