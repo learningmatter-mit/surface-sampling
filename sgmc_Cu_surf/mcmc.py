@@ -1,4 +1,4 @@
-"""Performs Semi-Grand Monte Carlo (SGMC) reconstruction of Cu surface.
+"""Performs Semi-Grand Monte Carlo (SGMC) reconstruction of a surface.
 Produces a temperature/structure map
 """
 
@@ -252,7 +252,8 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
 
     # change in number of adsorbates (atoms)
     delta_N = 0
-
+    
+    '''
     # test out for GaAs
     cmds = [
         'comm_modify cutoff 15',
@@ -265,6 +266,7 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
                             log_file='test.log')
 
     slab.calc = lammps_calc
+    '''
                             
     if not prev_energy:
         # calculate energy of current state
