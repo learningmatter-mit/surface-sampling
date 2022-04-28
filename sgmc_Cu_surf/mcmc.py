@@ -14,6 +14,11 @@ if "kohn" in hostname:
 elif "lambda" in hostname:
     os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
     os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
+else:
+    # "sched_mit_rafagb" in hostname (maybe?)
+    # TODO: change to explicitly support Engaging cluster
+    os.environ["LAMMPS_COMMAND"] = "/home/pleon/lammps_mpi/src/lmp_serial"
+    os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/lammps_mpi/potentials/"
 
 os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"]
 os.environ["PROJECT_DIR"] = os.getcwd()
@@ -37,7 +42,7 @@ from ase.calculators.lammpsrun import LAMMPS
 from ase.calculators.lammpslib import LAMMPSlib
 
 from ase.constraints import FixAtoms
-from ase.optimize import BFGS
+from ase.optimize import BFGS, GPMin
 
 import ase
 import catkit
@@ -112,10 +117,11 @@ def get_complementary_idx(state, type=None):
 
     return site1_idx, site2_idx
 
-def optimize_slab(slab):
+def optimize_slab(slab, optimizer='BFGS'):
     calc_slab = slab.copy()
     calc_slab.calc = slab.calc
     dyn = BFGS(calc_slab)
+    # dyn = GPMin(calc_slab)
     dyn.run(steps=20,fmax=0.2)
 
     return calc_slab
@@ -521,7 +527,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     else:
         energy = 0
 
-    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
@@ -590,6 +596,8 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         if relax:
             opt_slab = optimize_slab(slab)
             opt_slab.write(f'{run_folder}/optim_slab_run_{i+1:03}.cif')
+
+        logger.info(f"optim structure has Energy = {energy}")
 
         # append values
         energy_hist[i] = energy
