@@ -19,4 +19,4 @@ echo ""
 module load anaconda3/2020.11
 source activate mlenv
 
-python pipeline/automation.py jtprop --train --validate
+python GaN_0001_multiple_runs.py --runs 3 1> output.txt
