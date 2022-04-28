@@ -36,6 +36,8 @@ from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
 from ase.calculators.lammpslib import LAMMPSlib
 
+from ase.constraints import FixAtoms
+from ase.optimize import BFGS
 
 import ase
 import catkit
@@ -110,15 +112,25 @@ def get_complementary_idx(state, type=None):
 
     return site1_idx, site2_idx
 
+def optimize_slab(slab):
+    calc_slab = slab.copy()
+    calc_slab.calc = slab.calc
+    dyn = BFGS(calc_slab)
+    dyn.run(steps=20,fmax=0.2)
 
-def slab_energy(slab):
+    return calc_slab
+
+def slab_energy(slab, relax=False):
     """Calculate slab energy.
     """
-    energy = slab.get_potential_energy()
 
-    return energy
+    if relax:
+        slab = optimize_slab(slab)
 
-def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=None, save_cif=False, iter=1, testing=False, folder_name=".", adsorbate='Cu'):
+    return slab.get_potential_energy()
+
+
+def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=None, save_cif=False, iter=1, testing=False, folder_name=".", adsorbate='Cu', relax=False):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
 
     Parameters
@@ -178,9 +190,18 @@ def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=Non
     else:
         if not prev_energy:
             # calculate energy of current state
-            prev_energy = slab_energy(slab)
+            if relax:
+                prev_energy = slab_energy(slab, relax=True)
+            else:
+                # calculate energy of current state
+                prev_energy = slab_energy(slab)
 
-        curr_energy = slab_energy(slab)
+        if relax:
+            # use relaxation only to get lowest energy
+            # but don't update adsorption positions
+            curr_energy = slab_energy(slab, relax=True)
+        else:
+            curr_energy = slab_energy(slab)
 
         logger.debug(f"prev energy is {prev_energy}")
         logger.debug(f"curr energy is {curr_energy}")
@@ -209,11 +230,10 @@ def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=Non
             accept = False
             
         # import pdb; pdb.set_trace()
-
     return state, slab, energy, accept
 
 
-def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu'):
+def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu', relax=False):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
 
     Parameters
@@ -269,8 +289,11 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     '''
                             
     if not prev_energy:
-        # calculate energy of current state
-        prev_energy = slab_energy(slab)
+        if relax:
+            prev_energy = slab_energy(slab, relax=True)
+        else:
+            # calculate energy of current state
+            prev_energy = slab_energy(slab)
 
     # case site is vacant (spin down)
     if not filled:
@@ -335,10 +358,14 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     # to test, always accept
     accept = False
     if testing:
-        # state = state.copy() # obviously inefficient but here for a reason
         energy = 0
     else:
-        curr_energy = slab_energy(slab)
+        if relax:
+            # use relaxation only to get lowest energy
+            # but don't update adsorption positions
+            curr_energy = slab_energy(slab, relax=True)
+        else:
+            curr_energy = slab_energy(slab)
 
         logger.debug(f"prev energy is {prev_energy}")
         logger.debug(f"curr energy is {curr_energy}")
@@ -431,7 +458,7 @@ def get_adsorption_coords(slab, atom, connectivity):
 
     return new_slab.get_positions()[len(slab):]
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None, relax=False):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
     a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
@@ -452,6 +479,12 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
     
     # attach slab calculator
     slab.calc = calc
+
+    num_bulk_atoms = len(slab)
+    bulk_indices = list(range(num_bulk_atoms))
+
+    c = FixAtoms(indices=bulk_indices)
+    slab.set_constraint(c)
 
     pristine_atoms = len(slab)
 
@@ -504,7 +537,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
         # perform grand canonical until num_ads_atoms are obtained
         while len(slab) < pristine_atoms + num_ads_atoms:
-            state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=testing, adsorbate=element)
+            state, slab, energy, accept = spin_flip(state, slab, temp, 0, ads_coords, connectivity, prev_energy=energy, save_cif=False, testing=testing, adsorbate=element, relax=relax)
 
         slab.write(f'{surface_name}_canonical_init.cif')
 
@@ -541,9 +574,9 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
             # logger.info(f"In iter {j+1}")
             run_idx = sweep_size*i + j+1
             if canonical:
-                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
+                state, slab, energy, accept = spin_flip_canonical(state, slab, curr_temp, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate, relax=relax)
             else:
-                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate)
+                state, slab, energy, accept = spin_flip(state, slab, curr_temp, pot, ads_coords, connectivity, prev_energy=energy, save_cif=False, iter=run_idx, testing=testing, folder_name=run_folder, adsorbate=adsorbate, relax=relax)
             num_accept += accept
 
         # end of sweep; append to history
@@ -553,6 +586,10 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         if not os.path.exists(run_folder):
             os.makedirs(run_folder)
         write(f'{run_folder}/final_slab_run_{i+1:03}.cif', slab)
+
+        if relax:
+            opt_slab = optimize_slab(slab)
+            opt_slab.write(f'{run_folder}/optim_slab_run_{i+1:03}.cif')
 
         # append values
         energy_hist[i] = energy
