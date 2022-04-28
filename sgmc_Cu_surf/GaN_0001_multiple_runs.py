@@ -36,7 +36,7 @@ def run_process(num_runs=100):
         'pair_coeff': ['* * GaN.tersoff Ga N']
     }
     potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], 'GaN.sw')
-    lammps_calc = LAMMPS(files=[potential_file], keep_tmp_files=True, keep_alive=False, tmp_dir="/home/dux/surface_sampling/tmp_files")
+    lammps_calc = LAMMPS(files=[potential_file], keep_tmp_files=False, keep_alive=False, tmp_dir="/home/dux/surface_sampling/tmp_files")
     lammps_calc.set(**parameters)
 
     element = 'Ga'

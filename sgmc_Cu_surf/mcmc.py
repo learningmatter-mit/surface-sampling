@@ -627,7 +627,7 @@ if __name__ == "__main__":
         'pair_coeff': ['* * cu_ag_ymwu.eam.alloy Ag']
     }
     alloy_potential_file = os.path.join(os.environ["PROJECT_DIR"], 'cu_ag_ymwu.eam.alloy')
-    alloy_calc = LAMMPS(files=[alloy_potential_file], keep_tmp_files=True, keep_alive=False, tmp_dir="/home/dux/surface_sampling/tmp_files")
+    alloy_calc = LAMMPS(files=[alloy_potential_file], keep_tmp_files=False, keep_alive=False, tmp_dir="/home/dux/surface_sampling/tmp_files")
     alloy_calc.set(**alloy_parameters)
 
     # Au from standard cell
