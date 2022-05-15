@@ -13,11 +13,9 @@ if "kohn" in hostname:
 elif "lambda" in hostname:
     os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
     os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
-else:
-    # "sched_mit_rafagb" in hostname (maybe?)
-    # TODO: change to explicitly support Engaging cluster
-    os.environ["LAMMPS_COMMAND"] = "/home/pleon/lammps_mpi/src/lmp_serial"
-    os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/lammps_mpi/potentials/"
+elif "hartree" in hostname:
+    os.environ["LAMMPS_COMMAND"] = "/home/dux/lammps/src/lmp_serial"
+    os.environ["LAMMPS_POTENTIALS"] = "/home/dux/lammps/potentials/"
 
 os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"]
 os.environ["PROJECT_DIR"] = os.getcwd()
@@ -463,12 +461,12 @@ def get_adsorption_coords(slab, atom, connectivity):
 
     return new_slab.get_positions()[len(slab):]
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential='Cu2.eam.fs'), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None, relax=False):
+def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential=os.path.join(os.path.dirname(os.path.realpath(__file__)),'Cu2.eam.fs')), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None, relax=False):
     """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
     Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
-    a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times equals to the number of cells
-    in the lattice. Only the resulting lattice after one run is appended to the history. Corresponding
-    obversables are calculated also after each run.
+    a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times 
+    equals to the number of cells in the lattice. Only the resulting lattice after one run is appended to 
+    the history. Corresponding observables are calculated also after each run.
     """
 
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')

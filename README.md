@@ -9,4 +9,4 @@ Run this command inside your environment
 `pip install git+https://github.com/SUNCAT-Center/CatKit.git`
 
 Main script is:
-`sgmc_Cu_surf/mcmc.py`
+`sgmc_surf/mcmc.py`

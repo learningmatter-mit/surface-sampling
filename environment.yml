@@ -5,7 +5,7 @@ channels:
 dependencies:
   - gym
   - flake8
-  - python
+  - python=3.8
   - scikit-learn
   - matplotlib
   - pandas
