@@ -52,21 +52,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-'''
-screen_format = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d | %(message)s"
-file_format = screen_format
-
-DATE_TIME_FMT = "%Y-%m-%d %H:%M:%S"
-
-screen_handler = logging.StreamHandler(stream=sys.stdout)
-screen_handler.setLevel(logging.INFO)
-screen_formatter = logging.Formatter(screen_format
-
-screen_formatter.datefmt = DATE_TIME_FMT
-
-screen_handler.setFormatter(screen_formatter)
-logger.addHandler(screen_handler)
-'''
 
 def initialize_slab(alat, elem='Cu', vacuum=15.0, miller=(1,0,0), termination=0, orthogonal=False, **kwargs):
     """Creates the slab structure using ASE.
