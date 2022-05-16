@@ -115,6 +115,20 @@ def get_complementary_idx(state, type=None):
     return site1_idx, site2_idx
 
 def optimize_slab(slab, optimizer='BFGS'):
+    """Run relaxation for slab
+
+    Parameters
+    ----------
+    slab : ase.Atoms
+        Surface slab
+    optimizer : str, optional
+        Either  BFGS or GPMin, by default 'BFGS'
+
+    Returns
+    -------
+    ase.Atoms
+        Relaxed slab
+    """
     calc_slab = slab.copy()
     calc_slab.calc = slab.calc
     dyn = BFGS(calc_slab)
@@ -134,7 +148,8 @@ def slab_energy(slab, relax=False):
 
 
 def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=None, save_cif=False, iter=1, testing=False, folder_name=".", adsorbate='Cu', relax=False):
-    """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
+    """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
+    Uses canonical ensemble, fixed number of atoms.
 
     Parameters
     ----------
@@ -238,6 +253,7 @@ def spin_flip_canonical(state, slab, temp, coords, connectivity, prev_energy=Non
 
 def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, save_cif=False, iter=1, site_idx=None, testing=False, folder_name=".", adsorbate='Cu', relax=False):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites
+    Uses semi-grand canonical ensemble, number of atoms allowed to vary.
 
     Parameters
     ----------
@@ -275,21 +291,6 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
 
     # change in number of adsorbates (atoms)
     delta_N = 0
-    
-    '''
-    # test out for GaAs
-    cmds = [
-        'comm_modify cutoff 15',
-        'pair_style bop save',
-        'pair_coeff * * GaAs.bop.table Ga As',
-    ]
-
-    lammps_calc = LAMMPSlib(lmpcmds=cmds, 
-                            atom_types={'Ga': 1, 'As': 2},
-                            log_file='test.log')
-
-    slab.calc = lammps_calc
-    '''
                             
     if not prev_energy:
         if relax:
@@ -413,6 +414,27 @@ def spin_flip(state, slab, temp, pot, coords, connectivity, prev_energy=None, sa
     return state, slab, energy, accept
 
 def add_to_slab(slab, state, adsorbate, coords, site_idx):
+    '''It adds an adsorbate to a slab, and updates the state to reflect the new adsorbate
+    
+    Parameters
+    ----------
+    slab : ase.Atoms
+        the slab we're adding adsorbates to
+    state : list
+        a list of integers, where each integer represents the slab index of the adsorbate on that site. If the
+    site is empty, the integer is 0.
+    adsorbate : ase.Atoms
+        the adsorbate molecule
+    coords : list
+        the coordinates of the sites on the surface
+    site_idx : int
+        the index of the site on the slab where the adsorbate will be placed
+    
+    Returns
+    -------
+        The state and slab are being returned.
+    '''
+
     adsorbate_idx = len(slab)
     state[site_idx] = adsorbate_idx
     slab.append(adsorbate)
@@ -420,6 +442,22 @@ def add_to_slab(slab, state, adsorbate, coords, site_idx):
     return state, slab
 
 def remove_from_slab(slab, state, site_idx):
+    '''Remove the adsorbate from the slab and update the state
+    
+    Parameters
+    ----------
+    slab : ase.Atoms
+        the slab object
+    state : list
+        a list of integers, where each integer represents the slab index of the adsorbate on that site. If the
+    site is empty, the integer is 0.
+    site_idx : int
+        the index of the site to remove the adsorbate from
+    
+    Returns
+    -------
+        The state and slab are being returned.
+    '''
     adsorbate_idx = state[site_idx]
     assert len(np.argwhere(state==adsorbate_idx)) <= 1, "more than 1 site found"
     assert len(np.argwhere(state==adsorbate_idx)) == 1, "no sites found"
@@ -436,6 +474,24 @@ def remove_from_slab(slab, state, site_idx):
     return state, slab
 
 def get_adsorption_coords(slab, atom, connectivity):
+    '''Takes a slab, an atom, and a list of site indices, and returns the actual coordinates of the
+    adsorbed atoms
+    
+    Parameters
+    ----------
+    slab : ase.Atoms
+        the original slab
+    atom : ase.Atoms
+        the atom you want to adsorb
+    connectivity : list
+        list of lists of integers, each list is a list of the indices of the atoms that are connected to
+    the atom at the index of the list.
+    
+    Returns
+    -------
+        The positions of the adsorbed atoms.
+    
+    '''
     logger.debug(f"getting actual adsorption site coordinates")
     new_slab = slab.copy()
 
@@ -461,17 +517,55 @@ def get_adsorption_coords(slab, atom, connectivity):
 
     return new_slab.get_positions()[len(slab):]
 
-def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential=os.path.join(os.path.dirname(os.path.realpath(__file__)),'Cu2.eam.fs')), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None, relax=False):
-    """Performs MCMC run with given parameters, initializing with a random lattice if not given an input.
-    Each run is defined as one complete sweep through the lattice. Each sweep consists of randomly picking
-    a site and proposing (and accept/reject) a flip (adsorption or desorption) for a total number of times 
-    equals to the number of cells in the lattice. Only the resulting lattice after one run is appended to 
-    the history. Corresponding observables are calculated also after each run.
-    """
+def mcmc_run(num_sweeps=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potential=os.path.join(os.path.dirname(os.path.realpath(__file__)),'potentials','Cu2.eam.fs')), surface_name=None, element='Cu', canonical=False, num_ads_atoms=0, ads_coords=[], testing=False, adsorbate=None, relax=False):
+    '''Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
+    Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial 
+    consists of randomly picking a site and proposing (and accept/reject) a flip (adsorption or desorption).
+    Only the resulting slab after one sweep is appended to the history. Corresponding observables are 
+    calculated also after each run.
+    
+    Parameters
+    ----------
+    num_sweeps, optional
+        number of runs to perform
+    temp, optional
+        temperature of the system
+    pot, optional
+        the chemical potential of the adsorption site.
+    alpha
+        the simulated annealing schedule
+    slab
+        the initial slab to start with. If None, will initialize a slab.
+    calc
+        ase calculator object for the slab
+    surface_name
+        name of the surface, e.g. Cu
+    element, optional
+        the element of the slab
+    canonical, optional
+        whether to perform canonical runs or not
+    num_ads_atoms, optional
+        number of adsorbed atoms if performing canonical runs
+    ads_coords
+        list of adsorption coordinates
+    testing, optional
+        if True, will accept all moves
+    adsorbate : ase.Atoms
+        the element to adsorb
+    relax, optional
+        whether to relax the slab after adsorption
+    
+    Returns
+    -------
+        history is a list of slab objects, energy_hist is a list of energies, frac_accept_hist is a list of
+    fraction of accepted moves, adsorption_count_hist is a dictionary of lists of adsorption counts for
+    each site type
+
+    '''
 
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
-    logger.info(f"Running with num_runs = {num_runs}, temp = {temp}, pot = {pot}, alpha = {alpha}")
+    logger.info(f"Running with num_sweeps = {num_sweeps}, temp = {temp}, pot = {pot}, alpha = {alpha}")
     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
     if type(slab) is not (catkit.gratoms.Gratoms or ase.Atoms):
         # initialize slab
@@ -526,7 +620,7 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
+    run_folder = f"{surface_name}/runs{num_sweeps}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}"
 
     if canonical:
         # perform canonical runs
@@ -545,19 +639,19 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
         slab.write(f'{surface_name}_canonical_init.cif')
 
         # customize run folder
-        run_folder = f"{surface_name}/runs{num_runs}_temp{temp}_adsatoms{num_ads_atoms:02}_alpha{alpha}_{start_timestamp}"
+        run_folder = f"{surface_name}/runs{num_sweeps}_temp{temp}_adsatoms{num_ads_atoms:02}_alpha{alpha}_{start_timestamp}"
 
     # import pdb; pdb.set_trace()
     history = []
-    energy_hist = np.random.rand(num_runs)
-    # energy_sq_hist = np.random.rand(num_runs)
+    energy_hist = np.random.rand(num_sweeps)
+    # energy_sq_hist = np.random.rand(num_sweeps)
     adsorption_count_hist = defaultdict(list)
-    frac_accept_hist = np.random.rand(num_runs)
+    frac_accept_hist = np.random.rand(num_sweeps)
 
     # sweep over # sites
     sweep_size = len(ads_coords)
 
-    logger.info(f"running for {sweep_size} iterations per run over a total of {num_runs} runs")
+    logger.info(f"running for {sweep_size} iterations per run over a total of {num_sweeps} runs")
 
     site_types = set(connectivity)
 
@@ -568,11 +662,11 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
     # import pdb; pdb.set_trace()
 
-    for i in range(num_runs):
+    for i in range(num_sweeps):
         num_accept = 0
         # simulated annealing schedule
         curr_temp = temp * alpha**i
-        logger.info(f"In sweep {i+1} out of {num_runs}")
+        logger.info(f"In sweep {i+1} out of {num_sweeps}")
         for j in range(sweep_size):
             # logger.info(f"In iter {j+1}")
             run_idx = sweep_size*i + j+1
@@ -614,6 +708,24 @@ def mcmc_run(num_runs=1000, temp=1, pot=1, alpha=0.9, slab=None, calc=EAM(potent
 
 
 def count_adsorption_sites(slab, state, connectivity):
+    '''It takes a slab, a state, and a connectivity matrix, and returns a dictionary of the number of
+    adsorption sites of each type
+    
+    Parameters
+    ----------
+    slab
+        ase.Atoms object
+    state
+        a list of the same length as the number of sites in the slab.
+    connectivity
+        a list of the same length as the number of sites in the slab.
+    
+    Returns
+    -------
+        A dictionary with the number of adsorption sites as keys and the number of atoms with that number
+    of adsorption sites as values.
+    
+    '''
     occ_idx = state > 0
     return Counter(connectivity[occ_idx])
 
@@ -648,8 +760,8 @@ if __name__ == "__main__":
             start = perf_counter()
             # chem pot 0 to less complicate things
             # temp in terms of kbT
-            # history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=1, temp=1, pot=0, alpha=0.99, slab=slab, calc=alloy_calc, element=element, adsorbate=adsorbate)
+            # history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_sweeps=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
+            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_sweeps=1, temp=1, pot=0, alpha=0.99, slab=slab, calc=alloy_calc, element=element, adsorbate=adsorbate)
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")
         
