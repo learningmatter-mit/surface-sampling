@@ -16,11 +16,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 from htvs.djangochem.pgmols.utils import surfaces
 
-
-def run_process(num_runs=100):
+def run_process(num_sweeps=100):
     # Get pristine surface
     # GaN 0001 surface
     atoms = read('GaN_hexagonal.cif')
@@ -55,7 +53,7 @@ def run_process(num_runs=100):
     # assert len(ads_positions) == num_ads_atoms, "num of adsorption sites does not match num ads atoms"
 
     # canonical with relaxation
-    # num_runs = 100
+    # num_sweeps = 100
     surface_name = "GaN_0001_3x3"
     alpha = 0.99
     slab, surface_atoms = surfaces.surface_from_bulk(supercell_atoms, [0,0,0,-1], size=[3,3], vacuum=10)
@@ -69,9 +67,9 @@ def run_process(num_runs=100):
 
     # try positive chem pot
     chem_pot = 5
-    history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_runs=num_runs, temp=1, pot=chem_pot, alpha=alpha, slab=slab, calc=lammps_calc, surface_name=surface_name, element=element, canonical=True, num_ads_atoms=num_ads_atoms, relax=True)
+    history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_sweeps=num_sweeps, temp=1, pot=chem_pot, alpha=alpha, slab=slab, calc=lammps_calc, surface_name=surface_name, element=element, canonical=True, num_ads_atoms=num_ads_atoms, relax=True)
 
-    runs = range(1, num_runs+1)
+    runs = range(1, num_sweeps+1)
 
     # do the plots
     fig, ax = plt.subplots(2, 2, figsize=(10, 8))
@@ -94,7 +92,7 @@ def run_process(num_runs=100):
     # fig.show()
     start_timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
-    fig.savefig(f"iter{num_runs}_{start_timestamp}.png")
+    fig.savefig(f"iter{num_sweeps}_{start_timestamp}.png")
     fig.tight_layout()
 
 if __name__ == "__main__":

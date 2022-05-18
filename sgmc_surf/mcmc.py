@@ -2,7 +2,6 @@
 Produces a temperature/structure map
 """
 
-from operator import methodcaller
 import os
 import socket
 hostname = socket.gethostname()
@@ -31,6 +30,7 @@ import cProfile
 from pstats import Stats, SortKey
 import numpy as np
 
+from ase import io
 from ase.spacegroup import crystal
 from ase.build import make_supercell, bulk
 from ase.io import read, write
@@ -40,6 +40,8 @@ from ase.calculators.lammpslib import LAMMPSlib
 
 from ase.constraints import FixAtoms
 from ase.optimize import BFGS, GPMin
+
+from lammps import lammps
 
 import ase
 import catkit
@@ -99,7 +101,85 @@ def get_complementary_idx(state, type=None):
 
     return site1_idx, site2_idx
 
-def optimize_slab(slab, optimizer='BFGS'):
+
+def run_lammps_opt(slab):
+    # TESTING OUT FOR NOW, WILL FIX LATER
+    # TODO: change the data folders to dynamics
+
+    # write lammps data file
+    lammps_data_file = "/home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.data"
+    lammps_in_file = "/home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.in"
+    potential_file = "/home/dux/surface_sampling/sgmc_surf/py_lammps/GaN.tersoff"
+    atoms = ["Ga", "N"]
+    lammps_out_file = "/home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.out"
+    cif_from_lammps_path = "/home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.cif"
+
+    # write current surface into lammps.data
+    slab.write(lammps_data_file, format="lammps-data", units="real", atom_style="atomic")
+
+    TEMPLATE = """
+clear
+atom_style atomic 
+units metal
+boundary p p p 
+atom_modify sort 0 0.0 
+
+# read_data /path/to/data.data
+read_data {}
+
+### set bulk
+group bulk id <= 36
+
+### interactions
+pair_style tersoff 
+# pair_coeff * * /path/to/potential Atom1 Atom2
+pair_coeff * * {} {} {} 
+mass 1 69.723000 
+mass 2 14.007000 
+
+### run
+reset_timestep 0
+fix 2 bulk setforce 0.0 0.0 0.0
+thermo 10 # output thermodynamic variables every N timesteps
+
+thermo_style custom step temp press cpu pxx pyy pzz pxy pxz pyz ke pe etotal vol lx ly lz atoms
+thermo_modify flush yes format float %23.16g
+min_style cg 
+minimize 1e-5 1e-5 500 10000
+
+# write_data /path/to/data.out
+write_data {}
+print "_end of energy minimization_" 
+log /dev/stdout
+
+"""
+
+    # write lammps.in file
+    with open(lammps_in_file, 'w') as f:
+        f.writelines(TEMPLATE.format(lammps_data_file, potential_file, *atoms, lammps_out_file))
+    
+    lmp = lammps()
+    # print("LAMMPS Version: ", lmp.version())
+
+    # run the LAMMPS here
+    logger.debug(lmp.file(lammps_in_file))
+    lmp.close()
+
+    # Read from LAMMPS out
+    opt_slab = io.read(lammps_out_file, format='lammps-data', style='atomic')
+
+    atomic_numbers_dict = {1: 31, 2: 7} # 1: Ga, 2: N
+    actual_atomic_numbers = [atomic_numbers_dict[x] for x in opt_slab.get_atomic_numbers()]
+    print(f"actual atomic numbers {actual_atomic_numbers}")
+    # correct_lammps = new_slab.copy()
+    opt_slab.set_atomic_numbers(actual_atomic_numbers)
+
+    opt_slab.calc = slab.calc
+
+    return opt_slab
+
+
+def optimize_slab(slab, optimizer='LAMMPS'):
     """Run relaxation for slab
 
     Parameters
@@ -107,18 +187,22 @@ def optimize_slab(slab, optimizer='BFGS'):
     slab : ase.Atoms
         Surface slab
     optimizer : str, optional
-        Either  BFGS or GPMin, by default 'BFGS'
+        Either  BFGS or LAMMPS, by default 'BFGS'
 
     Returns
     -------
     ase.Atoms
         Relaxed slab
     """
-    calc_slab = slab.copy()
-    calc_slab.calc = slab.calc
-    dyn = BFGS(calc_slab)
-    # dyn = GPMin(calc_slab)
-    dyn.run(steps=20,fmax=0.2)
+    if 'LAMMPS' in optimizer:
+        calc_slab = run_lammps_opt(slab)
+
+    else:
+        calc_slab = slab.copy()
+        calc_slab.calc = slab.calc
+        dyn = BFGS(calc_slab)
+        # dyn = GPMin(calc_slab)
+        dyn.run(steps=20,fmax=0.2)
 
     return calc_slab
 

@@ -1,0 +1,105 @@
+LAMMPS (29 Sep 2021)
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (src/comm.cpp:98)
+  using 1 OpenMP thread(s) per MPI task
+
+clear
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (src/comm.cpp:98)
+  using 1 OpenMP thread(s) per MPI task
+atom_style atomic
+units metal
+boundary p p p
+atom_modify sort 0 0.0
+
+# read_data /path/to/data.data
+read_data /home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.data
+Reading data file ...
+  triclinic box = (0.0000000 0.0000000 0.0000000) to (9.6488700 8.3561665 23.265800) with tilt (-4.8244350 0.0000000 0.0000000)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  48 atoms
+  read_data CPU = 0.001 seconds
+
+### set bulk
+group bulk id <= 36
+36 atoms in group bulk
+
+### interactions
+pair_style tersoff
+# pair_coeff * * /path/to/potential Atom1 Atom2
+pair_coeff * * /home/dux/surface_sampling/sgmc_surf/py_lammps/GaN.tersoff Ga N
+Reading tersoff potential file /home/dux/surface_sampling/sgmc_surf/py_lammps/GaN.tersoff with DATE: 2007-10-22
+mass 1 69.723000
+mass 2 14.007000
+
+### run
+reset_timestep 0
+fix 2 bulk setforce 0.0 0.0 0.0
+thermo 10 # output thermodynamic variables every N timesteps
+
+thermo_style custom step temp press cpu pxx pyy pzz pxy pxz pyz ke pe etotal vol lx ly lz atoms
+thermo_modify flush yes format float %23.16g
+min_style cg
+minimize 1e-25 1e-25 5000 10000
+WARNING: Using 'neigh_modify every 1 delay 0 check yes' setting during minimization (src/min.cpp:188)
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 5.1
+  ghost atom cutoff = 5.1
+  binsize = 2.55, bins = 6 4 10
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair tersoff, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 4.066 | 4.066 | 4.066 Mbytes
+Step Temp Press CPU Pxx Pyy Pzz Pxy Pxz Pyz KinEng PotEng TotEng Volume Lx Ly Lz Atoms 
+       0                       0      -89487.47356100329                       0      -93329.93680110475      -93334.43217212197      -81798.05170978316       3.893105500167926     0.02616851350873635     0.01510839886978194                       0      -174.1774576888824      -174.1774576888824       1875.864792975853       9.648870000000001       8.356166537813557                 23.2658       48 
+      10                       0       -43776.2966277427    0.004494905471801758      -62922.16583478131      -62926.99637405436      -5479.727674392413       4.183369723997628      0.2061719521183898      0.1190334330447686                       0      -180.5238588546783      -180.5238588546783       1875.864792975853       9.648870000000001       8.356166537813557                 23.2658       48 
+      20                       0      -43772.00372756211    0.009082794189453125       -62889.4545426483      -62893.70431455158      -5532.852325486469       3.680410429331583      0.0232611425968499     0.01342982734662624                       0      -180.5239269351686      -180.5239269351686       1875.864792975853       9.648870000000001       8.356166537813557                 23.2658       48 
+      30                       0      -43771.95267218607     0.01313090324401855      -62889.40202551323      -62893.65443611511      -5532.801554929864       3.682695609072959     0.01874785963058122     0.01082408198526799                       0      -180.5239269352225      -180.5239269352225       1875.864792975853       9.648870000000001       8.356166537813557                 23.2658       48 
+      34                       0       -43771.9525541523      0.0147860050201416      -62889.40195815091      -62893.65440889396      -5532.801295411996       3.682730372029772     0.01865809563574112     0.01077225612417785                       0      -180.5239269352226      -180.5239269352226       1875.864792975853       9.648870000000001       8.356166537813557                 23.2658       48 
+Loop time of 0.014802 on 1 procs for 34 steps with 48 atoms
+
+83.5% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+     -174.177457688882  -180.523926935223  -180.523926935223
+  Force two-norm initial, final = 10.437024 6.7071641e-09
+  Force max component initial, final = 3.4784931 2.8048016e-09
+  Final line search alpha, max atom move = 1.0000000 2.8048016e-09
+  Iterations, force evaluations = 34 67
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.014569   | 0.014569   | 0.014569   |   0.0 | 98.43
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 5.4359e-05 | 5.4359e-05 | 5.4359e-05 |   0.0 |  0.37
+Output  | 6.5088e-05 | 6.5088e-05 | 6.5088e-05 |   0.0 |  0.44
+Modify  | 1.4544e-05 | 1.4544e-05 | 1.4544e-05 |   0.0 |  0.10
+Other   |            | 9.871e-05  |            |       |  0.67
+
+Nlocal:        48.0000 ave          48 max          48 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:        179.000 ave         179 max         179 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         0.00000 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:      1572.00 ave        1572 max        1572 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 1572
+Ave neighs/atom = 32.750000
+Neighbor list builds = 0
+Dangerous builds = 0
+
+# write_data /path/to/data.out
+write_data /home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.out
+System init for write_data ...
+print "_end of energy minimization_"
+_end of energy minimization_
+log /dev/stdout
