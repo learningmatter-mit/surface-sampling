@@ -1,9 +1,9 @@
 
 clear
-atom_style atomic 
+atom_style atomic
 units metal
-boundary p p p 
-atom_modify sort 0 0.0 
+boundary p p p
+atom_modify sort 0 0.0
 
 # read_data /path/to/data.data
 read_data /home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.data
@@ -12,11 +12,11 @@ read_data /home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.data
 group bulk id <= 36
 
 ### interactions
-pair_style tersoff 
+pair_style tersoff
 # pair_coeff * * /path/to/potential Atom1 Atom2
-pair_coeff * * /home/dux/surface_sampling/sgmc_surf/py_lammps/GaN.tersoff Ga N 
-mass 1 69.723000 
-mass 2 14.007000 
+pair_coeff * * /home/dux/surface_sampling/sgmc_surf/py_lammps/GaN.tersoff Ga N
+mass 1 69.723000
+mass 2 14.007000
 
 ### run
 reset_timestep 0
@@ -25,11 +25,10 @@ thermo 10 # output thermodynamic variables every N timesteps
 
 thermo_style custom step temp press cpu pxx pyy pzz pxy pxz pyz ke pe etotal vol lx ly lz atoms
 thermo_modify flush yes format float %23.16g
-min_style cg 
+min_style cg
 minimize 1e-5 1e-5 500 10000
 
 # write_data /path/to/data.out
 write_data /home/dux/surface_sampling/sgmc_surf/py_lammps/lammps.out
-print "_end of energy minimization_" 
+print "_end of energy minimization_"
 log /dev/stdout
-

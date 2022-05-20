@@ -6,7 +6,7 @@
 #   other quantities are unitless
 
 # format of a single entry (one or more lines):
-#   element 1, element 2, element 3, 
+#   element 1, element 2, element 3,
 #   m, gamma, lambda3, c, d, costheta0, n, beta, lambda2, B, R, D, lambda1, A
 
 # The following GaN potential is from J. Nord, K. Albe, P. Erhart

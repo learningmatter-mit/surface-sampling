@@ -4,5 +4,9 @@
 *__pycache__*
 *.pyc
 *.cif
+*.in
+*.out
+*.data
+*.png
 __pycache__/
 *tmp_files/*

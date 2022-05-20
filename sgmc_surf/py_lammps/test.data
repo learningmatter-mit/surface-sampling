@@ -1,6 +1,6 @@
-test.data (written by ASE) 
+test.data (written by ASE)
 
-48 	 atoms 
+48 	 atoms
 2  atom types
 0.0      9.6488700000000005  xlo xhi
 0.0      8.3561665378135572  ylo yhi
@@ -8,7 +8,7 @@ test.data (written by ASE)
     -4.8244349999999994                       0                       0  xy xz yz
 
 
-Atoms 
+Atoms
 
      1   1                       0                       0      13.265693843999999
      2   2      12.865176081450002      7.4277128737970921      12.620067893999998
