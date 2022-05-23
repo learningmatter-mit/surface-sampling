@@ -2,6 +2,7 @@
 Produces a temperature/structure map
 """
 
+import itertools
 import os
 import socket
 import sys
@@ -100,13 +101,27 @@ def get_random_idx(connectivity, type=None):
     return site_idx
 
 
-def get_complementary_idx(state, type=None):
+def get_complementary_idx(state, slab):
     """Get two indices, site1 occupied and site2 unoccupied."""
+    adsorbed_idx = np.argwhere(state != 0).flatten()
 
-    site1_idx = random.choice(np.argwhere(state != 0).flatten())
-    site2_idx = random.choice(np.argwhere(state == 0).flatten())
+    # select adsorbates present in slab
+    curr_ads = {
+        k: list(g)
+        for k, g in itertools.groupby(adsorbed_idx, key=lambda x: slab[state[x]].symbol)
+    }
+    # add empty sites
+    empty_idx = np.argwhere(state == 0).flatten().tolist()
+    curr_ads["None"] = empty_idx
+    logger.debug(f"current ads {curr_ads}")
 
-    return site1_idx, site2_idx
+    # choose two types
+    type1, type2 = random.sample(curr_ads.keys(), 2)
+
+    # get random idx belonging to those types
+    site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
+
+    return site1_idx, site2_idx, type1, type2
 
 
 def run_lammps_opt(slab, main_dir=os.getcwd()):
@@ -245,7 +260,7 @@ def spin_flip_canonical(
     iter=1,
     testing=False,
     folder_name=".",
-    adsorbate="Cu",
+    adsorbates=["Cu"],
     relax=False,
 ):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
@@ -265,14 +280,18 @@ def spin_flip_canonical(
     np.array, float
         new state, energy change
     """
+    if type(adsorbates) == str:
+        adsorbates = list([adsorbates])
 
     if not prev_energy and not testing:
         # calculate energy of current state
         prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name)
 
-    # choose 2 complementary sites to flip
-    # site1 occupied, site2 unoccupied
-    site1_idx, site2_idx = get_complementary_idx(state)
+    # choose 2 sites of different ads (empty counts too) to flip
+    site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(state, slab=slab)
+
+    # fake pots
+    pots = list(range(len(adsorbates)))
 
     site1_coords = coords[site1_idx]
     site2_coords = coords[site2_idx]
@@ -290,10 +309,27 @@ def spin_flip_canonical(
 
     logger.debug(f"current slab has {len(slab)} atoms")
 
-    state, slab = remove_from_slab(slab, state, site1_idx)  # desorb from site1
-    state, slab = add_to_slab(
-        slab, state, adsorbate, coords, site2_idx
-    )  # adsorb to site2
+    # effectively switch ads at both sites
+    slab, state, _, _, _ = change_site(
+        slab,
+        state,
+        pots,
+        adsorbates,
+        coords,
+        site1_idx,
+        start_ads=site1_ads,
+        end_ads=site2_ads,
+    )
+    slab, state, _, _, _ = change_site(
+        slab,
+        state,
+        pots,
+        adsorbates,
+        coords,
+        site2_idx,
+        start_ads=site2_ads,
+        end_ads=site1_ads,
+    )
 
     # make sure num atoms is conserved
     logger.debug(f"proposed slab has {len(slab)} atoms")
@@ -336,8 +372,29 @@ def spin_flip_canonical(
             accept = True
         else:
             # failed, keep current state and revert slab back to original
-            state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
-            state, slab = remove_from_slab(slab, state, site2_idx)
+            slab, state, _, _, _ = change_site(
+                slab,
+                state,
+                pots,
+                adsorbates,
+                coords,
+                site1_idx,
+                start_ads=site2_ads,
+                end_ads=site1_ads,
+            )
+            slab, state, _, _, _ = change_site(
+                slab,
+                state,
+                pots,
+                adsorbates,
+                coords,
+                site2_idx,
+                start_ads=site1_ads,
+                end_ads=site2_ads,
+            )
+
+            # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
+            # state, slab = remove_from_slab(slab, state, site2_idx)
 
             logger.debug("state kept the same")
             energy = prev_energy
@@ -377,7 +434,7 @@ def spin_flip(
     temp
         the temperature of the system
     pot
-        the chemical potential of the adsorbate TODO change to list
+        the chemical potential of the adsorbate
     coords
         the coordinates of the adsorption sites
     connectivity
@@ -395,7 +452,7 @@ def spin_flip(
         if True, always accept the proposed state
     folder_name, optional
         the folder where the cif files will be saved
-    adsorbate, optional TODO: change to list
+    adsorbate, optional
         the type of atom to adsorb
     relax, optional
         whether to relax the slab after adsorption
@@ -754,7 +811,10 @@ def mcmc_run(
         f"Running with num_sweeps = {num_sweeps}, temp = {temp}, pot = {pot}, alpha = {alpha}"
     )
     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
-    if type(slab) is not (catkit.gratoms.Gratoms or ase.Atoms):
+    if (type(slab) is not catkit.gratoms.Gratoms) and (
+        type(slab) is not ase.atoms.Atoms
+    ):
+
         # initialize slab
         logger.info("initializing slab")
         # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
@@ -895,7 +955,7 @@ def mcmc_run(
                     iter=run_idx,
                     testing=testing,
                     folder_name=run_folder,
-                    adsorbate=adsorbate,
+                    adsorbates=adsorbate,
                     relax=relax,
                 )
             else:
