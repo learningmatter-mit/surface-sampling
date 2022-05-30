@@ -18,7 +18,7 @@ from htvs.djangochem.pgmols.utils import surfaces
 from mcmc import mcmc_run
 
 
-def run_process(num_sweeps=100, alpha=0.99, pymatgen=False):
+def run_process(num_sweeps=100, alpha=0.99, temp=1, pymatgen=False):
     # Get pristine surface
     # GaN 0001 surface
     atoms = read("GaN_hexagonal.cif")
@@ -35,7 +35,7 @@ def run_process(num_sweeps=100, alpha=0.99, pymatgen=False):
 
     # try 2003 tersoff potential
     parameters = {"pair_style": "tersoff", "pair_coeff": ["* * GaN.tersoff Ga N"]}
-    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], "GaN.sw")
+    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], "GaN.tersoff")
     lammps_calc = LAMMPS(
         files=[potential_file],
         keep_tmp_files=False,
@@ -73,6 +73,7 @@ def run_process(num_sweeps=100, alpha=0.99, pymatgen=False):
     slab.set_surface_atoms(new_surf_atoms)
     # invert the positions
     slab.set_scaled_positions(1 - slab.get_scaled_positions())
+    slab.write("GaN_0001_with_scaled_postions.cif")
 
     # try positive chem pot
     chem_pot = 5
@@ -94,7 +95,7 @@ def run_process(num_sweeps=100, alpha=0.99, pymatgen=False):
         select_positions = all_adsorbed.get_positions()[len(slab) :]
         history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
             num_sweeps=num_sweeps,
-            temp=1,
+            temp=temp,
             pot=chem_pot,
             alpha=alpha,
             slab=slab,
@@ -109,7 +110,7 @@ def run_process(num_sweeps=100, alpha=0.99, pymatgen=False):
     else:
         history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
             num_sweeps=num_sweeps,
-            temp=1,
+            temp=temp,
             pot=chem_pot,
             alpha=alpha,
             slab=slab,
@@ -151,10 +152,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MCMC")
     parser.add_argument("--runs", type=int, help="Num runs")
     parser.add_argument("--alpha", type=float, help="Annealing rate")
+    parser.add_argument("--temp", type=float, help="Temperature")
     parser.add_argument(
         "--pymatgen", action="store_true", help="Use pymatgen adsorption sites"
     )
 
     args = parser.parse_args()
     # print(f"Submitting with iter={args.runs}")
-    run_process(args.runs, alpha=args.alpha, pymatgen=args.pymatgen)
+    run_process(args.runs, alpha=args.alpha, temp=args.temp, pymatgen=args.pymatgen)

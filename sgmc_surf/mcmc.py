@@ -164,7 +164,7 @@ reset_timestep 0
 fix 2 bulk setforce 0.0 0.0 0.0
 thermo 10 # output thermodynamic variables every N timesteps
 
-thermo_style custom step temp press cpu pxx pyy pzz pxy pxz pyz ke pe etotal vol lx ly lz atoms
+thermo_style custom step temp press ke pe xy xz yz
 thermo_modify flush yes format float %23.16g
 min_style cg
 minimize 1e-5 1e-5 500 10000
@@ -753,7 +753,7 @@ def mcmc_run(
     num_ads_atoms=0,
     ads_coords=[],
     testing=False,
-    adsorbate=None,
+    adsorbates=None,
     relax=False,
 ):
     """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
@@ -788,7 +788,7 @@ def mcmc_run(
         list of adsorption coordinates
     testing, optional
         if True, will accept all moves
-    adsorbate : ase.Atoms
+    adsorbates : ase.Atoms
         the element to adsorb
     relax, optional
         whether to relax the slab after adsorption
@@ -931,9 +931,9 @@ def mcmc_run(
     site_types = set(connectivity)
 
     # set adsorbate
-    if not adsorbate:
-        adsorbate = element
-    logger.info(f"adsorbate is {adsorbate}")
+    if not adsorbates:
+        adsorbates = element
+    logger.info(f"adsorbate(s) is(are) {adsorbates}")
 
     for i in range(num_sweeps):
         num_accept = 0
@@ -955,7 +955,7 @@ def mcmc_run(
                     iter=run_idx,
                     testing=testing,
                     folder_name=run_folder,
-                    adsorbates=adsorbate,
+                    adsorbates=adsorbates,
                     relax=relax,
                 )
             else:
@@ -971,7 +971,7 @@ def mcmc_run(
                     iter=run_idx,
                     testing=testing,
                     folder_name=run_folder,
-                    adsorbates=adsorbate,
+                    adsorbates=adsorbates,
                     relax=relax,
                 )
             num_accept += accept
@@ -1082,7 +1082,7 @@ if __name__ == "__main__":
                 slab=slab,
                 calc=alloy_calc,
                 element=element,
-                adsorbate=adsorbate,
+                adsorbates=adsorbate,
             )
             stop = perf_counter()
             logger.info(f"Time taken = {stop - start} seconds")

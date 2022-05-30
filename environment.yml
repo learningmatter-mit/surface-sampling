@@ -3,14 +3,17 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - gym
   - flake8
   - python=3.8
-  - scikit-learn
   - matplotlib
   - pandas
-  - pytorch
+  - pre-commit
   - pylint
   - ipykernel
   - notebook
   - ase
+  - lammps=v2021.09.21
+  - pip
+  - pip:
+    - ipykernel
+    - git+https://github.com/SUNCAT-Center/CatKit.git
