@@ -15,3 +15,6 @@ Main script is:
 
 Example mcmc surface reconstruction for Copper (Cu) in:
 `sgmc_surf/example.ipynb`
+
+Run the following to initialize Git `pre-commit` package:
+`pre-commit install`
