@@ -1,4 +1,5 @@
 .DS_Store
+.pytest_cache
 */runs*
 */test*
 *__pycache__*
@@ -8,5 +9,6 @@
 *.out
 *.data
 *.png
+*.pkl
 __pycache__/
 *tmp_files/*

@@ -8,6 +8,7 @@ from ase.calculators.lammpslib import LAMMPSlib
 from ase.calculators.lammpsrun import LAMMPS
 from ase.io import read
 from catkit.gen.adsorption import get_adsorption_sites
+
 from mcmc import get_adsorption_coords, mcmc_run, slab_energy
 
 sys.path.append("/home/dux/")

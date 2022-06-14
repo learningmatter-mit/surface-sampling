@@ -56,6 +56,7 @@ def initialize_slab(
     miller=(1, 0, 0),
     termination=0,
     orthogonal=False,
+    size=(4, 4, 4),
     **kwargs,
 ):
     """Creates the slab structure using ASE.
@@ -72,7 +73,7 @@ def initialize_slab(
     write(f"{elem}_a1_bulk.cif", a1)
     catkit_slab = catkit.build.surface(
         a1,
-        size=(4, 4, 4),
+        size=size,
         miller=miller,
         termination=termination,
         fixed=0,
