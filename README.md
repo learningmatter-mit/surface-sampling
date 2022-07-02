@@ -8,13 +8,23 @@ Requires [CatKit](https://github.com/SUNCAT-Center/CatKit):
 Run this command inside your environment
 `pip install git+https://github.com/SUNCAT-Center/CatKit.git`
 
-LAMMPS install required. Change `os.environ["LAMMPS_COMMAND"]` and `os.environ["LAMMPS_POTENTIALS"]` in `mcmc.py`.
+LAMMPS install required.
 
-Main script is:
+Add the following to `~.bashrc` or equivalent
+```
+export SURFSAMPLINGDIR="/path/to/surface_sampling"
+export PYTHONPATH="$SURFSAMPLINGDIR:$PYTHONPATH"
+
+export LAMMPS_COMMAND="/path/to/lammps/src/lmp_serial"
+export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
+export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
+```
+
+### Main script is:
 `sgmc_surf/mcmc.py`
 
-Example mcmc surface reconstruction for Copper (Cu) in:
+### Example mcmc surface reconstruction for Copper (Cu) in:
 `sgmc_surf/example.ipynb`
 
-Run the following to initialize Git `pre-commit` package:
+### Run the following to initialize Git `pre-commit` package:
 `pre-commit install`

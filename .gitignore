@@ -1,7 +1,7 @@
 .DS_Store
 .pytest_cache
 */runs*
-*/test*
+/test
 *__pycache__*
 *.pyc
 *.cif

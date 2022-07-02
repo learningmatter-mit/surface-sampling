@@ -31,21 +31,6 @@ from catkit.gen.adsorption import get_adsorption_sites
 from htvs.djangochem.pgmols.utils import surfaces
 from lammps import lammps
 
-hostname = socket.gethostname()
-
-if "kohn" in hostname:
-    os.environ["LAMMPS_COMMAND"] = "/home/jurgis/lammps/src/lmp_serial"
-    os.environ["LAMMPS_POTENTIALS"] = "/home/jurgis/lammps/potentials/"
-elif "lambda" in hostname:
-    os.environ["LAMMPS_COMMAND"] = "/home/pleon/mylammps/src/lmp_serial"
-    os.environ["LAMMPS_POTENTIALS"] = "/home/pleon/mylammps/potentials/"
-elif "hartree" in hostname:
-    os.environ["LAMMPS_COMMAND"] = "/home/dux/lammps/src/lmp_serial"
-    os.environ["LAMMPS_POTENTIALS"] = "/home/dux/lammps/potentials/"
-
-os.environ["ASE_LAMMPSRUN_COMMAND"] = os.environ["LAMMPS_COMMAND"]
-os.environ["PROJECT_DIR"] = os.getcwd()
-
 logger = logging.getLogger(__name__)
 
 
@@ -1051,7 +1036,7 @@ if __name__ == "__main__":
         "pair_coeff": ["* * cu_ag_ymwu.eam.alloy Ag"],
     }
     alloy_potential_file = os.path.join(
-        os.environ["PROJECT_DIR"], "cu_ag_ymwu.eam.alloy"
+        os.path.dirname(__file__), "cu_ag_ymwu.eam.alloy"
     )
     alloy_calc = LAMMPS(
         files=[alloy_potential_file],
