@@ -4,7 +4,6 @@ Produces a temperature/structure map
 
 import itertools
 import os
-import socket
 import sys
 
 sys.path.append("/home/dux/")
@@ -389,6 +388,27 @@ def spin_flip_canonical(
     return state, slab, energy, accept
 
 
+# option to filter by distance
+# test cases
+# 1. 1 oxygen -- pass
+# 2. 2 oxygen < 1.5 A -- fail
+# 3. 2 oxygen > 1.5 A -- pass
+# 4. 3 oxygen, 2 of them < 1.5 A -- fail
+# 5. 3 oxygen, all of them > 1.5 A -- pass
+
+
+def filter_distances(slab, pristine_len=0, cutoff_distance=1.5):
+    # OXYGEN_CUTOFF_DIST = 1.5
+    # Checks distances of all adsorbates are greater than cutoff
+    all_dist = slab.get_all_distances()
+    unique_dist = np.unique(
+        np.triu(all_dist[pristine_len:, pristine_len:])
+    )  # get upper triangular matrix of ads dist
+    if any(unique_dist[(unique_dist > 0) & (unique_dist <= cutoff_distance)]):
+        return False  # fail because oxygens are too close
+    return True
+
+
 def spin_flip(
     state,
     slab,
@@ -404,7 +424,10 @@ def spin_flip(
     folder_name=".",
     adsorbates=["Cu"],
     relax=False,
+    filter_distance=0,
 ):
+
+    # TODO: spin flip add option to filter distances
     """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
     is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
     atom from the slab and updates the state. It then calculates the energy of the new slab and compares
@@ -492,8 +515,35 @@ def spin_flip(
 
     # to test, always accept
     accept = False
-    if testing:
+    if filter_distance:
         energy = 0
+
+        # TODO: hardcode pristine length first
+        # need to fix this
+        # For 2x2 SrTiO3, pristine_len=60
+        if filter_distances(slab, pristine_len=60, cutoff_distance=filter_distance):
+            # succeeds! keep already changed slab
+            logger.debug("state changed with filtering!")
+            accept = True
+        else:
+            # failed, keep current state and revert slab back to original
+            slab, state, _, _, _ = change_site(
+                slab,
+                state,
+                pots,
+                adsorbates,
+                coords,
+                site_idx,
+                start_ads=end_ads,
+                end_ads=start_ads,
+            )
+
+            logger.debug("state kept the same with filtering")
+
+    elif testing:
+        energy = 0
+        accept = True
+
     else:
         # use relaxation only to get lowest energy
         # but don't update adsorption positions
@@ -513,6 +563,7 @@ def spin_flip(
         logger.debug(f"k_b T {temp}")
         base_prob = np.exp(-(energy_diff - delta_pot) / temp)
         logger.debug(f"base probability is {base_prob}")
+
         if np.random.rand() < base_prob:
             # succeeds! keep already changed slab
             # state = state.copy()
@@ -741,6 +792,7 @@ def mcmc_run(
     testing=False,
     adsorbates=None,
     relax=False,
+    filter_distance=0.0,
 ):
     """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
     Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
@@ -859,6 +911,14 @@ def mcmc_run(
         f"{surface_name}/runs{num_sweeps}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}",
     )
 
+    # initialize tags
+    # set tags; 1 for surface atoms, 2 for adsorbates, 0 for others
+    if type(slab) is catkit.gratoms.Gratoms:
+        surface_atoms = slab.get_surface_atoms()
+        atoms_arr = np.arange(0, len(slab))
+        base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
+        slab.set_tags(list(base_tags))
+
     if canonical:
         # perform canonical runs
         # adsorb num_ads_atoms
@@ -894,6 +954,7 @@ def mcmc_run(
                 folder_name=run_folder,
                 adsorbates=element,
                 relax=relax,
+                filter_distance=filter_distance,
             )
 
         slab.write(f"{surface_name}_canonical_init.cif")
@@ -959,6 +1020,7 @@ def mcmc_run(
                     folder_name=run_folder,
                     adsorbates=adsorbates,
                     relax=relax,
+                    filter_distance=filter_distance,
                 )
             num_accept += accept
 
