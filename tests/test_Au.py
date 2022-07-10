@@ -1,15 +1,11 @@
 import os
 import pickle
-import sys
 
-import catkit
 import numpy as np
-import pytest
 from ase.calculators.lammpsrun import LAMMPS
 from ase.io import read
-from catkit.gen.adsorption import get_adsorption_sites
 
-from mcmc import get_adsorption_coords, mcmc_run
+from mcmc import mcmc_run
 
 current_dir = os.path.dirname(__file__)
 
@@ -25,18 +21,12 @@ def test_Au_energy():
     )
     slab = pickle.load(slab_pkl)
 
-    coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
-
-    element = "Au"
-    metal = catkit.gratoms.Gratoms(element)
-
-    ads_coords = get_adsorption_coords(slab, metal, connectivity)
-
     proper_adsorbed = read(
         os.path.join(current_dir, "resources/Au_110_2x2_proper_adsorbed_slab.cif")
     )
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
 
+    element = "Au"
     chem_pot = 0  # chem pot 0 to less complicate things
     num_ads_atoms = 4 + 2  # for canonical runs
     alpha = 0.9  # anneal
@@ -51,15 +41,14 @@ def test_Au_energy():
         files=[potential_file],
         keep_tmp_files=False,
         keep_alive=False,
-        tmp_dir="/home/dux/surface_sampling/tmp_files",
     )
     lammps_calc.set(**parameters)
 
     # call the main function
     history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
         num_sweeps=num_sweeps,
-        temp=1,
-        pot=0,
+        temp=temp,
+        pot=chem_pot,
         alpha=alpha,
         slab=slab,
         calc=lammps_calc,

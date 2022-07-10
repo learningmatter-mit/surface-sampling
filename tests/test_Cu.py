@@ -1,11 +1,10 @@
 import os
-import sys
 
 import numpy as np
-import pytest
 from ase.calculators.lammpsrun import LAMMPS
 
-from mcmc import initialize_slab, mcmc_run
+from mcmc import mcmc_run
+from mcmc.utils import initialize_slab
 
 
 # some regression testing first
@@ -17,6 +16,7 @@ def test_Cu_energy():
     Cu_alat = 3.6147
     slab = initialize_slab(Cu_alat, size=(2, 2, 2))
 
+    element = "Cu"
     chem_pot = 0  # chem pot 0 to less complicate things
     alpha = 0.99  # slowly anneal
     temp = 1  # temp in terms of kbT
@@ -30,7 +30,6 @@ def test_Cu_energy():
         files=[potential_file],
         keep_tmp_files=False,
         keep_alive=False,
-        tmp_dir="/home/dux/surface_sampling/tmp_files",
     )
     lammps_calc.set(**parameters)
 
@@ -42,6 +41,7 @@ def test_Cu_energy():
         alpha=alpha,
         slab=slab,
         calc=lammps_calc,
+        element=element,
     )
 
     assert np.allclose(energy_hist[-1], required_energy)

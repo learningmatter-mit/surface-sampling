@@ -2,15 +2,15 @@
 Produces a temperature/structure map
 """
 
-import itertools
 import os
 import sys
 
 sys.path.append("/home/dux/")
 import cProfile
+import json
 import logging
 import random
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime
 from pstats import SortKey, Stats
 from time import perf_counter
@@ -20,7 +20,6 @@ import catkit
 import matplotlib.pyplot as plt
 import numpy as np
 from ase import io
-from ase.build import bulk
 from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
 from ase.constraints import FixAtoms
@@ -30,208 +29,19 @@ from catkit.gen.adsorption import get_adsorption_sites
 from htvs.djangochem.pgmols.utils import surfaces
 from lammps import lammps
 
+from .energy import optimize_slab, slab_energy
+from .slab import (
+    change_site,
+    count_adsorption_sites,
+    get_adsorption_coords,
+    get_complementary_idx,
+    get_random_idx,
+    initialize_slab,
+)
+from .utils import filter_distances_new
+
 logger = logging.getLogger(__name__)
-
-
-def initialize_slab(
-    alat,
-    elem="Cu",
-    vacuum=15.0,
-    miller=(1, 0, 0),
-    termination=0,
-    orthogonal=False,
-    size=(4, 4, 4),
-    **kwargs,
-):
-    """Creates the slab structure using ASE.
-
-    Parameters
-    ----------
-    alat : float
-        Lattice parameter in angstroms
-    """
-    # slab = fcc100(elem, size=(4,4,4), a=alat, vacuum=vacuum)
-
-    # TODO: adjust size of surface if necessary
-    a1 = bulk(elem, "fcc", a=alat)
-    write(f"{elem}_a1_bulk.cif", a1)
-    catkit_slab = catkit.build.surface(
-        a1,
-        size=size,
-        miller=miller,
-        termination=termination,
-        fixed=0,
-        vacuum=vacuum,
-        orthogonal=orthogonal,
-        **kwargs,
-    )
-
-    write(f"{elem}_pristine_slab.cif", catkit_slab)
-    return catkit_slab
-
-
-def get_random_idx(connectivity, type=None):
-    """Get random site index"""
-    connectivities = {"top": 1, "bridge": 2, "hollow": 4}  # defaults to hollow
-
-    # top should have connectivity 1, bridge should be 2 and hollow more like 4
-    if type:
-        site_idx = random.choice(
-            np.argwhere(connectivity == connectivities[type]).flatten()
-        )
-
-    else:
-        site_idx = random.randrange(len(connectivity))
-
-    return site_idx
-
-
-def get_complementary_idx(state, slab):
-    """Get two indices, site1 occupied and site2 unoccupied."""
-    adsorbed_idx = np.argwhere(state != 0).flatten()
-
-    # select adsorbates present in slab
-    curr_ads = {
-        k: list(g)
-        for k, g in itertools.groupby(adsorbed_idx, key=lambda x: slab[state[x]].symbol)
-    }
-    # add empty sites
-    empty_idx = np.argwhere(state == 0).flatten().tolist()
-    curr_ads["None"] = empty_idx
-    logger.debug(f"current ads {curr_ads}")
-
-    # choose two types
-    type1, type2 = random.sample(curr_ads.keys(), 2)
-
-    # get random idx belonging to those types
-    site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
-
-    return site1_idx, site2_idx, type1, type2
-
-
-def run_lammps_opt(slab, main_dir=os.getcwd()):
-    # TESTING OUT FOR GaN NOW, WILL FIX LATER
-
-    # define necessary file locations
-    lammps_data_file = f"{main_dir}/lammps.data"
-    lammps_in_file = f"{main_dir}/lammps.in"
-    potential_file = f"GaN.tersoff"
-    atoms = ["Ga", "N"]
-    lammps_out_file = f"{main_dir}/lammps.out"
-    cif_from_lammps_path = f"{main_dir}/lammps.cif"
-
-    # write current surface into lammps.data
-    slab.write(
-        lammps_data_file, format="lammps-data", units="real", atom_style="atomic"
-    )
-    TEMPLATE = """
-clear
-atom_style atomic
-units metal
-boundary p p p
-atom_modify sort 0 0.0
-
-# read_data /path/to/data.data
-read_data {}
-
-### set bulk
-group bulk id <= 36
-
-### interactions
-pair_style tersoff
-# pair_coeff * * /path/to/potential Atom1 Atom2
-pair_coeff * * {} {} {}
-mass 1 69.723000
-mass 2 14.007000
-
-### run
-reset_timestep 0
-fix 2 bulk setforce 0.0 0.0 0.0
-thermo 10 # output thermodynamic variables every N timesteps
-
-thermo_style custom step temp press ke pe xy xz yz
-thermo_modify flush yes format float %23.16g
-min_style cg
-minimize 1e-5 1e-5 500 10000
-
-# write_data /path/to/data.out
-write_data {}
-print "_end of energy minimization_"
-log /dev/stdout
-
-"""
-
-    # write lammps.in file
-    with open(lammps_in_file, "w") as f:
-        f.writelines(
-            TEMPLATE.format(lammps_data_file, potential_file, *atoms, lammps_out_file)
-        )
-
-    lmp = lammps()
-    # print("LAMMPS Version: ", lmp.version())
-
-    # run the LAMMPS here
-    logger.debug(lmp.file(lammps_in_file))
-    lmp.close()
-
-    # Read from LAMMPS out
-    opt_slab = io.read(lammps_out_file, format="lammps-data", style="atomic")
-
-    atomic_numbers_dict = {1: 31, 2: 7}  # 1: Ga, 2: N
-    actual_atomic_numbers = [
-        atomic_numbers_dict[x] for x in opt_slab.get_atomic_numbers()
-    ]
-    print(f"actual atomic numbers {actual_atomic_numbers}")
-    # correct_lammps = new_slab.copy()
-    opt_slab.set_atomic_numbers(actual_atomic_numbers)
-
-    opt_slab.calc = slab.calc
-
-    return opt_slab
-
-
-def optimize_slab(slab, optimizer="LAMMPS", **kwargs):
-    """Run relaxation for slab
-
-    Parameters
-    ----------
-    slab : ase.Atoms
-        Surface slab
-    optimizer : str, optional
-        Either  BFGS or LAMMPS, by default 'BFGS'
-
-    Returns
-    -------
-    ase.Atoms
-        Relaxed slab
-    """
-    if "LAMMPS" in optimizer:
-        if "folder_name" in kwargs:
-            folder_name = kwargs["folder_name"]
-            calc_slab = run_lammps_opt(slab, main_dir=folder_name)
-        else:
-            calc_slab = run_lammps_opt(slab)
-    else:
-        calc_slab = slab.copy()
-        calc_slab.calc = slab.calc
-        dyn = BFGS(calc_slab)
-        # dyn = GPMin(calc_slab)
-        dyn.run(steps=20, fmax=0.2)
-
-    return calc_slab
-
-
-def slab_energy(slab, relax=False, **kwargs):
-    """Calculate slab energy."""
-
-    if relax:
-        if "folder_name" in kwargs:
-            folder_name = kwargs["folder_name"]
-            slab = optimize_slab(slab, folder_name=folder_name)
-        else:
-            slab = optimize_slab(slab)
-
-    return slab.get_potential_energy()
+file_dir = os.path.dirname(__file__)
 
 
 def spin_flip_canonical(
@@ -388,27 +198,6 @@ def spin_flip_canonical(
     return state, slab, energy, accept
 
 
-# option to filter by distance
-# test cases
-# 1. 1 oxygen -- pass
-# 2. 2 oxygen < 1.5 A -- fail
-# 3. 2 oxygen > 1.5 A -- pass
-# 4. 3 oxygen, 2 of them < 1.5 A -- fail
-# 5. 3 oxygen, all of them > 1.5 A -- pass
-
-
-def filter_distances(slab, pristine_len=0, cutoff_distance=1.5):
-    # OXYGEN_CUTOFF_DIST = 1.5
-    # Checks distances of all adsorbates are greater than cutoff
-    all_dist = slab.get_all_distances()
-    unique_dist = np.unique(
-        np.triu(all_dist[pristine_len:, pristine_len:])
-    )  # get upper triangular matrix of ads dist
-    if any(unique_dist[(unique_dist > 0) & (unique_dist <= cutoff_distance)]):
-        return False  # fail because oxygens are too close
-    return True
-
-
 def spin_flip(
     state,
     slab,
@@ -427,7 +216,6 @@ def spin_flip(
     filter_distance=0,
 ):
 
-    # TODO: spin flip add option to filter distances
     """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
     is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
     atom from the slab and updates the state. It then calculates the energy of the new slab and compares
@@ -518,10 +306,7 @@ def spin_flip(
     if filter_distance:
         energy = 0
 
-        # TODO: hardcode pristine length first
-        # need to fix this
-        # For 2x2 SrTiO3, pristine_len=60
-        if filter_distances(slab, pristine_len=60, cutoff_distance=filter_distance):
+        if filter_distances_new(slab, ads=adsorbates, cutoff_distance=filter_distance):
             # succeeds! keep already changed slab
             logger.debug("state changed with filtering!")
             accept = True
@@ -588,189 +373,6 @@ def spin_flip(
             accept = False
 
     return state, slab, energy, accept
-
-
-def change_site(
-    slab, state, pots, adsorbates, coords, site_idx, start_ads=None, end_ads=None
-):
-    ads_pot_dict = dict(zip(adsorbates, pots))
-    chosen_ads = None
-
-    if state[site_idx] == 0:  # empty list, no ads
-        logger.debug(f"chosen site is empty")
-        start_ads = "None"
-
-        if not end_ads:
-            chosen_ads = random.choice(adsorbates)
-        else:
-            # choose a random site
-            chosen_ads = end_ads
-        chosen_pot = ads_pot_dict[chosen_ads]
-
-        logger.debug(
-            f"adsorbing from empty to adsorbate {chosen_ads} and potential {chosen_pot}"
-        )
-        delta_pot = chosen_pot
-
-        # modularize
-        logger.debug(f"current slab has {len(slab)} atoms")
-
-        state, slab = add_to_slab(slab, state, chosen_ads, coords, site_idx)
-
-        logger.debug(f"proposed slab has {len(slab)} atoms")
-
-    else:
-        logger.debug(f"chosen site already adsorbed")
-        if not start_ads:
-            start_ads = slab[state[site_idx]].symbol
-
-        ads_choices = adsorbates.copy()
-        ads_choices.remove(start_ads)
-        ads_choices.append("None")  # 'None' for desorption
-        prev_pot = ads_pot_dict[start_ads]
-
-        # chosen_idx = random.randrange(len(adsorbates))
-        if not end_ads:
-            chosen_ads = random.choice(ads_choices)
-        else:
-            # choose a random site
-            chosen_ads = end_ads
-
-        logger.debug(f"chosen ads is {chosen_ads}")
-
-        logger.debug(f"current slab has {len(slab)} atoms")
-
-        # desorb first, regardless of next chosen state
-        state, slab = remove_from_slab(slab, state, site_idx)
-
-        # adsorb
-        if "None" not in chosen_ads:
-            chosen_pot = ads_pot_dict[chosen_ads]
-
-            logger.debug(f"replacing {start_ads} with {chosen_ads}")
-
-            state, slab = add_to_slab(slab, state, chosen_ads, coords, site_idx)
-
-            delta_pot = chosen_pot - prev_pot
-        else:
-            logger.debug(f"desorbing {start_ads}")
-            delta_pot = -prev_pot  # vacant site has pot = 0
-
-        logger.debug(f"proposed slab has {len(slab)} atoms")
-
-    end_ads = chosen_ads
-
-    return slab, state, delta_pot, start_ads, end_ads
-
-
-def add_to_slab(slab, state, adsorbate, coords, site_idx):
-    """It adds an adsorbate to a slab, and updates the state to reflect the new adsorbate
-
-    Parameters
-    ----------
-    slab : ase.Atoms
-        the slab we're adding adsorbates to
-    state : list
-        a dict of integers, where each integer represents the slab index of the adsorbate on that site. If the
-    site is empty, the integer is 0.
-    adsorbate : ase.Atoms
-        the adsorbate molecule
-    coords : list
-        the coordinates of the sites on the surface
-    site_idx : int
-        the index of the site on the slab where the adsorbate will be placed
-
-    Returns
-    -------
-        The state and slab are being returned.
-    """
-
-    adsorbate_idx = len(slab)
-    state[site_idx] = adsorbate_idx
-    slab.append(adsorbate)
-    slab.positions[-1] = coords[site_idx]
-    return state, slab
-
-
-def remove_from_slab(slab, state, site_idx):
-    """Remove the adsorbate from the slab and update the state
-
-    Parameters
-    ----------
-    slab : ase.Atoms
-        the slab object
-    state : list
-        a list of integers, where each integer represents the slab index of the adsorbate on that site. If the
-    site is empty, the integer is 0.
-    site_idx : int
-        the index of the site to remove the adsorbate from
-
-    Returns
-    -------
-        The state and slab are being returned.
-    """
-    adsorbate_idx = state[site_idx]
-    assert len(np.argwhere(state == adsorbate_idx)) <= 1, "more than 1 site found"
-    assert len(np.argwhere(state == adsorbate_idx)) == 1, "no sites found"
-
-    del slab[int(adsorbate_idx)]
-
-    # lower the index for higher index items
-    state = np.where(state >= int(adsorbate_idx), state - 1, state)
-    # remove negatives
-    state = np.where(state < 0, 0, state)
-
-    # remove the adsorbate from tracking
-    state[site_idx] = 0
-    return state, slab
-
-
-def get_adsorption_coords(slab, atom, connectivity):
-    """Takes a slab, an atom, and a list of site indices, and returns the actual coordinates of the
-    adsorbed atoms
-
-    Parameters
-    ----------
-    slab : ase.Atoms
-        the original slab
-    atom : ase.Atoms
-        the atom you want to adsorb
-    connectivity : list
-        list of lists of integers, each list is a list of the indices of the atoms that are connected to
-    the atom at the index of the list.
-
-    Returns
-    -------
-        The positions of the adsorbed atoms.
-
-    """
-    logger.debug(f"getting actual adsorption site coordinates")
-    new_slab = slab.copy()
-
-    proposed_slab_builder = catkit.gen.adsorption.Builder(new_slab)
-
-    # add multiple adsorbates
-    site_indices = list(range(len(connectivity)))
-
-    # use proposed_slab_builder._single_adsorption multiple times
-    for i, index in enumerate(site_indices):
-        new_slab = proposed_slab_builder._single_adsorption(
-            atom,
-            bond=0,
-            slab=new_slab,
-            site_index=site_indices[i],
-            auto_construct=False,
-            symmetric=False,
-        )
-
-    write(f"ads_{str(atom.symbols)}_all_adsorbed_slab.cif", new_slab)
-
-    # store the actual positions of the sides
-    logger.debug(
-        f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms."
-    )
-
-    return new_slab.get_positions()[len(slab) :]
 
 
 def mcmc_run(
@@ -1055,29 +657,6 @@ def mcmc_run(
         #     return history, energy_hist, frac_accept_hist, adsorption_count_hist
 
     return history, energy_hist, frac_accept_hist, adsorption_count_hist
-
-
-def count_adsorption_sites(slab, state, connectivity):
-    """It takes a slab, a state, and a connectivity matrix, and returns a dictionary of the number of
-    adsorption sites of each type
-
-    Parameters
-    ----------
-    slab
-        ase.Atoms object
-    state
-        a list of the same length as the number of sites in the slab.
-    connectivity
-        a list of the same length as the number of sites in the slab.
-
-    Returns
-    -------
-        A dictionary with the number of adsorption sites as keys and the number of atoms with that number
-    of adsorption sites as values.
-
-    """
-    occ_idx = state > 0
-    return Counter(connectivity[occ_idx])
 
 
 if __name__ == "__main__":
