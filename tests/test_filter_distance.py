@@ -1,49 +1,68 @@
 import os
-import sys
+import pickle as pkl
 
-import numpy as np
 import pytest
-from ase.calculators.lammpsrun import LAMMPS
 
-from mcmc import mcmc_run
-from mcmc.utils import initialize_slab
+from mcmc.utils import filter_distances_new
+
+current_dir = os.path.dirname(__file__)
+
+# get absolute adsorption coords
+element = "O"
+
+# adsorption coords
+ase_bridge = [1.96777, 1.99250, 18.59954]
+ase_top1 = [5.90331, 0.14832, 19.49200]
+ase_top2 = [1.96777, 4.13332, 19.49200]
 
 # test_fixtures
+@pytest.fixture
+def pristine_slab():
+    slab_file = open(os.path.join(current_dir, "resources/SrTiO3_unit_cell.pkl"), "rb")
+    unit_slab = pkl.load(slab_file)
+    pristine_slab = unit_slab * (2, 2, 1)
+    return pristine_slab
 
 
-# def test_one_oxygen():
-#     required_energy = -47.30809647
+def test_one_O_fail(pristine_slab):
+    test_slab = pristine_slab.copy()  # starting with a pristine slab
 
-#     # initialize some parameters first
-#     # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
-#     Cu_alat = 3.6147
-#     slab = initialize_slab(Cu_alat, size=(2, 2, 2))
+    # adsorb at one site
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_bridge
 
-#     chem_pot = 0  # chem pot 0 to less complicate things
-#     alpha = 0.99  # slowly anneal
-#     temp = 1  # temp in terms of kbT
-#     num_sweeps = 100
+    assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == False
 
-#     # use LAMMPS
-#     parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
 
-#     potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], "Cu_u3.eam")
-#     lammps_calc = LAMMPS(
-#         files=[potential_file],
-#         keep_tmp_files=False,
-#         keep_alive=False,
-#         tmp_dir="/home/dux/surface_sampling/tmp_files",
-#     )
-#     lammps_calc.set(**parameters)
+def test_one_O_pass(pristine_slab):
+    test_slab = pristine_slab.copy()  # starting with a pristine slab
 
-#     # call the main function
-#     history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
-#         num_sweeps=num_sweeps,
-#         temp=temp,
-#         pot=chem_pot,
-#         alpha=alpha,
-#         slab=slab,
-#         calc=lammps_calc,
-#     )
+    # adsorb at one site
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_top1
 
-#     assert np.allclose(energy_hist[-1], required_energy)
+    assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == True
+
+
+def test_two_O_fail(pristine_slab):
+    test_slab = pristine_slab.copy()  # starting with a pristine slab
+
+    # adsorb at two sites
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_bridge
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_top1
+
+    assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == False
+
+
+def test_two_O_pass(pristine_slab):
+    test_slab = pristine_slab.copy()  # starting with a pristine slab
+
+    # adsorb at two sites
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_top1
+    test_slab.append(element)
+    test_slab.positions[-1] = ase_top2
+
+    assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == True

@@ -4,7 +4,7 @@ import numpy as np
 from ase.calculators.lammpsrun import LAMMPS
 
 from mcmc import mcmc_run
-from mcmc.utils import initialize_slab
+from mcmc.slab import initialize_slab
 
 
 # some regression testing first
