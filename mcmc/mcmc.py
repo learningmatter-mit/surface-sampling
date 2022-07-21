@@ -7,27 +7,21 @@ import sys
 
 sys.path.append("/home/dux/")
 import cProfile
-import json
 import logging
-import random
 from collections import defaultdict
 from datetime import datetime
-from pstats import SortKey, Stats
+from pstats import Stats
 from time import perf_counter
 
 import ase
 import catkit
 import matplotlib.pyplot as plt
 import numpy as np
-from ase import io
 from ase.calculators.eam import EAM
 from ase.calculators.lammpsrun import LAMMPS
 from ase.constraints import FixAtoms
 from ase.io import read, write
-from ase.optimize import BFGS
 from catkit.gen.adsorption import get_adsorption_sites
-from htvs.djangochem.pgmols.utils import surfaces
-from lammps import lammps
 
 from .energy import optimize_slab, slab_energy
 from .slab import (
@@ -39,6 +33,9 @@ from .slab import (
     initialize_slab,
 )
 from .utils import filter_distances_new
+
+# from htvs.djangochem.pgmols.utils import surfaces
+
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -57,6 +54,7 @@ def spin_flip_canonical(
     folder_name=".",
     adsorbates=["Cu"],
     relax=False,
+    filter_distance=0,
 ):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
     Uses canonical ensemble, fixed number of atoms.
@@ -139,7 +137,40 @@ def spin_flip_canonical(
 
     # to test, always accept
     accept = False
-    if testing:
+
+    if filter_distance:
+        energy = 0
+
+        if filter_distances_new(slab, ads=adsorbates, cutoff_distance=filter_distance):
+            # succeeds! keep already changed slab
+            logger.debug("state changed with filtering!")
+            accept = True
+        else:
+            # failed, keep current state and revert slab back to original
+            slab, state, _, _, _ = change_site(
+                slab,
+                state,
+                pots,
+                adsorbates,
+                coords,
+                site1_idx,
+                start_ads=site2_ads,
+                end_ads=site1_ads,
+            )
+            slab, state, _, _, _ = change_site(
+                slab,
+                state,
+                pots,
+                adsorbates,
+                coords,
+                site2_idx,
+                start_ads=site1_ads,
+                end_ads=site2_ads,
+            )
+
+            logger.debug("state kept the same with filtering")
+
+    elif testing:
         # state = state.copy() # obviously inefficient but here for a reason
         energy = 0
     else:
@@ -490,7 +521,7 @@ def mcmc_run(
         (isinstance(ads_coords, list) and len(ads_coords) > 0)
         or isinstance(ads_coords, np.ndarray)
     ):
-        ads_coords = get_adsorption_coords(slab, metal, connectivity)
+        ads_coords = get_adsorption_coords(slab, metal, connectivity, debug=True)
     else:
         # fake connectivity
         connectivity = np.ones(len(ads_coords), dtype=int)
@@ -521,6 +552,11 @@ def mcmc_run(
         base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
         slab.set_tags(list(base_tags))
 
+    # set adsorbate
+    if not adsorbates:
+        adsorbates = element
+    logger.info(f"adsorbate(s) is(are) {adsorbates}")
+
     if canonical:
         # perform canonical runs
         # adsorb num_ads_atoms
@@ -541,20 +577,23 @@ def mcmc_run(
         if not os.path.exists(run_folder):
             os.makedirs(run_folder)
 
+        # fake pots
+        pots = list(range(len(adsorbates)))
+
         # perform grand canonical until num_ads_atoms are obtained
         while len(slab) < pristine_atoms + num_ads_atoms:
             state, slab, energy, accept = spin_flip(
                 state,
                 slab,
                 temp,
-                0,
+                pots,
                 ads_coords,
                 connectivity,
                 prev_energy=energy,
                 save_cif=False,
                 testing=testing,
                 folder_name=run_folder,
-                adsorbates=element,
+                adsorbates=adsorbates,
                 relax=relax,
                 filter_distance=filter_distance,
             )
@@ -579,11 +618,6 @@ def mcmc_run(
 
     site_types = set(connectivity)
 
-    # set adsorbate
-    if not adsorbates:
-        adsorbates = element
-    logger.info(f"adsorbate(s) is(are) {adsorbates}")
-
     for i in range(num_sweeps):
         num_accept = 0
         # simulated annealing schedule
@@ -606,6 +640,7 @@ def mcmc_run(
                     folder_name=run_folder,
                     adsorbates=adsorbates,
                     relax=relax,
+                    filter_distance=filter_distance,
                 )
             else:
                 state, slab, energy, accept = spin_flip(
@@ -689,7 +724,8 @@ if __name__ == "__main__":
 
     # Au from standard cell
     atoms = read("Ag_mp-124_conventional_standard.cif")
-    slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1, 1, 1], size=[5, 5])
+    # slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1, 1, 1], size=[5, 5])
+    # TODO: fix this
     slab.write("Ag_111_5x5_pristine_slab.cif")
 
     element = "Ag"

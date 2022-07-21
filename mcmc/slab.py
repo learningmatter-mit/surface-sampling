@@ -268,7 +268,7 @@ def get_adsorption_coords(slab, atom, connectivity, debug=False):
         f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms."
     )
 
-    return new_slab.get_positions()[len(slab) :]
+    return new_slab.get_positions(wrap=True)[len(slab) :]
 
 
 def count_adsorption_sites(slab, state, connectivity):

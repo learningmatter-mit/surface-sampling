@@ -2,6 +2,7 @@ import os
 import pickle as pkl
 
 import pytest
+from ase.io import read
 
 from mcmc.utils import filter_distances_new
 
@@ -66,3 +67,11 @@ def test_two_O_pass(pristine_slab):
     test_slab.positions[-1] = ase_top2
 
     assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == True
+
+
+def test_cell_distance_failed():
+    test_slab = read(
+        os.path.join(current_dir, "resources/SrTiO3_001_distance_failed.cif")
+    )
+
+    assert filter_distances_new(test_slab, ads=[element], cutoff_distance=1.5) == False
