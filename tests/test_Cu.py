@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ase.calculators.lammpsrun import LAMMPS
 
-from mcmc import mcmc_run
+from mcmc import MCMC
 from mcmc.slab import initialize_slab
 
 
@@ -33,8 +33,8 @@ def test_Cu_energy():
     )
     lammps_calc.set(**parameters)
 
-    # call the main function
-    history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
+    # initialize object
+    Cu_mcmc = MCMC(
         num_sweeps=num_sweeps,
         temp=temp,
         pot=chem_pot,
@@ -43,5 +43,6 @@ def test_Cu_energy():
         calc=lammps_calc,
         element=element,
     )
+    history, energy_hist, frac_accept_hist, adsorption_count_hist = Cu_mcmc.mcmc_run()
 
     assert np.allclose(energy_hist[-1], required_energy)

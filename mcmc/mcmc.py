@@ -406,292 +406,305 @@ def spin_flip(
     return state, slab, energy, accept
 
 
-def mcmc_run(
-    num_sweeps=1000,
-    temp=1,
-    pot=1,
-    alpha=0.9,
-    slab=None,
-    calc=EAM(
-        potential=os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
+class MCMC:
+    def __init__(
+        self,
+        num_sweeps=1000,
+        temp=1,
+        pot=1,
+        alpha=0.9,
+        slab=None,
+        calc=EAM(
+            potential=os.path.join(
+                os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
+            )
+        ),
+        surface_name=None,
+        element="Cu",
+        canonical=False,
+        num_ads_atoms=0,
+        ads_coords=[],
+        testing=False,
+        adsorbates=None,
+        relax=False,
+        filter_distance=0.0,
+    ) -> None:
+        self.num_sweeps = num_sweeps
+        self.temp = temp
+        self.pot = pot
+        self.alpha = alpha
+        self.slab = slab
+        self.calc = calc
+        self.surface_name = surface_name
+        self.element = element  # review this, might not be useful
+        self.canonical = canonical
+        self.num_ads_atoms = num_ads_atoms
+        self.ads_coords = ads_coords
+        self.testing = testing
+        self.adsorbates = adsorbates
+        self.relax = relax
+        self.filter_distance = filter_distance
+
+        if self.canonical:
+            # perform canonical runs
+            # adsorb num_ads_atoms
+            assert (
+                self.num_ads_atoms > 0
+            ), "for canonical runs, need number of adsorbed atoms greater than 0"
+
+    def run(self):
+        self.mcmc_run()
+
+    def mcmc_run(self):
+        """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
+        Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
+        consists of randomly picking a site and proposing (and accept/reject) a flip (adsorption or desorption).
+        Only the resulting slab after one sweep is appended to the history. Corresponding observables are
+        calculated also after each run.
+
+        Returns
+        -------
+            history is a list of slab objects, energy_hist is a list of energies, frac_accept_hist is a list of
+        fraction of accepted moves, adsorption_count_hist is a dictionary of lists of adsorption counts for
+        each site type
+
+        """
+
+        logging.basicConfig(
+            format="%(levelname)s:%(message)s",
+            level=logging.INFO,
+            datefmt="%m/%d/%Y %I:%M:%S %p",
         )
-    ),
-    surface_name=None,
-    element="Cu",
-    canonical=False,
-    num_ads_atoms=0,
-    ads_coords=[],
-    testing=False,
-    adsorbates=None,
-    relax=False,
-    filter_distance=0.0,
-):
-    """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
-    Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
-    consists of randomly picking a site and proposing (and accept/reject) a flip (adsorption or desorption).
-    Only the resulting slab after one sweep is appended to the history. Corresponding observables are
-    calculated also after each run.
 
-    Parameters
-    ----------
-    num_sweeps, optional
-        number of runs to perform
-    temp, optional
-        temperature of the system
-    pot, optional
-        the chemical potential of the adsorption site.
-    alpha
-        the simulated annealing schedule
-    slab
-        the initial slab to start with. If None, will initialize a slab.
-    calc
-        ase calculator object for the slab
-    surface_name
-        name of the surface, e.g. Cu
-    element, optional
-        the element of the slab
-    canonical, optional
-        whether to perform canonical runs or not
-    num_ads_atoms, optional
-        number of adsorbed atoms if performing canonical runs
-    ads_coords
-        list of adsorption coordinates
-    testing, optional
-        if True, will accept all moves
-    adsorbates : ase.Atoms
-        the element to adsorb
-    relax, optional
-        whether to relax the slab after adsorption
+        logger.info(
+            f"Running with num_sweeps = {self.num_sweeps}, temp = {self.temp}, pot = {self.pot}, alpha = {self.alpha}"
+        )
+        # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
+        if (type(self.slab) is not catkit.gratoms.Gratoms) and (
+            type(self.slab) is not ase.atoms.Atoms
+        ):
 
-    Returns
-    -------
-        history is a list of slab objects, energy_hist is a list of energies, frac_accept_hist is a list of
-    fraction of accepted moves, adsorption_count_hist is a dictionary of lists of adsorption counts for
-    each site type
+            # initialize slab
+            logger.info("initializing slab")
+            # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
+            Cu_alat = 3.6147
+            self.slab = initialize_slab(Cu_alat)
 
-    """
+        # attach slab calculator
+        self.slab.calc = self.calc
 
-    logging.basicConfig(
-        format="%(levelname)s:%(message)s",
-        level=logging.INFO,
-        datefmt="%m/%d/%Y %I:%M:%S %p",
-    )
+        # TODO move these to a separate function that prepares the slab
+        num_bulk_atoms = len(self.slab)
+        bulk_indices = list(range(num_bulk_atoms))
 
-    logger.info(
-        f"Running with num_sweeps = {num_sweeps}, temp = {temp}, pot = {pot}, alpha = {alpha}"
-    )
-    # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
-    if (type(slab) is not catkit.gratoms.Gratoms) and (
-        type(slab) is not ase.atoms.Atoms
-    ):
+        c = FixAtoms(indices=bulk_indices)
+        self.slab.set_constraint(c)
 
-        # initialize slab
-        logger.info("initializing slab")
-        # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
-        Cu_alat = 3.6147
-        slab = initialize_slab(Cu_alat)
+        pristine_atoms = len(self.slab)
 
-    # attach slab calculator
-    slab.calc = calc
+        logger.info(f"there are {pristine_atoms} atoms ")
+        logger.info(f"using slab calc {self.slab.calc}")
 
-    num_bulk_atoms = len(slab)
-    bulk_indices = list(range(num_bulk_atoms))
+        # get ALL the adsorption sites
+        # top should have connectivity 1, bridge should be 2 and hollow more like 4
+        # TODO: move to object
+        coords, connectivity, sym_idx = get_adsorption_sites(
+            self.slab, symmetry_reduced=False
+        )
 
-    c = FixAtoms(indices=bulk_indices)
-    slab.set_constraint(c)
+        # get absolute adsorption coords
+        # TODO: delete this, quite confusing
+        metal = catkit.gratoms.Gratoms(self.element)
 
-    pristine_atoms = len(slab)
+        # set surface_name
+        if not self.surface_name:
+            self.surface_name = self.element
 
-    logger.info(f"there are {pristine_atoms} atoms ")
-    logger.info(f"using slab calc {slab.calc}")
+        if not (
+            (isinstance(self.ads_coords, list) and len(self.ads_coords) > 0)
+            or isinstance(self.ads_coords, np.ndarray)
+        ):
+            self.ads_coords = get_adsorption_coords(
+                self.slab, metal, connectivity, debug=True
+            )
+        else:
+            # fake connectivity
+            connectivity = np.ones(len(self.ads_coords), dtype=int)
 
-    # get ALL the adsorption sites
-    # top should have connectivity 1, bridge should be 2 and hollow more like 4
-    coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
+        # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
+        self.state = np.zeros(len(self.ads_coords), dtype=int)
 
-    # get absolute adsorption coords
-    metal = catkit.gratoms.Gratoms(element)
+        logger.info(
+            f"In pristine slab, there are a total of {len(self.ads_coords)} sites"
+        )
 
-    # set surface_name
-    if not surface_name:
-        surface_name = element
+        # sometimes slab.calc is fake
+        if self.slab.calc:
+            energy = slab_energy(self.slab)
+        else:
+            energy = 0
 
-    if not (
-        (isinstance(ads_coords, list) and len(ads_coords) > 0)
-        or isinstance(ads_coords, np.ndarray)
-    ):
-        ads_coords = get_adsorption_coords(slab, metal, connectivity, debug=True)
-    else:
-        # fake connectivity
-        connectivity = np.ones(len(ads_coords), dtype=int)
+        start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
-    state = np.zeros(len(ads_coords), dtype=int)
-
-    logger.info(f"In pristine slab, there are a total of {len(ads_coords)} sites")
-
-    # sometimes slab.calc is fake
-    if slab.calc:
-        energy = slab_energy(slab)
-    else:
-        energy = 0
-
-    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    run_folder = os.path.join(
-        os.getcwd(),
-        f"{surface_name}/runs{num_sweeps}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}",
-    )
-
-    # initialize tags
-    # set tags; 1 for surface atoms, 2 for adsorbates, 0 for others
-    if type(slab) is catkit.gratoms.Gratoms:
-        surface_atoms = slab.get_surface_atoms()
-        atoms_arr = np.arange(0, len(slab))
-        base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
-        slab.set_tags(list(base_tags))
-
-    # set adsorbate
-    if not adsorbates:
-        adsorbates = element
-    logger.info(f"adsorbate(s) is(are) {adsorbates}")
-
-    if canonical:
-        # perform canonical runs
-        # adsorb num_ads_atoms
-        assert (
-            num_ads_atoms > 0
-        ), "for canonical runs, need number of adsorbed atoms greater than 0"
-
-        # following doesn't work because of infinite energies
-        # for i in range(num_ads_atoms):
-        # site_idx = get_random_idx(connectivity)
-        # state, slab = add_to_slab(slab, state, element, ads_coords, site_idx)
-
-        # customize run folder
+        # TODO: move to object
+        # method to get generate run_folder
         run_folder = os.path.join(
             os.getcwd(),
-            f"{surface_name}/runs{num_sweeps}_temp{temp}_adsatoms{num_ads_atoms:02}_alpha{alpha}_{start_timestamp}",
+            f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
         )
+
+        # initialize tags
+        # set tags; 1 for surface atoms, 2 for adsorbates, 0 for others
+        if type(self.slab) is catkit.gratoms.Gratoms:
+            surface_atoms = self.slab.get_surface_atoms()
+            atoms_arr = np.arange(0, len(self.slab))
+            base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
+            self.slab.set_tags(list(base_tags))
+
+        # TODO move this to helper functions
+        # set adsorbate
+        if not self.adsorbates:
+            self.adsorbates = self.element
+        logger.info(f"adsorbate(s) is(are) {self.adsorbates}")
+
+        if self.canonical:
+            # perform canonical runs
+            # adsorb num_ads_atoms
+            assert (
+                self.num_ads_atoms > 0
+            ), "for canonical runs, need number of adsorbed atoms greater than 0"
+
+            # following doesn't work because of infinite energies
+            # for i in range(num_ads_atoms):
+            # site_idx = get_random_idx(connectivity)
+            # state, slab = add_to_slab(slab, state, element, ads_coords, site_idx)
+
+            # customize run folder
+            # TODO move to separate function
+            run_folder = os.path.join(
+                os.getcwd(),
+                f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
+            )
+            if not os.path.exists(run_folder):
+                os.makedirs(run_folder)
+
+            # set adsorbate
+            if not self.adsorbates:
+                self.adsorbates = self.element
+            logger.info(f"adsorbate(s) is(are) {self.adsorbates}")
+
+            # fake pots
+            self.pot = list(range(len(self.adsorbates)))
+
+            # perform grand canonical until num_ads_atoms are obtained
+            while len(self.slab) < pristine_atoms + self.num_ads_atoms:
+                self.state, self.slab, energy, accept = spin_flip(
+                    self.state,
+                    self.slab,
+                    self.temp,
+                    self.pot,
+                    self.ads_coords,
+                    connectivity,
+                    prev_energy=energy,
+                    save_cif=False,
+                    testing=self.testing,
+                    folder_name=run_folder,
+                    adsorbates=self.adsorbates,
+                    relax=self.relax,
+                    filter_distance=self.filter_distance,
+                )
+
+            self.slab.write(f"{self.surface_name}_canonical_init.cif")
+
         if not os.path.exists(run_folder):
             os.makedirs(run_folder)
 
-        # fake pots
-        pots = list(range(len(adsorbates)))
+        # TODO move to object
+        history = []
+        energy_hist = np.random.rand(self.num_sweeps)
+        # energy_sq_hist = np.random.rand(num_sweeps)
+        adsorption_count_hist = defaultdict(list)
+        frac_accept_hist = np.random.rand(self.num_sweeps)
 
-        # perform grand canonical until num_ads_atoms are obtained
-        while len(slab) < pristine_atoms + num_ads_atoms:
-            state, slab, energy, accept = spin_flip(
-                state,
-                slab,
-                temp,
-                pots,
-                ads_coords,
-                connectivity,
-                prev_energy=energy,
-                save_cif=False,
-                testing=testing,
-                folder_name=run_folder,
-                adsorbates=adsorbates,
-                relax=relax,
-                filter_distance=filter_distance,
-            )
+        # sweep over # sites
+        sweep_size = len(self.ads_coords)
 
-        slab.write(f"{surface_name}_canonical_init.cif")
+        logger.info(
+            f"running for {sweep_size} iterations per run over a total of {self.num_sweeps} runs"
+        )
 
-    if not os.path.exists(run_folder):
-        os.makedirs(run_folder)
+        site_types = set(connectivity)
 
-    history = []
-    energy_hist = np.random.rand(num_sweeps)
-    # energy_sq_hist = np.random.rand(num_sweeps)
-    adsorption_count_hist = defaultdict(list)
-    frac_accept_hist = np.random.rand(num_sweeps)
+        for i in range(self.num_sweeps):
+            num_accept = 0
+            # simulated annealing schedule
+            curr_temp = self.temp * self.alpha**i
+            logger.info(f"In sweep {i+1} out of {self.num_sweeps}")
+            for j in range(sweep_size):
+                # logger.info(f"In iter {j+1}")
+                run_idx = sweep_size * i + j + 1
+                if self.canonical:
+                    self.state, self.slab, energy, accept = spin_flip_canonical(
+                        self.state,
+                        self.slab,
+                        curr_temp,
+                        self.ads_coords,
+                        connectivity,
+                        prev_energy=energy,
+                        save_cif=False,
+                        iter=run_idx,
+                        testing=self.testing,
+                        folder_name=run_folder,
+                        adsorbates=self.adsorbates,
+                        relax=self.relax,
+                        filter_distance=self.filter_distance,
+                    )
+                else:
+                    self.state, self.slab, energy, accept = spin_flip(
+                        self.state,
+                        self.slab,
+                        curr_temp,
+                        self.pot,
+                        self.ads_coords,
+                        connectivity,
+                        prev_energy=energy,
+                        save_cif=False,
+                        iter=run_idx,
+                        testing=self.testing,
+                        folder_name=run_folder,
+                        adsorbates=self.adsorbates,
+                        relax=self.relax,
+                        filter_distance=self.filter_distance,
+                    )
+                num_accept += accept
 
-    # sweep over # sites
-    sweep_size = len(ads_coords)
+            # end of sweep; append to history
+            history.append(self.slab.copy())
 
-    logger.info(
-        f"running for {sweep_size} iterations per run over a total of {num_sweeps} runs"
-    )
+            # save cif file
+            write(f"{run_folder}/final_slab_run_{i+1:03}.cif", self.slab)
 
-    site_types = set(connectivity)
+            if self.relax:
+                opt_slab = optimize_slab(self.slab, folder_name=run_folder)
+                opt_slab.write(f"{run_folder}/optim_slab_run_{i+1:03}.cif")
 
-    for i in range(num_sweeps):
-        num_accept = 0
-        # simulated annealing schedule
-        curr_temp = temp * alpha**i
-        logger.info(f"In sweep {i+1} out of {num_sweeps}")
-        for j in range(sweep_size):
-            # logger.info(f"In iter {j+1}")
-            run_idx = sweep_size * i + j + 1
-            if canonical:
-                state, slab, energy, accept = spin_flip_canonical(
-                    state,
-                    slab,
-                    curr_temp,
-                    ads_coords,
-                    connectivity,
-                    prev_energy=energy,
-                    save_cif=False,
-                    iter=run_idx,
-                    testing=testing,
-                    folder_name=run_folder,
-                    adsorbates=adsorbates,
-                    relax=relax,
-                    filter_distance=filter_distance,
-                )
-            else:
-                state, slab, energy, accept = spin_flip(
-                    state,
-                    slab,
-                    curr_temp,
-                    pot,
-                    ads_coords,
-                    connectivity,
-                    prev_energy=energy,
-                    save_cif=False,
-                    iter=run_idx,
-                    testing=testing,
-                    folder_name=run_folder,
-                    adsorbates=adsorbates,
-                    relax=relax,
-                    filter_distance=filter_distance,
-                )
-            num_accept += accept
+            logger.info(f"optim structure has Energy = {energy}")
 
-        # end of sweep; append to history
-        history.append(slab.copy())
+            # append values
+            energy_hist[i] = energy
+            # energy_sq_hist[i] = energy**2
 
-        # save cif file
-        write(f"{run_folder}/final_slab_run_{i+1:03}.cif", slab)
+            ads_counts = count_adsorption_sites(self.slab, self.state, connectivity)
+            for key in set(site_types):
+                if ads_counts[key]:
+                    adsorption_count_hist[key].append(ads_counts[key])
+                else:
+                    adsorption_count_hist[key].append(0)
 
-        if relax:
-            opt_slab = optimize_slab(slab, folder_name=run_folder)
-            opt_slab.write(f"{run_folder}/optim_slab_run_{i+1:03}.cif")
+            frac_accept = num_accept / sweep_size
+            frac_accept_hist[i] = frac_accept
 
-        logger.info(f"optim structure has Energy = {energy}")
-
-        # append values
-        energy_hist[i] = energy
-        # energy_sq_hist[i] = energy**2
-
-        ads_counts = count_adsorption_sites(slab, state, connectivity)
-        for key in set(site_types):
-            if ads_counts[key]:
-                adsorption_count_hist[key].append(ads_counts[key])
-            else:
-                adsorption_count_hist[key].append(0)
-
-        frac_accept = num_accept / sweep_size
-        frac_accept_hist[i] = frac_accept
-
-        # early stopping
-        # if i > 0 and abs(energy_hist[i-1] - energy_hist[i]) < 1e-2:
-        #     return history, energy_hist, frac_accept_hist, adsorption_count_hist
-
-    return history, energy_hist, frac_accept_hist, adsorption_count_hist
+        return history, energy_hist, frac_accept_hist, adsorption_count_hist
 
 
 if __name__ == "__main__":

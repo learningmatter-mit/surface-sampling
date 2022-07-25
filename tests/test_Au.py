@@ -5,7 +5,7 @@ import numpy as np
 from ase.calculators.lammpsrun import LAMMPS
 from ase.io import read
 
-from mcmc import mcmc_run
+from mcmc import MCMC
 
 current_dir = os.path.dirname(__file__)
 
@@ -44,8 +44,8 @@ def test_Au_energy():
     )
     lammps_calc.set(**parameters)
 
-    # call the main function
-    history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
+    # initialize object
+    Au_mcmc = MCMC(
         num_sweeps=num_sweeps,
         temp=temp,
         pot=chem_pot,
@@ -57,5 +57,11 @@ def test_Au_energy():
         num_ads_atoms=num_ads_atoms,
         ads_coords=ads_positions,
     )
+    (
+        history,
+        energy_hist,
+        frac_accept_hist,
+        adsorption_count_hist,
+    ) = Au_mcmc.mcmc_run()  # call the main
 
     assert np.allclose(energy_hist[-1], required_energy)
