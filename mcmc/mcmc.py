@@ -2,13 +2,16 @@
 Produces a temperature/structure map
 """
 
+import copy
 import os
 import sys
+
+from nff.io.ase import AtomsBatch
 
 sys.path.append("/home/dux/")
 import cProfile
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from pstats import Stats
 from time import perf_counter
@@ -24,6 +27,7 @@ from ase.io import read, write
 from catkit.gen.adsorption import get_adsorption_sites
 
 from .energy import optimize_slab, slab_energy
+from .plot import plot_summary_stats
 from .slab import (
     change_site,
     count_adsorption_sites,
@@ -35,7 +39,6 @@ from .slab import (
 from .utils import filter_distances_new
 
 # from htvs.djangochem.pgmols.utils import surfaces
-
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -229,6 +232,10 @@ def spin_flip_canonical(
     return state, slab, energy, accept
 
 
+def get_SrTiO3_exponent(slab_energy, bulk_energies, delta_mus, ads_counts):
+    pass
+
+
 def spin_flip(
     state,
     slab,
@@ -353,7 +360,6 @@ def spin_flip(
                 start_ads=end_ads,
                 end_ads=start_ads,
             )
-
             logger.debug("state kept the same with filtering")
 
     elif testing:
@@ -482,10 +488,11 @@ def mcmc_run(
         f"Running with num_sweeps = {num_sweeps}, temp = {temp}, pot = {pot}, alpha = {alpha}"
     )
     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
-    if (type(slab) is not catkit.gratoms.Gratoms) and (
-        type(slab) is not ase.atoms.Atoms
+    if (
+        (type(slab) is not catkit.gratoms.Gratoms)
+        and (type(slab) is not ase.atoms.Atoms)
+        and (type(slab) is not AtomsBatch)
     ):
-
         # initialize slab
         logger.info("initializing slab")
         # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
@@ -506,10 +513,6 @@ def mcmc_run(
     logger.info(f"there are {pristine_atoms} atoms ")
     logger.info(f"using slab calc {slab.calc}")
 
-    # get ALL the adsorption sites
-    # top should have connectivity 1, bridge should be 2 and hollow more like 4
-    coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
-
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
 
@@ -518,9 +521,14 @@ def mcmc_run(
         surface_name = element
 
     if not (
-        (isinstance(ads_coords, list) and len(ads_coords) > 0)
+        (isinstance(ads_coords, list) and (len(ads_coords) > 0))
         or isinstance(ads_coords, np.ndarray)
     ):
+        # get ALL the adsorption sites
+        # top should have connectivity 1, bridge should be 2 and hollow more like 4
+        coords, connectivity, sym_idx = get_adsorption_sites(
+            slab, symmetry_reduced=False
+        )
         ads_coords = get_adsorption_coords(slab, metal, connectivity, debug=True)
     else:
         # fake connectivity
@@ -662,16 +670,47 @@ def mcmc_run(
             num_accept += accept
 
         # end of sweep; append to history
-        history.append(slab.copy())
-
-        # save cif file
-        write(f"{run_folder}/final_slab_run_{i+1:03}.cif", slab)
+        slab_copy = copy.deepcopy(slab)
+        slab_copy.calc = None
+        history.append(slab_copy)
 
         if relax:
             opt_slab = optimize_slab(slab, folder_name=run_folder)
             opt_slab.write(f"{run_folder}/optim_slab_run_{i+1:03}.cif")
 
-        logger.info(f"optim structure has Energy = {energy}")
+        if type(slab) is AtomsBatch:
+            # add in uncertainty information
+            slab.update_nbr_list(update_atoms=True)
+            slab.calc.calculate(slab)
+            # slab_energy(slab)
+
+            if not set(["O", "Sr", "Ti"]) ^ set(adsorbates):
+                ads_count = Counter(slab.get_chemical_symbols())
+                ads_pot_dict = dict(zip(adsorbates, pot))
+                delta_pot = (ads_count["O"] - 3 * ads_count["Ti"]) * ads_pot_dict[
+                    "O"
+                ] + (ads_count["Sr"] - ads_count["Ti"]) * ads_pot_dict["Sr"]
+                energy = float(slab.results["energy"]) - delta_pot
+                logger.info(
+                    f"optim structure has Free Energy = {energy:.3f}+/-{float(slab.results['energy_std']):.3f}"
+                )
+            else:
+                energy = float(slab.results["energy"])
+                logger.info(
+                    f"optim structure has Energy = {energy:.3f}+/-{float(slab.results['energy_std']):.3f}"
+                )
+
+            # save cif file
+            write(
+                f"{run_folder}/final_slab_run_{i+1:03}_{energy:.3f}+/-{float(slab.results['energy_std']):.3f}.cif",
+                slab,
+            )
+
+        else:
+            logger.info(f"optim structure has Energy = {energy}")
+
+            # save cif file
+            write(f"{run_folder}/final_slab_run_{i+1:03}_{energy:.3f}.cif", slab)
 
         # append values
         energy_hist[i] = energy
@@ -687,11 +726,16 @@ def mcmc_run(
         frac_accept = num_accept / sweep_size
         frac_accept_hist[i] = frac_accept
 
-        # early stopping
-        # if i > 0 and abs(energy_hist[i-1] - energy_hist[i]) < 1e-2:
-        #     return history, energy_hist, frac_accept_hist, adsorption_count_hist
+    # plot and save the results
+    plot_summary_stats(
+        energy_hist, frac_accept_hist, adsorption_count_hist, num_sweeps, run_folder
+    )
 
-    return history, energy_hist, frac_accept_hist, adsorption_count_hist
+    # early stopping
+    # if i > 0 and abs(energy_hist[i-1] - energy_hist[i]) < 1e-2:
+    #     return history, energy_hist, frac_accept_hist, adsorption_count_hist
+
+    return history, energy_hist, frac_accept_hist, adsorption_count_hist, run_folder
 
 
 if __name__ == "__main__":

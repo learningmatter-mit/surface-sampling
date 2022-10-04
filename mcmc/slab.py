@@ -93,6 +93,8 @@ def change_site(
     ads_pot_dict = dict(zip(adsorbates, pots))
     chosen_ads = None
 
+    old_ads_count = Counter(slab.get_chemical_symbols())
+
     if state[site_idx] == 0:  # empty list, no ads
         logger.debug(f"chosen site is empty")
         start_ads = "None"
@@ -156,6 +158,20 @@ def change_site(
         logger.debug(f"proposed slab has {len(slab)} atoms")
 
     end_ads = chosen_ads
+
+    new_ads_count = Counter(slab.get_chemical_symbols())
+
+    # make sure that Sr, Ti, O in slab
+    if not set(["O", "Sr", "Ti"]) ^ new_ads_count.keys():
+        # create custom delta_pot
+        old_pot = (old_ads_count["O"] - 3 * old_ads_count["Ti"]) * ads_pot_dict["O"] + (
+            old_ads_count["Sr"] - old_ads_count["Ti"]
+        ) * ads_pot_dict["Sr"]
+        new_pot = (new_ads_count["O"] - 3 * new_ads_count["Ti"]) * ads_pot_dict["O"] + (
+            new_ads_count["Sr"] - new_ads_count["Ti"]
+        ) * ads_pot_dict["Sr"]
+        # delta_pot = (new_pot - old_pot)/2
+        delta_pot = new_pot - old_pot
 
     return slab, state, delta_pot, start_ads, end_ads
 

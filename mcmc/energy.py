@@ -5,6 +5,7 @@ import os
 from ase import io
 from ase.optimize import BFGS
 from lammps import lammps
+from nff.io.ase import AtomsBatch
 
 logger = logging.getLogger(__name__)
 
@@ -95,4 +96,11 @@ def slab_energy(slab, relax=False, **kwargs):
         else:
             slab = optimize_slab(slab)
 
-    return slab.get_potential_energy()
+    if type(slab) is AtomsBatch:
+        slab.update_nbr_list(update_atoms=True)
+        slab.calc.calculate(slab)
+        energy = float(slab.results["energy"])
+    else:
+        energy = float(slab.get_potential_energy())
+
+    return energy
