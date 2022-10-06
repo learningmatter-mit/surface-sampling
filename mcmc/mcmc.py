@@ -58,6 +58,7 @@ def spin_flip_canonical(
     adsorbates=["Cu"],
     relax=False,
     filter_distance=0,
+    **kwargs,
 ):
     """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
     Uses canonical ensemble, fixed number of atoms.
@@ -81,7 +82,7 @@ def spin_flip_canonical(
 
     if not prev_energy and not testing:
         # calculate energy of current state
-        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name)
+        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
 
     # choose 2 sites of different ads (empty counts too) to flip
     site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(state, slab=slab)
@@ -179,7 +180,7 @@ def spin_flip_canonical(
     else:
         # use relaxation only to get lowest energy
         # but don't update adsorption positions
-        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name)
+        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
 
         logger.debug(f"prev energy is {prev_energy}")
         logger.debug(f"curr energy is {curr_energy}")
@@ -232,10 +233,6 @@ def spin_flip_canonical(
     return state, slab, energy, accept
 
 
-def get_SrTiO3_exponent(slab_energy, bulk_energies, delta_mus, ads_counts):
-    pass
-
-
 def spin_flip(
     state,
     slab,
@@ -252,6 +249,7 @@ def spin_flip(
     adsorbates=["Cu"],
     relax=False,
     filter_distance=0,
+    **kwargs,
 ):
 
     """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
@@ -325,7 +323,7 @@ def spin_flip(
     delta_N = 0
 
     if not prev_energy and not testing:
-        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name)
+        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
 
     slab, state, delta_pot, start_ads, end_ads = change_site(
         slab, state, pots, adsorbates, coords, site_idx, start_ads=None, end_ads=None
@@ -369,7 +367,7 @@ def spin_flip(
     else:
         # use relaxation only to get lowest energy
         # but don't update adsorption positions
-        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name)
+        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
 
         logger.debug(f"prev energy is {prev_energy}")
         logger.debug(f"curr energy is {curr_energy}")
@@ -432,6 +430,7 @@ def mcmc_run(
     adsorbates=None,
     relax=False,
     filter_distance=0.0,
+    **kwargs,
 ):
     """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
     Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
@@ -477,8 +476,20 @@ def mcmc_run(
     each site type
 
     """
+    # set surface_name
+    if not surface_name:
+        surface_name = element
+
+    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    run_folder = os.path.join(
+        os.getcwd(),
+        f"{surface_name}/runs{num_sweeps}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}",
+    )
 
     logging.basicConfig(
+        filename=os.path.join(run_folder, "logging.log"),
+        filemode="a",
         format="%(levelname)s:%(message)s",
         level=logging.INFO,
         datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -516,10 +527,6 @@ def mcmc_run(
     # get absolute adsorption coords
     metal = catkit.gratoms.Gratoms(element)
 
-    # set surface_name
-    if not surface_name:
-        surface_name = element
-
     if not (
         (isinstance(ads_coords, list) and (len(ads_coords) > 0))
         or isinstance(ads_coords, np.ndarray)
@@ -541,16 +548,9 @@ def mcmc_run(
 
     # sometimes slab.calc is fake
     if slab.calc:
-        energy = slab_energy(slab)
+        energy = slab_energy(slab, **kwargs)
     else:
         energy = 0
-
-    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    run_folder = os.path.join(
-        os.getcwd(),
-        f"{surface_name}/runs{num_sweeps}_temp{temp}_pot{pot}_alpha{alpha}_{start_timestamp}",
-    )
 
     # initialize tags
     # set tags; 1 for surface atoms, 2 for adsorbates, 0 for others
@@ -604,6 +604,7 @@ def mcmc_run(
                 adsorbates=adsorbates,
                 relax=relax,
                 filter_distance=filter_distance,
+                **kwargs,
             )
 
         slab.write(f"{surface_name}_canonical_init.cif")
@@ -666,6 +667,7 @@ def mcmc_run(
                     adsorbates=adsorbates,
                     relax=relax,
                     filter_distance=filter_distance,
+                    **kwargs,
                 )
             num_accept += accept
 
@@ -674,15 +676,11 @@ def mcmc_run(
         slab_copy.calc = None
         history.append(slab_copy)
 
-        if relax:
-            opt_slab = optimize_slab(slab, folder_name=run_folder)
-            opt_slab.write(f"{run_folder}/optim_slab_run_{i+1:03}.cif")
-
         if type(slab) is AtomsBatch:
             # add in uncertainty information
             slab.update_nbr_list(update_atoms=True)
             slab.calc.calculate(slab)
-            # slab_energy(slab)
+            # slab_energy(slab, **kwargs)
 
             if not set(["O", "Sr", "Ti"]) ^ set(adsorbates):
                 ads_count = Counter(slab.get_chemical_symbols())
@@ -690,19 +688,23 @@ def mcmc_run(
                 delta_pot = (ads_count["O"] - 3 * ads_count["Ti"]) * ads_pot_dict[
                     "O"
                 ] + (ads_count["Sr"] - ads_count["Ti"]) * ads_pot_dict["Sr"]
-                energy = float(slab.results["energy"]) - delta_pot
+                energy -= delta_pot
                 logger.info(
                     f"optim structure has Free Energy = {energy:.3f}+/-{float(slab.results['energy_std']):.3f}"
                 )
             else:
-                energy = float(slab.results["energy"])
+                # energy = float(slab.results["energy"])
                 logger.info(
                     f"optim structure has Energy = {energy:.3f}+/-{float(slab.results['energy_std']):.3f}"
                 )
 
+            logger.info(
+                f"average force error = {float(slab.results['forces_std'].mean()):.3f}"
+            )
+
             # save cif file
             write(
-                f"{run_folder}/final_slab_run_{i+1:03}_{energy:.3f}+/-{float(slab.results['energy_std']):.3f}.cif",
+                f"{run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{float(slab.results['energy_std']):.3f}.cif",
                 slab,
             )
 
@@ -711,6 +713,10 @@ def mcmc_run(
 
             # save cif file
             write(f"{run_folder}/final_slab_run_{i+1:03}_{energy:.3f}.cif", slab)
+
+        if relax:
+            opt_slab = optimize_slab(slab, folder_name=run_folder)
+            opt_slab.write(f"{run_folder}/optim_slab_run_{i+1:03}.cif")
 
         # append values
         energy_hist[i] = energy
