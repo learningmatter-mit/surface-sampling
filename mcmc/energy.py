@@ -1,11 +1,14 @@
+import copy
 import json
 import logging
 import os
+from collections import Counter
 
 from ase import io
 from ase.optimize import BFGS
 from lammps import lammps
 from nff.io.ase import AtomsBatch
+from nff.utils.constants import HARTREE_TO_EV
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +59,7 @@ def run_lammps_opt(slab, main_dir=os.getcwd()):
     return opt_slab
 
 
-def optimize_slab(slab, optimizer="LAMMPS", **kwargs):
+def optimize_slab(slab, optimizer="BFGS", **kwargs):
     """Run relaxation for slab
 
     Parameters
@@ -78,7 +81,9 @@ def optimize_slab(slab, optimizer="LAMMPS", **kwargs):
         else:
             calc_slab = run_lammps_opt(slab)
     else:
-        calc_slab = slab.copy()
+        if type(slab) is AtomsBatch:
+            slab.update_nbr_list(update_atoms=True)
+        calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
         dyn = BFGS(calc_slab)
         dyn.run(steps=20, fmax=0.2)
@@ -90,11 +95,7 @@ def slab_energy(slab, relax=False, **kwargs):
     """Calculate slab energy."""
 
     if relax:
-        if "folder_name" in kwargs:
-            folder_name = kwargs["folder_name"]
-            slab = optimize_slab(slab, folder_name=folder_name)
-        else:
-            slab = optimize_slab(slab)
+        slab = optimize_slab(slab, **kwargs)
 
     if type(slab) is AtomsBatch:
         slab.update_nbr_list(update_atoms=True)
