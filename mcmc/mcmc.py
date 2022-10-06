@@ -680,7 +680,7 @@ def mcmc_run(
             # add in uncertainty information
             slab.update_nbr_list(update_atoms=True)
             slab.calc.calculate(slab)
-            # slab_energy(slab, **kwargs)
+            energy = float(slab.results["energy"])
 
             if not set(["O", "Sr", "Ti"]) ^ set(adsorbates):
                 ads_count = Counter(slab.get_chemical_symbols())

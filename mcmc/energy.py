@@ -101,6 +101,43 @@ def slab_energy(slab, relax=False, **kwargs):
         slab.update_nbr_list(update_atoms=True)
         slab.calc.calculate(slab)
         energy = float(slab.results["energy"])
+        if kwargs.get("offset", None):
+            ad = Counter(slab.get_chemical_symbols())
+
+            # energies in Hartrees
+            bulk_energies = {
+                "O2": -0.3549446240233763,
+                "Sr": -0.06043637668,
+                "SrTiO3": -1.470008697358702,
+            }
+
+            # for NN trained using regression
+            # coefficients in Hartrees
+            stoidict = {
+                "Ti": -0.07659555720170655,
+                "O": -0.32740424534365925,
+                "Sr": 0.5380070266179725,
+                "offset": -11.048551208254016,
+            }
+
+            # procedure is
+            # 1: to add the linear regression coeffs back in
+            ref_en = 0
+            for ele, num in ad.items():
+                ref_en += num * stoidict[ele]
+            ref_en += stoidict["offset"]
+
+            energy += ref_en * HARTREE_TO_EV
+
+            # 2: subtract the bulk energies
+            bulk_ref_en = (
+                ad["Ti"] * bulk_energies["SrTiO3"]
+                + (ad["Sr"] - ad["Ti"]) * bulk_energies["Sr"]
+                + (ad["O"] - 3 * ad["Ti"]) * bulk_energies["O2"] / 2
+            )
+
+            energy -= bulk_ref_en * HARTREE_TO_EV
+
     else:
         energy = float(slab.get_potential_energy())
 
