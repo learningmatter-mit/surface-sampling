@@ -382,6 +382,7 @@ def spin_flip(
         logger.debug(f"energy diff is {energy_diff}")
         logger.debug(f"chem pot(s) is(are) {pots}")
         logger.debug(f"delta_N {delta_N}")
+        logger.debug(f"delta pot = {delta_pot}")
         logger.debug(f"k_b T {temp}")
         base_prob = np.exp(-(energy_diff - delta_pot) / temp)
         logger.debug(f"base probability is {base_prob}")
@@ -630,6 +631,7 @@ def mcmc_run(
     site_types = set(connectivity)
 
     for i in range(num_sweeps):
+        breakpoint()
         num_accept = 0
         # simulated annealing schedule
         curr_temp = temp * alpha**i
