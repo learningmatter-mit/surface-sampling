@@ -367,7 +367,9 @@ def spin_flip(
     else:
         # use relaxation only to get lowest energy
         # but don't update adsorption positions
-        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
+        curr_energy = slab_energy(
+            slab, relax=relax, folder_name=folder_name, iter=iter, **kwargs
+        )
 
         logger.debug(f"prev energy is {prev_energy}")
         logger.debug(f"curr energy is {curr_energy}")
@@ -678,9 +680,10 @@ def mcmc_run(
 
         if type(slab) is AtomsBatch:
             # add in uncertainty information
-            slab.update_nbr_list(update_atoms=True)
-            slab.calc.calculate(slab)
-            energy = float(slab.results["energy"])
+            # slab.update_nbr_list(update_atoms=True)
+            # slab.calc.calculate(slab)
+            # energy = float(slab.results["energy"])
+            energy = slab_energy(slab, relax=relax, folder_name=run_folder, **kwargs)
 
             if not set(["O", "Sr", "Ti"]) ^ set(adsorbates):
                 ads_count = Counter(slab.get_chemical_symbols())

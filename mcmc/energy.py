@@ -85,7 +85,19 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             slab.update_nbr_list(update_atoms=True)
         calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
-        dyn = BFGS(calc_slab)
+        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+            dyn = BFGS(
+                calc_slab,
+                trajectory=os.path.join(
+                    kwargs["folder_name"],
+                    f"proposed_traj_iter_{kwargs.get('iter'):04}.traj",
+                ),
+            )
+        else:
+            dyn = BFGS(calc_slab)
+
+        # default steps is 20 and max forces are 0.2
+        # TODO set up a config file to change this
         dyn.run(steps=20, fmax=0.2)
 
     return calc_slab
@@ -113,11 +125,12 @@ def slab_energy(slab, relax=False, **kwargs):
 
             # for NN trained using regression
             # coefficients in Hartrees
+            # TODO: load dynamically
             stoidict = {
-                "Ti": -0.07659555720170655,
-                "O": -0.32740424534365925,
-                "Sr": 0.5380070266179725,
-                "offset": -11.048551208254016,
+                "O": -0.3271559007889534,
+                "Ti": -0.04475414840378172,
+                "Sr": 0.5237614431025149,
+                "offset": -11.36501335229483,
             }
 
             # procedure is
