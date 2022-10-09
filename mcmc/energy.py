@@ -1,10 +1,14 @@
+import copy
 import json
 import logging
 import os
+from collections import Counter
 
 from ase import io
 from ase.optimize import BFGS
 from lammps import lammps
+from nff.io.ase import AtomsBatch
+from nff.utils.constants import HARTREE_TO_EV
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +59,7 @@ def run_lammps_opt(slab, main_dir=os.getcwd()):
     return opt_slab
 
 
-def optimize_slab(slab, optimizer="LAMMPS", **kwargs):
+def optimize_slab(slab, optimizer="BFGS", **kwargs):
     """Run relaxation for slab
 
     Parameters
@@ -77,9 +81,23 @@ def optimize_slab(slab, optimizer="LAMMPS", **kwargs):
         else:
             calc_slab = run_lammps_opt(slab)
     else:
-        calc_slab = slab.copy()
+        if type(slab) is AtomsBatch:
+            slab.update_nbr_list(update_atoms=True)
+        calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
-        dyn = BFGS(calc_slab)
+        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+            dyn = BFGS(
+                calc_slab,
+                trajectory=os.path.join(
+                    kwargs["folder_name"],
+                    f"proposed_traj_iter_{kwargs.get('iter'):04}.traj",
+                ),
+            )
+        else:
+            dyn = BFGS(calc_slab)
+
+        # default steps is 20 and max forces are 0.2
+        # TODO set up a config file to change this
         dyn.run(steps=20, fmax=0.2)
 
     return calc_slab
@@ -89,10 +107,51 @@ def slab_energy(slab, relax=False, **kwargs):
     """Calculate slab energy."""
 
     if relax:
-        if "folder_name" in kwargs:
-            folder_name = kwargs["folder_name"]
-            slab = optimize_slab(slab, folder_name=folder_name)
-        else:
-            slab = optimize_slab(slab)
+        slab = optimize_slab(slab, **kwargs)
 
-    return slab.get_potential_energy()
+    if type(slab) is AtomsBatch:
+        slab.update_nbr_list(update_atoms=True)
+        slab.calc.calculate(slab)
+        energy = float(slab.results["energy"])
+        if kwargs.get("offset", None):
+            ad = Counter(slab.get_chemical_symbols())
+
+            # energies in Hartrees
+            bulk_energies = {
+                "O2": -0.3549446240233763,
+                "Sr": -0.06043637668,
+                "SrTiO3": -1.470008697358702,
+            }
+
+            # for NN trained using regression
+            # coefficients in Hartrees
+            # TODO: load dynamically
+            stoidict = {
+                "O": -0.3271559007889534,
+                "Ti": -0.04475414840378172,
+                "Sr": 0.5237614431025149,
+                "offset": -11.36501335229483,
+            }
+
+            # procedure is
+            # 1: to add the linear regression coeffs back in
+            ref_en = 0
+            for ele, num in ad.items():
+                ref_en += num * stoidict[ele]
+            ref_en += stoidict["offset"]
+
+            energy += ref_en * HARTREE_TO_EV
+
+            # 2: subtract the bulk energies
+            bulk_ref_en = (
+                ad["Ti"] * bulk_energies["SrTiO3"]
+                + (ad["Sr"] - ad["Ti"]) * bulk_energies["Sr"]
+                + (ad["O"] - 3 * ad["Ti"]) * bulk_energies["O2"] / 2
+            )
+
+            energy -= bulk_ref_en * HARTREE_TO_EV
+
+    else:
+        energy = float(slab.get_potential_energy())
+
+    return energy
