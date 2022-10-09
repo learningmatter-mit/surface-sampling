@@ -382,6 +382,7 @@ def spin_flip(
         logger.debug(f"energy diff is {energy_diff}")
         logger.debug(f"chem pot(s) is(are) {pots}")
         logger.debug(f"delta_N {delta_N}")
+        logger.debug(f"delta_pot_{delta_pot}")
         logger.debug(f"k_b T {temp}")
         base_prob = np.exp(-(energy_diff - delta_pot) / temp)
         logger.debug(f"base probability is {base_prob}")
@@ -601,7 +602,7 @@ class MCMC:
 
             # perform grand canonical until num_ads_atoms are obtained
             while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
-                self.state, self.slab, energy, accept = spin_flip(
+                self.state, self.slab, self.curr_energy, accept = spin_flip(
                     self.state,
                     self.slab,
                     self.temp,
@@ -629,6 +630,7 @@ class MCMC:
             energy = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
+            breakpoint()
 
             if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
                 ads_count = Counter(self.slab.get_chemical_symbols())
@@ -665,12 +667,14 @@ class MCMC:
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{self.curr_energy:.3f}.cif",
                 self.slab,
             )
+        breakpoint()
 
         if self.relax:
             opt_slab = optimize_slab(self.slab, folder_name=self.run_folder)
             opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}.cif")
 
     def mcmc_sweep(self, i=0):
+
         num_accept = 0
         # simulated annealing schedule
         curr_temp = self.temp * self.alpha**i
@@ -712,6 +716,8 @@ class MCMC:
                     filter_distance=self.filter_distance,
                 )
             num_accept += accept
+
+        breakpoint()
 
         # end of sweep; append to history
         slab_copy = copy.deepcopy(self.slab)
