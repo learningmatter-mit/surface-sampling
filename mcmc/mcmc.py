@@ -540,7 +540,7 @@ class MCMC:
         self.set_constraints()
 
         self.num_pristine_atoms = len(self.slab)
-        logger.info(f"there are {self.num_pristine_atoms} atoms ")
+        logger.info(f"there are {self.num_pristine_atoms} atoms in pristine slab")
 
         self.initialize_tags()
 
@@ -620,7 +620,7 @@ class MCMC:
 
             self.slab.write(f"{self.surface_name}_canonical_init.cif")
 
-    def save_structures(self):
+    def save_structures(self, i=0):
         if type(self.slab) is AtomsBatch:
             # add in uncertainty information
             # slab.update_nbr_list(update_atoms=True)
@@ -718,7 +718,7 @@ class MCMC:
         slab_copy.calc = None
         self.history.append(slab_copy)
 
-        self.save_structures()
+        self.save_structures(i=i)
 
         # append values
         self.energy_hist[i] = self.curr_energy
@@ -733,7 +733,7 @@ class MCMC:
         frac_accept = num_accept / self.sweep_size
         self.frac_accept_hist[i] = frac_accept
 
-    def mcmc_run(self):
+    def mcmc_run(self, num_sweeps=1000, temp=1, pot=1, alpha=0.9, slab=None):
         """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
         Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
         consists of randomly picking a site and proposing (and accept/reject) a flip (adsorption or desorption).
@@ -747,6 +747,13 @@ class MCMC:
         each site type
 
         """
+
+        self.num_sweeps = num_sweeps
+        self.temp = temp
+        self.pot = pot
+        self.alpha = alpha
+        self.slab = slab
+
         # initialize history
         self.history = []
         self.energy_hist = np.random.rand(self.num_sweeps)
