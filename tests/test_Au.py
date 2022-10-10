@@ -46,22 +46,18 @@ def test_Au_energy():
 
     # initialize object
     Au_mcmc = MCMC(
-        num_sweeps=num_sweeps,
-        temp=temp,
-        pot=chem_pot,
-        alpha=alpha,
-        slab=slab,
         calc=lammps_calc,
         element=element,
         canonical=True,
         num_ads_atoms=num_ads_atoms,
         ads_coords=ads_positions,
     )
-    (
-        history,
-        energy_hist,
-        frac_accept_hist,
-        adsorption_count_hist,
-    ) = Au_mcmc.mcmc_run()  # call the main
+    Au_mcmc.mcmc_run(
+        num_sweeps=num_sweeps,
+        temp=temp,
+        pot=chem_pot,
+        alpha=alpha,
+        slab=slab,
+    )  # call the main
 
-    assert np.allclose(energy_hist[-1], required_energy)
+    assert np.allclose(Au_mcmc.energy_hist[-1], required_energy)

@@ -35,14 +35,15 @@ def test_Cu_energy():
 
     # initialize object
     Cu_mcmc = MCMC(
+        calc=lammps_calc,
+        element=element,
+    )
+    Cu_mcmc.mcmc_run(
         num_sweeps=num_sweeps,
         temp=temp,
         pot=chem_pot,
         alpha=alpha,
         slab=slab,
-        calc=lammps_calc,
-        element=element,
     )
-    history, energy_hist, frac_accept_hist, adsorption_count_hist = Cu_mcmc.mcmc_run()
 
-    assert np.allclose(energy_hist[-1], required_energy)
+    assert np.allclose(Cu_mcmc.energy_hist[-1], required_energy)
