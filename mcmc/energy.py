@@ -143,6 +143,7 @@ def slab_energy(slab, relax=False, **kwargs):
             energy += ref_en * HARTREE_TO_EV
 
             # 2: subtract the bulk energies
+            # TODO: generalize this
             bulk_ref_en = (
                 ad["Ti"] * bulk_energies["SrTiO3"]
                 + (ad["Sr"] - ad["Ti"]) * bulk_energies["Sr"]

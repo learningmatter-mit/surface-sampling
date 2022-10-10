@@ -36,381 +36,12 @@ from .slab import (
     get_random_idx,
     initialize_slab,
 )
-from .utils import filter_distances_new
+from .utils import filter_distances, filter_distances_new
 
 # from htvs.djangochem.pgmols.utils import surfaces
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
-
-
-def spin_flip_canonical(
-    state,
-    slab,
-    temp,
-    coords,
-    connectivity,
-    prev_energy=None,
-    save_cif=False,
-    iter=1,
-    testing=False,
-    folder_name=".",
-    adsorbates=["Cu"],
-    relax=False,
-    filter_distance=0,
-    **kwargs,
-):
-    """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
-    Uses canonical ensemble, fixed number of atoms.
-
-    Parameters
-    ----------
-    state : np.array
-        dimension the number of sites
-    slab : catkit.gratoms.Gratoms
-        model of the surface slab
-    temp : float
-        temperature
-
-    Returns
-    -------
-    np.array, float
-        new state, energy change
-    """
-    if type(adsorbates) == str:
-        adsorbates = list([adsorbates])
-
-    if not prev_energy and not testing:
-        # calculate energy of current state
-        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
-
-    # choose 2 sites of different ads (empty counts too) to flip
-    site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(state, slab=slab)
-
-    # fake pots
-    pots = list(range(len(adsorbates)))
-
-    site1_coords = coords[site1_idx]
-    site2_coords = coords[site2_idx]
-
-    logger.debug(f"\n we are at iter {iter}")
-    logger.debug(
-        f"idx is {site1_idx} with connectivity {connectivity[site1_idx]} at {site1_coords}"
-    )
-    logger.debug(
-        f"idx is {site2_idx} with connectivity {connectivity[site2_idx]} at {site2_coords}"
-    )
-
-    logger.debug(f"before proposed state is")
-    logger.debug(state)
-
-    logger.debug(f"current slab has {len(slab)} atoms")
-
-    # effectively switch ads at both sites
-    slab, state, _, _, _ = change_site(
-        slab,
-        state,
-        pots,
-        adsorbates,
-        coords,
-        site1_idx,
-        start_ads=site1_ads,
-        end_ads=site2_ads,
-    )
-    slab, state, _, _, _ = change_site(
-        slab,
-        state,
-        pots,
-        adsorbates,
-        coords,
-        site2_idx,
-        start_ads=site2_ads,
-        end_ads=site1_ads,
-    )
-
-    # make sure num atoms is conserved
-    logger.debug(f"proposed slab has {len(slab)} atoms")
-
-    logger.debug(f"after proposed state is")
-    logger.debug(state)
-
-    if save_cif:
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-        write(f"{folder_name}/proposed_slab_iter_{iter:03}.cif", slab)
-
-    # to test, always accept
-    accept = False
-
-    if filter_distance:
-        energy = 0
-
-        if filter_distances_new(slab, ads=adsorbates, cutoff_distance=filter_distance):
-            # succeeds! keep already changed slab
-            logger.debug("state changed with filtering!")
-            accept = True
-        else:
-            # failed, keep current state and revert slab back to original
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site1_idx,
-                start_ads=site2_ads,
-                end_ads=site1_ads,
-            )
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site2_idx,
-                start_ads=site1_ads,
-                end_ads=site2_ads,
-            )
-
-            logger.debug("state kept the same with filtering")
-
-    elif testing:
-        # state = state.copy() # obviously inefficient but here for a reason
-        energy = 0
-    else:
-        # use relaxation only to get lowest energy
-        # but don't update adsorption positions
-        curr_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
-
-        logger.debug(f"prev energy is {prev_energy}")
-        logger.debug(f"curr energy is {curr_energy}")
-
-        # energy change due to flipping spin
-        energy_diff = curr_energy - prev_energy
-
-        # check if transition succeeds
-        logger.debug(f"energy diff is {energy_diff}")
-        logger.debug(f"k_b T {temp}")
-        base_prob = np.exp(-energy_diff / temp)
-        logger.debug(f"base probability is {base_prob}")
-
-        if np.random.rand() < base_prob:
-            # succeeds! keep already changed slab
-            # state = state.copy()
-            logger.debug("state changed!")
-            energy = curr_energy
-            accept = True
-        else:
-            # failed, keep current state and revert slab back to original
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site1_idx,
-                start_ads=site2_ads,
-                end_ads=site1_ads,
-            )
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site2_idx,
-                start_ads=site1_ads,
-                end_ads=site2_ads,
-            )
-
-            # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
-            # state, slab = remove_from_slab(slab, state, site2_idx)
-
-            logger.debug("state kept the same")
-            energy = prev_energy
-            accept = False
-
-    return state, slab, energy, accept
-
-
-def spin_flip(
-    state,
-    slab,
-    temp,
-    pots,
-    coords,
-    connectivity,
-    prev_energy=None,
-    save_cif=False,
-    iter=1,
-    site_idx=None,
-    testing=False,
-    folder_name=".",
-    adsorbates=["Cu"],
-    relax=False,
-    filter_distance=0,
-    **kwargs,
-):
-
-    """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
-    is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
-    atom from the slab and updates the state. It then calculates the energy of the new slab and compares
-    it to the energy of the old slab. If the new energy is lower, it accepts the change. If the new
-    energy is higher, it accepts the change with a probability that depends on the temperature
-
-    Parameters
-    ----------
-    state
-        the current state of the adsorption sites, which is a list of the corresponding indices in the slab.
-    slab
-        the slab object
-    temp
-        the temperature of the system
-    pot
-        the chemical potential of the adsorbate
-    coords
-        the coordinates of the adsorption sites
-    connectivity
-        a list of lists, where each list is the indices of the sites that are connected to the site at the
-    same index.
-    prev_energy
-        the energy of the slab before the spin flip
-    save_cif, optional
-        if True, will save the proposed slab to a cif file
-    iter, optional
-        the iteration number
-    site_idx
-        the index of the site to switch
-    testing, optional
-        if True, always accept the proposed state
-    folder_name, optional
-        the folder where the cif files will be saved
-    adsorbate, optional
-        the type of atom to adsorb
-    relax, optional
-        whether to relax the slab after adsorption
-
-    Returns
-    -------
-        state, slab, energy, accept
-
-    """
-
-    # choose a site to flip
-    # coords, connectivity, sym_idx = get_adsorption_sites(slab, symmetry_reduced=False)
-
-    # change int pot and adsorbate to list
-    if type(pots) == int:
-        pots = list([pots])
-    if type(adsorbates) == str:
-        adsorbates = list([adsorbates])
-
-    if not site_idx:
-        site_idx = get_random_idx(connectivity)
-    rand_site = coords[site_idx]
-
-    logger.debug(f"\n we are at iter {iter}")
-    logger.debug(
-        f"idx is {site_idx} with connectivity {connectivity[site_idx]} at {rand_site}"
-    )
-
-    # determine if site vacant or filled
-    # filled = (state > 0)[site_idx]
-    logger.debug(f"before proposed state is")
-    logger.debug(state)
-
-    # change in number of adsorbates (atoms)
-    delta_N = 0
-
-    if not prev_energy and not testing:
-        prev_energy = slab_energy(slab, relax=relax, folder_name=folder_name, **kwargs)
-
-    slab, state, delta_pot, start_ads, end_ads = change_site(
-        slab, state, pots, adsorbates, coords, site_idx, start_ads=None, end_ads=None
-    )
-
-    logger.debug(f"after proposed state is")
-    logger.debug(state)
-
-    if save_cif:
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-        write(f"{folder_name}/proposed_slab_iter_{iter:03}.cif", slab)
-
-    # to test, always accept
-    accept = False
-    if filter_distance:
-        energy = 0
-
-        if filter_distances_new(slab, ads=adsorbates, cutoff_distance=filter_distance):
-            # succeeds! keep already changed slab
-            logger.debug("state changed with filtering!")
-            accept = True
-        else:
-            # failed, keep current state and revert slab back to original
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site_idx,
-                start_ads=end_ads,
-                end_ads=start_ads,
-            )
-            logger.debug("state kept the same with filtering")
-
-    elif testing:
-        energy = 0
-        accept = True
-
-    else:
-        # use relaxation only to get lowest energy
-        # but don't update adsorption positions
-        curr_energy = slab_energy(
-            slab, relax=relax, folder_name=folder_name, iter=iter, **kwargs
-        )
-
-        logger.debug(f"prev energy is {prev_energy}")
-        logger.debug(f"curr energy is {curr_energy}")
-
-        # energy change due to flipping spin
-        energy_diff = curr_energy - prev_energy
-
-        # check if transition succeeds
-        # min(1, exp(-(\delta_E-(delta_N*pot))))
-        logger.debug(f"energy diff is {energy_diff}")
-        logger.debug(f"chem pot(s) is(are) {pots}")
-        logger.debug(f"delta_N {delta_N}")
-        logger.debug(f"delta_pot_{delta_pot}")
-        logger.debug(f"k_b T {temp}")
-        base_prob = np.exp(-(energy_diff - delta_pot) / temp)
-        logger.debug(f"base probability is {base_prob}")
-
-        if np.random.rand() < base_prob:
-            # succeeds! keep already changed slab
-            # state = state.copy()
-            logger.debug("state changed!")
-            energy = curr_energy
-            accept = True
-        else:
-            # failed, keep current state and revert slab back to original
-            slab, state, _, _, _ = change_site(
-                slab,
-                state,
-                pots,
-                adsorbates,
-                coords,
-                site_idx,
-                start_ads=end_ads,
-                end_ads=start_ads,
-            )
-
-            logger.debug("state kept the same")
-            energy = prev_energy
-            accept = False
-
-    return state, slab, energy, accept
 
 
 class MCMC:
@@ -434,7 +65,6 @@ class MCMC:
         testing=False,
         adsorbates=None,
         relax=False,
-        filter_distance=0.0,
         **kwargs,
     ) -> None:
         self.num_sweeps = num_sweeps
@@ -451,7 +81,6 @@ class MCMC:
         self.testing = testing
         self.adsorbates = adsorbates
         self.relax = relax
-        self.filter_distance = filter_distance
         self.kwargs = kwargs
 
         # initialize here for subsequent runs
@@ -511,6 +140,12 @@ class MCMC:
         if not self.adsorbates:
             self.adsorbates = self.element
         logger.info(f"adsorbate(s) is(are) {self.adsorbates}")
+
+        # change int pot and adsorbate to list
+        if type(self.pot) == int:
+            self.pot = list([self.pot])
+        if type(self.adsorbates) == str:
+            self.adsorbates = list([self.adsorbates])
 
     def initialize_tags(self):
         # initialize tags
@@ -602,22 +237,7 @@ class MCMC:
 
             # perform grand canonical until num_ads_atoms are obtained
             while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
-                self.state, self.slab, self.curr_energy, accept = spin_flip(
-                    self.state,
-                    self.slab,
-                    self.temp,
-                    self.pot,
-                    self.ads_coords,
-                    self.connectivity,
-                    prev_energy=self.curr_energy,
-                    save_cif=False,
-                    testing=self.testing,
-                    folder_name=self.run_folder,
-                    adsorbates=self.adsorbates,
-                    relax=self.relax,
-                    filter_distance=self.filter_distance,
-                    **self.kwargs,
-                )
+                self.curr_energy, accept = self.spin_flip(prev_energy=self.curr_energy)
 
             self.slab.write(f"{self.surface_name}_canonical_init.cif")
 
@@ -630,7 +250,6 @@ class MCMC:
             energy = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
-            breakpoint()
 
             if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
                 ads_count = Counter(self.slab.get_chemical_symbols())
@@ -667,61 +286,384 @@ class MCMC:
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{self.curr_energy:.3f}.cif",
                 self.slab,
             )
-        breakpoint()
 
         if self.relax:
             opt_slab = optimize_slab(self.slab, folder_name=self.run_folder)
             opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}.cif")
 
-    def mcmc_sweep(self, i=0):
+    def spin_flip_canonical(self, prev_energy=0, iter=1):
+        """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
+        Uses canonical ensemble, fixed number of atoms.
 
+        Parameters
+        ----------
+        state : np.array
+            dimension the number of sites
+        slab : catkit.gratoms.Gratoms
+            model of the surface slab
+        temp : float
+            temperature
+
+        Returns
+        -------
+        np.array, float
+            new state, energy change
+        """
+
+        if not prev_energy and not self.testing:
+            # calculate energy of current state
+            prev_energy = slab_energy(
+                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+            )
+
+        # choose 2 sites of different ads (empty counts too) to flip
+        site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
+            self.state, slab=self.slab
+        )
+
+        # fake pots
+        # pots = list(range(len(self.adsorbates)))
+
+        site1_coords = self.ads_coords[site1_idx]
+        site2_coords = self.ads_coords[site2_idx]
+
+        logger.debug(f"\n we are at iter {iter}")
+        logger.debug(
+            f"idx is {site1_idx} with connectivity {self.connectivity[site1_idx]} at {site1_coords}"
+        )
+        logger.debug(
+            f"idx is {site2_idx} with connectivity {self.connectivity[site2_idx]} at {site2_coords}"
+        )
+
+        logger.debug(f"before proposed state is")
+        logger.debug(self.state)
+
+        logger.debug(f"current slab has {len(self.slab)} atoms")
+
+        # effectively switch ads at both sites
+        self.slab, self.state, _, _, _ = change_site(
+            self.slab,
+            self.state,
+            self.pot,
+            self.adsorbates,
+            self.ads_coords,
+            site1_idx,
+            start_ads=site1_ads,
+            end_ads=site2_ads,
+        )
+        self.slab, self.state, _, _, _ = change_site(
+            self.slab,
+            self.state,
+            self.pot,
+            self.adsorbates,
+            self.ads_coords,
+            site2_idx,
+            start_ads=site2_ads,
+            end_ads=site1_ads,
+        )
+
+        # make sure num atoms is conserved
+        logger.debug(f"proposed slab has {len(self.slab)} atoms")
+
+        logger.debug(f"after proposed state is")
+        logger.debug(self.state)
+
+        if self.kwargs.get("save_cif", False):
+            if not os.path.exists(self.run_folder):
+                os.makedirs(self.run_folder)
+            write(f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif", self.slab)
+
+        # to test, always accept
+        accept = False
+
+        if self.kwargs.get("filter_distance", None):
+            filter_distance = self.kwargs["filter_distance"]
+            energy = 0
+
+            if filter_distances_new(
+                self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
+            ):
+                # succeeds! keep already changed slab
+                logger.debug("state changed with filtering!")
+                accept = True
+            else:
+                # failed, keep current state and revert slab back to original
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site1_idx,
+                    start_ads=site2_ads,
+                    end_ads=site1_ads,
+                )
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site2_idx,
+                    start_ads=site1_ads,
+                    end_ads=site2_ads,
+                )
+
+                logger.debug("state kept the same with filtering")
+
+        elif self.testing:
+            # state = state.copy() # obviously inefficient but here for a reason
+            energy = 0
+        else:
+            # use relaxation only to get lowest energy
+            # but don't update adsorption positions
+            curr_energy = slab_energy(
+                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+            )
+
+            logger.debug(f"prev energy is {prev_energy}")
+            logger.debug(f"curr energy is {curr_energy}")
+
+            # energy change due to flipping spin
+            energy_diff = curr_energy - prev_energy
+
+            # check if transition succeeds
+            logger.debug(f"energy diff is {energy_diff}")
+            logger.debug(f"k_b T {self.temp}")
+            base_prob = np.exp(-energy_diff / self.temp)
+            logger.debug(f"base probability is {base_prob}")
+
+            if np.random.rand() < base_prob:
+                # succeeds! keep already changed slab
+                # state = state.copy()
+                logger.debug("state changed!")
+                energy = curr_energy
+                accept = True
+            else:
+                # failed, keep current state and revert slab back to original
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site1_idx,
+                    start_ads=site2_ads,
+                    end_ads=site1_ads,
+                )
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site2_idx,
+                    start_ads=site1_ads,
+                    end_ads=site2_ads,
+                )
+
+                # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
+                # state, slab = remove_from_slab(slab, state, site2_idx)
+
+                logger.debug("state kept the same")
+                energy = prev_energy
+                accept = False
+
+        return energy, accept
+
+    def spin_flip(self, prev_energy=0, iter=1, site_idx=None):
+
+        """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
+        is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
+        atom from the slab and updates the state. It then calculates the energy of the new slab and compares
+        it to the energy of the old slab. If the new energy is lower, it accepts the change. If the new
+        energy is higher, it accepts the change with a probability that depends on the temperature
+
+        Parameters
+        ----------
+        state
+            the current state of the adsorption sites, which is a list of the corresponding indices in the slab.
+        slab
+            the slab object
+        temp
+            the temperature of the system
+        pot
+            the chemical potential of the adsorbate
+        coords
+            the coordinates of the adsorption sites
+        connectivity
+            a list of lists, where each list is the indices of the sites that are connected to the site at the
+        same index.
+        prev_energy
+            the energy of the slab before the spin flip
+        save_cif, optional
+            if True, will save the proposed slab to a cif file
+        iter, optional
+            the iteration number
+        site_idx
+            the index of the site to switch
+        testing, optional
+            if True, always accept the proposed state
+        folder_name, optional
+            the folder where the cif files will be saved
+        adsorbate, optional
+            the type of atom to adsorb
+        relax, optional
+            whether to relax the slab after adsorption
+
+        Returns
+        -------
+            state, slab, energy, accept
+
+        """
+        if not site_idx:
+            site_idx = get_random_idx(self.connectivity)
+        rand_site = self.ads_coords[site_idx]
+
+        logger.debug(f"\n we are at iter {iter}")
+        logger.debug(
+            f"idx is {site_idx} with connectivity {self.connectivity[site_idx]} at {rand_site}"
+        )
+
+        # determine if site vacant or filled
+        # filled = (state > 0)[site_idx]
+        logger.debug(f"before proposed state is")
+        logger.debug(self.state)
+
+        # change in number of adsorbates (atoms)
+        delta_N = 0
+
+        if not prev_energy and not self.testing:
+            prev_energy = slab_energy(
+                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+            )
+
+        self.slab, self.state, delta_pot, start_ads, end_ads = change_site(
+            self.slab,
+            self.state,
+            self.pot,
+            self.adsorbates,
+            self.ads_coords,
+            site_idx,
+            start_ads=None,
+            end_ads=None,
+        )
+
+        logger.debug(f"after proposed state is")
+        logger.debug(self.state)
+
+        if self.kwargs.get("save_cif", False):
+            if not os.path.exists(self.run_folder):
+                os.makedirs(self.run_folder)
+            write(f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif", self.slab)
+
+        # to test, always accept
+        accept = False
+        if self.kwargs.get("filter_distance", None):
+            filter_distance = self.kwargs["filter_distance"]
+            energy = 0
+
+            if filter_distances_new(
+                self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
+            ):
+                # succeeds! keep already changed slab
+                logger.debug("state changed with filtering!")
+                accept = True
+            else:
+                # failed, keep current state and revert slab back to original
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site_idx,
+                    start_ads=end_ads,
+                    end_ads=start_ads,
+                )
+                logger.debug("state kept the same with filtering")
+
+        elif self.testing:
+            energy = 0
+            accept = True
+
+        else:
+            # use relaxation only to get lowest energy
+            # but don't update adsorption positions
+            curr_energy = slab_energy(
+                self.slab,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                iter=iter,
+                **self.kwargs,
+            )
+
+            logger.debug(f"prev energy is {prev_energy}")
+            logger.debug(f"curr energy is {curr_energy}")
+
+            # energy change due to flipping spin
+            energy_diff = curr_energy - prev_energy
+
+            # check if transition succeeds
+            # min(1, exp(-(\delta_E-(delta_N*pot))))
+            logger.debug(f"energy diff is {energy_diff}")
+            logger.debug(f"chem pot(s) is(are) {self.pot}")
+            logger.debug(f"delta_N {delta_N}")
+            logger.debug(f"delta_pot_{delta_pot}")
+            logger.debug(f"k_b T {self.temp}")
+            base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+            logger.debug(f"base probability is {base_prob}")
+            # breakpoint()
+            if np.random.rand() < base_prob:
+                # succeeds! keep already changed slab
+                # state = state.copy()
+                logger.debug("state changed!")
+                energy = curr_energy
+                accept = True
+            else:
+                # failed, keep current state and revert slab back to original
+                self.slab, self.state, _, _, _ = change_site(
+                    self.slab,
+                    self.state,
+                    self.pot,
+                    self.adsorbates,
+                    self.ads_coords,
+                    site_idx,
+                    start_ads=end_ads,
+                    end_ads=start_ads,
+                )
+
+                logger.debug("state kept the same")
+                energy = prev_energy
+                accept = False
+
+            # logger.debug(f"energy after accept/reject {slab_energy(slab, relax=relax, folder_name=folder_name, iter=iter, **kwargs)}")
+        return energy, accept
+
+    def mcmc_sweep(self, i=0):
         num_accept = 0
         # simulated annealing schedule
-        curr_temp = self.temp * self.alpha**i
+        self.temp = self.temp * self.alpha
         logger.info(f"In sweep {i+1} out of {self.num_sweeps}")
         for j in range(self.sweep_size):
             # logger.info(f"In iter {j+1}")
             run_idx = self.sweep_size * i + j + 1
             if self.canonical:
-                self.state, self.slab, self.curr_energy, accept = spin_flip_canonical(
-                    self.state,
-                    self.slab,
-                    curr_temp,
-                    self.ads_coords,
-                    self.connectivity,
-                    prev_energy=self.curr_energy,
-                    save_cif=False,
-                    iter=run_idx,
-                    testing=self.testing,
-                    folder_name=self.run_folder,
-                    adsorbates=self.adsorbates,
-                    relax=self.relax,
-                    filter_distance=self.filter_distance,
+                self.curr_energy, accept = self.spin_flip_canonical(
+                    prev_energy=self.curr_energy, iter=run_idx
                 )
             else:
-                self.state, self.slab, self.curr_energy, accept = spin_flip(
-                    self.state,
-                    self.slab,
-                    curr_temp,
-                    self.pot,
-                    self.ads_coords,
-                    self.connectivity,
-                    prev_energy=self.curr_energy,
-                    save_cif=False,
-                    iter=run_idx,
-                    testing=self.testing,
-                    folder_name=self.run_folder,
-                    adsorbates=self.adsorbates,
-                    relax=self.relax,
-                    filter_distance=self.filter_distance,
+                self.curr_energy, accept = self.spin_flip(
+                    prev_energy=self.curr_energy, iter=run_idx
                 )
             num_accept += accept
 
-        breakpoint()
-
         # end of sweep; append to history
-        slab_copy = copy.deepcopy(self.slab)
-        slab_copy.calc = None
+        if type(self.slab) is AtomsBatch:
+            slab_copy = copy.deepcopy(self.slab)
+            slab_copy.calc = None
+        else:
+            slab_copy = self.slab.copy()
         self.history.append(slab_copy)
 
         self.save_structures(i=i)
