@@ -86,13 +86,18 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
         calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
         if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-            dyn = BFGS(
-                calc_slab,
-                trajectory=os.path.join(
-                    kwargs["folder_name"],
-                    f"proposed_traj_iter_{kwargs.get('iter'):04}.traj",
-                ),
-            )
+            iter = int(kwargs.get("iter"))
+            # save every 10 steps
+            if iter % 10 == 0:
+                dyn = BFGS(
+                    calc_slab,
+                    trajectory=os.path.join(
+                        kwargs["folder_name"],
+                        f"proposed_traj_iter_{iter:04}.traj",
+                    ),
+                )
+            else:
+                dyn = BFGS(calc_slab)
         else:
             dyn = BFGS(calc_slab)
 
