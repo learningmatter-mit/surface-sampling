@@ -86,13 +86,18 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
         calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
         if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-            dyn = BFGS(
-                calc_slab,
-                trajectory=os.path.join(
-                    kwargs["folder_name"],
-                    f"proposed_traj_iter_{kwargs.get('iter'):04}.traj",
-                ),
-            )
+            iter = int(kwargs.get("iter"))
+            # save every 10 steps
+            if iter % 10 == 0:
+                dyn = BFGS(
+                    calc_slab,
+                    trajectory=os.path.join(
+                        kwargs["folder_name"],
+                        f"proposed_traj_iter_{iter:04}.traj",
+                    ),
+                )
+            else:
+                dyn = BFGS(calc_slab)
         else:
             dyn = BFGS(calc_slab)
 
@@ -114,24 +119,15 @@ def slab_energy(slab, relax=False, **kwargs):
         slab.calc.calculate(slab)
         energy = float(slab.results["energy"])
         if kwargs.get("offset", None):
+            if not kwargs.get("offset_data", None):
+                raise Exception(f"No offset_data.json file specified!")
+            else:
+                with open(kwargs["offset_data"]) as f:
+                    offset_data = json.load(f)
+                bulk_energies = offset_data["bulk_energies"]
+                stoidict = offset_data["stoidict"]
+
             ad = Counter(slab.get_chemical_symbols())
-
-            # energies in Hartrees
-            bulk_energies = {
-                "O2": -0.3549446240233763,
-                "Sr": -0.06043637668,
-                "SrTiO3": -1.470008697358702,
-            }
-
-            # for NN trained using regression
-            # coefficients in Hartrees
-            # TODO: load dynamically
-            stoidict = {
-                "O": -0.3271559007889534,
-                "Ti": -0.04475414840378172,
-                "Sr": 0.5237614431025149,
-                "offset": -11.36501335229483,
-            }
 
             # procedure is
             # 1: to add the linear regression coeffs back in
@@ -143,6 +139,7 @@ def slab_energy(slab, relax=False, **kwargs):
             energy += ref_en * HARTREE_TO_EV
 
             # 2: subtract the bulk energies
+            # TODO: generalize this
             bulk_ref_en = (
                 ad["Ti"] * bulk_energies["SrTiO3"]
                 + (ad["Sr"] - ad["Ti"]) * bulk_energies["Sr"]

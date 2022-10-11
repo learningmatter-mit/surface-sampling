@@ -172,6 +172,7 @@ def change_site(
         ) * ads_pot_dict["Sr"]
         # delta_pot = (new_pot - old_pot)/2
         delta_pot = new_pot - old_pot
+        # breakpoint()
 
     return slab, state, delta_pot, start_ads, end_ads
 
