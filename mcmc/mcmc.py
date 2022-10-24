@@ -659,12 +659,16 @@ class MCMC:
             num_accept += accept
 
         # end of sweep; append to history
-        if type(self.slab) is AtomsBatch:
-            slab_copy = copy.deepcopy(self.slab)
-            slab_copy.calc = None
+        if self.relax:
+            history_slab = optimize_slab(
+                self.slab, relax_steps=self.kwargs.get("relax_steps", 20)
+            )
+        elif type(self.slab) is AtomsBatch:
+            history_slab = copy.deepcopy(self.slab)
+            history_slab.calc = None
         else:
-            slab_copy = self.slab.copy()
-        self.history.append(slab_copy)
+            history_slab = self.slab.copy()
+        self.history.append(history_slab)
 
         self.save_structures(i=i)
 
@@ -722,7 +726,8 @@ class MCMC:
 
         # perform actual mcmc sweeps
         # sweep over # sites
-        self.sweep_size = len(self.ads_coords)
+        # self.sweep_size = len(self.ads_coords)
+        self.sweep_size = 2
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"
