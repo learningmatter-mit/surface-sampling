@@ -103,7 +103,8 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
 
         # default steps is 20 and max forces are 0.2
         # TODO set up a config file to change this
-        dyn.run(steps=20, fmax=0.2)
+        steps = kwargs.get("relax_steps", 20)
+        dyn.run(steps=steps, fmax=0.2)
 
     return calc_slab
 
