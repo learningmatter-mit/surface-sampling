@@ -149,7 +149,12 @@ def slab_energy(slab, relax=False, **kwargs):
 
             energy -= bulk_ref_en * HARTREE_TO_EV
 
+        energy_std = float(slab.results["energy_std"])
+        force_std = float(slab.results["forces_std"].mean())
+
     else:
         energy = float(slab.get_potential_energy())
+        energy_std = 0.0
+        force_std = 0.0
 
-    return energy
+    return energy, energy_std, force_std

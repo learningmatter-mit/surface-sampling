@@ -221,7 +221,7 @@ class MCMC:
     def get_initial_energy(self):
         # sometimes slab.calc is fake
         if self.slab.calc:
-            energy = slab_energy(self.slab, **self.kwargs)
+            energy, _, _ = slab_energy(self.slab, **self.kwargs)
         else:
             energy = 0
 
@@ -247,9 +247,13 @@ class MCMC:
             # slab.update_nbr_list(update_atoms=True)
             # slab.calc.calculate(slab)
             # energy = float(slab.results["energy"])
-            energy = slab_energy(
+            energy, energy_std, force_std = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
+
+            assert np.allclose(
+                energy, self.curr_energy
+            ), "self.curr_energy doesn't match calculated energy of current slab"
 
             if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
                 ads_count = Counter(self.slab.get_chemical_symbols())
@@ -259,22 +263,19 @@ class MCMC:
                 ] + (ads_count["Sr"] - ads_count["Ti"]) * ads_pot_dict["Sr"]
                 energy -= delta_pot
                 logger.info(
-                    f"optim structure has Free Energy = {energy:.3f}+/-{float(self.slab.results['energy_std']):.3f}"
+                    f"optim structure has Free Energy = {energy:.3f}+/-{energy_std:.3f}"
                 )
             else:
                 # energy = float(slab.results["energy"])
                 logger.info(
-                    f"optim structure has Energy = {energy:.3f}+/-{float(self.slab.results['energy_std']):.3f}"
+                    f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}"
                 )
 
-            logger.info(
-                f"average force error = {float(self.slab.results['forces_std'].mean()):.3f}"
-            )
+            logger.info(f"average force error = {force_std:.3f}")
 
-            self.curr_energy = energy
             # save cif file
             write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{self.curr_energy:.3f}err{float(self.slab.results['energy_std']):.3f}.cif",
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}.cif",
                 self.slab,
             )
 
@@ -288,7 +289,11 @@ class MCMC:
             )
 
         if self.relax:
-            opt_slab = optimize_slab(self.slab, folder_name=self.run_folder)
+            opt_slab = optimize_slab(
+                self.slab,
+                folder_name=self.run_folder,
+                relax_steps=self.kwargs.get("relax_steps", 20),
+            )
             opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}.cif")
 
     def spin_flip_canonical(self, prev_energy=0, iter=1):
@@ -312,7 +317,7 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             # calculate energy of current state
-            prev_energy = slab_energy(
+            prev_energy, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -417,7 +422,7 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy = slab_energy(
+            curr_energy, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -534,7 +539,7 @@ class MCMC:
         delta_N = 0
 
         if not prev_energy and not self.testing:
-            prev_energy = slab_energy(
+            prev_energy, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -590,7 +595,7 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy = slab_energy(
+            curr_energy, _, _ = slab_energy(
                 self.slab,
                 relax=self.relax,
                 folder_name=self.run_folder,
@@ -663,12 +668,14 @@ class MCMC:
             history_slab = optimize_slab(
                 self.slab, relax_steps=self.kwargs.get("relax_steps", 20)
             )
+            history_slab.calc = None
         elif type(self.slab) is AtomsBatch:
             history_slab = copy.deepcopy(self.slab)
             history_slab.calc = None
         else:
             history_slab = self.slab.copy()
         self.history.append(history_slab)
+        # TODO can save some compute here
 
         self.save_structures(i=i)
 
@@ -726,8 +733,8 @@ class MCMC:
 
         # perform actual mcmc sweeps
         # sweep over # sites
-        # self.sweep_size = len(self.ads_coords)
-        self.sweep_size = 2
+        self.sweep_size = len(self.ads_coords)
+        # self.sweep_size = 2
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"
