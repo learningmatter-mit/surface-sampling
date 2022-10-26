@@ -283,26 +283,29 @@ class MCMC:
 
             # save cif file
             write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}.cif",
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.slab.get_chemical_formula()}.cif",
                 self.slab,
             )
 
         else:
-            logger.info(f"optim structure has Energy = {self.curr_energy}")
+            energy = self.curr_energy
+            logger.info(f"optim structure has Energy = {energy}")
 
             # save cif file
             write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{self.curr_energy:.3f}.cif",
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.slab.get_chemical_formula()}.cif",
                 self.slab,
             )
 
-        if self.relax:
-            opt_slab = optimize_slab(
-                self.slab,
-                folder_name=self.run_folder,
-                relax_steps=self.kwargs.get("relax_steps", 20),
-            )
-            opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}.cif")
+        # if self.relax:
+        #     opt_slab = optimize_slab(
+        #         self.slab,
+        #         folder_name=self.run_folder,
+        #         relax_steps=self.kwargs.get("relax_steps", 20),
+        #     )
+        #     opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}_{opt_slab.get_chemical_formula()}.cif")
+
+        return energy
 
     def spin_flip_canonical(self, prev_energy=0, iter=1):
         """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
@@ -685,10 +688,10 @@ class MCMC:
         self.history.append(history_slab)
         # TODO can save some compute here
 
-        self.save_structures(i=i)
+        final_energy = self.save_structures(i=i)
 
         # append values
-        self.energy_hist[i] = self.curr_energy
+        self.energy_hist[i] = final_energy
 
         ads_counts = count_adsorption_sites(self.slab, self.state, self.connectivity)
         for key in set(self.site_types):

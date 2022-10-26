@@ -108,6 +108,17 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
         steps = kwargs.get("relax_steps", 20)
         dyn.run(steps=steps, fmax=0.2)
 
+        if (
+            kwargs.get("folder_name", None)
+            and kwargs.get("iter", None)
+            and kwargs.get("save", False)
+        ):
+            # save the final frame as cif
+            iter = int(kwargs.get("iter"))
+            calc_slab.write(
+                f"{kwargs['folder_name']}/optim_slab_run_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
+            )
+
     return calc_slab
 
 
