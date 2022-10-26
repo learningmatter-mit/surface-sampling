@@ -130,7 +130,9 @@ class MCMC:
 
     def set_constraints(self):
         num_bulk_atoms = len(self.slab)
+        # constraint all the bulk atoms
         bulk_indices = list(range(num_bulk_atoms))
+        # constraint only the surface elements
 
         c = FixAtoms(indices=bulk_indices)
         self.slab.set_constraint(c)
@@ -173,7 +175,8 @@ class MCMC:
         self.slab.calc = self.calc
         logger.info(f"using slab calc {self.slab.calc}")
 
-        self.set_constraints()
+        # TODO try no constraints
+        # self.set_constraints()
 
         self.num_pristine_atoms = len(self.slab)
         logger.info(f"there are {self.num_pristine_atoms} atoms in pristine slab")
@@ -248,11 +251,16 @@ class MCMC:
             # slab.calc.calculate(slab)
             # energy = float(slab.results["energy"])
             energy, energy_std, force_std = slab_energy(
-                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                self.slab,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                iter=i + 1,
+                save=True,
+                **self.kwargs,
             )
 
             assert np.allclose(
-                energy, self.curr_energy
+                energy, self.curr_energy, atol=1e-02
             ), "self.curr_energy doesn't match calculated energy of current slab"
 
             if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
