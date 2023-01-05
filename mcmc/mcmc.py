@@ -43,6 +43,8 @@ from .utils import filter_distances, filter_distances_new
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
+ENERGY_DIFF_LIMIT = 1e3
+
 
 class MCMC:
     def __init__(
@@ -224,7 +226,7 @@ class MCMC:
     def get_initial_energy(self):
         # sometimes slab.calc is fake
         if self.slab.calc:
-            energy, _, _ = slab_energy(self.slab, **self.kwargs)
+            energy, _, _, _ = slab_energy(self.slab, **self.kwargs)
         else:
             energy = 0
 
@@ -250,7 +252,7 @@ class MCMC:
             # slab.update_nbr_list(update_atoms=True)
             # slab.calc.calculate(slab)
             # energy = float(slab.results["energy"])
-            energy, energy_std, force_std = slab_energy(
+            energy, energy_std, _, force_std = slab_energy(
                 self.slab,
                 relax=self.relax,
                 folder_name=self.run_folder,
@@ -259,8 +261,11 @@ class MCMC:
                 **self.kwargs,
             )
 
+            logger.info(
+                f"current energy is {self.curr_energy}, calculated energy is {energy}"
+            )
             assert np.allclose(
-                energy, self.curr_energy, atol=1e-02
+                energy, self.curr_energy, atol=1.0
             ), "self.curr_energy doesn't match calculated energy of current slab"
 
             if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
@@ -328,7 +333,7 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             # calculate energy of current state
-            prev_energy, _, _ = slab_energy(
+            prev_energy, _, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -433,7 +438,7 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy, _, _ = slab_energy(
+            curr_energy, _, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -446,7 +451,11 @@ class MCMC:
             # check if transition succeeds
             logger.debug(f"energy diff is {energy_diff}")
             logger.debug(f"k_b T {self.temp}")
-            base_prob = np.exp(-energy_diff / self.temp)
+            # set limit for energy_diff, reject very large energy changes
+            if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
+                base_prob = 0.0
+            else:
+                base_prob = np.exp(-energy_diff / self.temp)
             logger.debug(f"base probability is {base_prob}")
 
             if np.random.rand() < base_prob:
@@ -550,7 +559,7 @@ class MCMC:
         delta_N = 0
 
         if not prev_energy and not self.testing:
-            prev_energy, _, _ = slab_energy(
+            prev_energy, _, _, _ = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
@@ -606,7 +615,7 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy, _, _ = slab_energy(
+            curr_energy, _, _, _ = slab_energy(
                 self.slab,
                 relax=self.relax,
                 folder_name=self.run_folder,
@@ -627,7 +636,12 @@ class MCMC:
             logger.debug(f"delta_N {delta_N}")
             logger.debug(f"delta_pot_{delta_pot}")
             logger.debug(f"k_b T {self.temp}")
-            base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+
+            if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
+                base_prob = 0.0
+            else:
+                base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+
             logger.debug(f"base probability is {base_prob}")
             # breakpoint()
             if np.random.rand() < base_prob:

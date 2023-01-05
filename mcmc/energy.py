@@ -4,6 +4,7 @@ import logging
 import os
 from collections import Counter
 
+import numpy as np
 from ase import io
 from ase.optimize import BFGS
 from lammps import lammps
@@ -126,6 +127,20 @@ def slab_energy(slab, relax=False, **kwargs):
     """Calculate slab energy."""
 
     if relax:
+        # calculate without relax first
+        energy, energy_std, max_force, force_std = slab_energy(
+            slab, relax=False, **kwargs
+        )
+        # threshold for unrelaxed energy
+        UNRELAXED_ENERGY_THRESHOLD = 1000
+        UNRELAXED_MAX_FORCE_THRESHOLD = 1000
+
+        if (
+            np.abs(energy) > UNRELAXED_ENERGY_THRESHOLD
+            or max_force > UNRELAXED_MAX_FORCE_THRESHOLD
+        ):
+            energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
+            return energy, energy_std, max_force, force_std
         slab = optimize_slab(slab, **kwargs)
 
     if type(slab) is AtomsBatch:
@@ -163,11 +178,13 @@ def slab_energy(slab, relax=False, **kwargs):
             energy -= bulk_ref_en * HARTREE_TO_EV
 
         energy_std = float(slab.results["energy_std"])
+        max_force = float(np.abs(slab.results["forces"]).max())
         force_std = float(slab.results["forces_std"].mean())
 
     else:
         energy = float(slab.get_potential_energy())
         energy_std = 0.0
+        max_force = 0.0
         force_std = 0.0
 
-    return energy, energy_std, force_std
+    return energy, energy_std, max_force, force_std
