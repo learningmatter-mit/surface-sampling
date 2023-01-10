@@ -758,8 +758,8 @@ class MCMC:
 
         # perform actual mcmc sweeps
         # sweep over # sites
-        self.sweep_size = len(self.ads_coords)
-        # self.sweep_size = 2
+        # self.sweep_size = len(self.ads_coords)
+        self.sweep_size = 20
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"

@@ -86,21 +86,22 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             slab.update_nbr_list(update_atoms=True)
         calc_slab = copy.deepcopy(slab)
         calc_slab.calc = slab.calc
-        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+        if (
+            kwargs.get("folder_name", None)
+            and kwargs.get("iter", None)
+            and kwargs.get("save", False)
+        ):
             # save every 10 steps
             iter = int(kwargs.get("iter"))
             # if iter % 10 == 0:
             # save only when told to
-            if kwargs.get("save", False):
-                dyn = BFGS(
-                    calc_slab,
-                    trajectory=os.path.join(
-                        kwargs["folder_name"],
-                        f"final_slab_traj_{iter:04}.traj",
-                    ),
-                )
-            else:
-                dyn = BFGS(calc_slab)
+            dyn = BFGS(
+                calc_slab,
+                trajectory=os.path.join(
+                    kwargs["folder_name"],
+                    f"final_slab_traj_{iter:04}.traj",
+                ),
+            )
         else:
             dyn = BFGS(calc_slab)
 
@@ -139,8 +140,27 @@ def slab_energy(slab, relax=False, **kwargs):
             np.abs(energy) > UNRELAXED_ENERGY_THRESHOLD
             or max_force > UNRELAXED_MAX_FORCE_THRESHOLD
         ):
-            energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
+            logger.info("encountered energy or forces out of bounds")
+            logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
+
+            if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+                # save the final frame as cif
+                logger.info("saving this slab")
+                iter = int(kwargs.get("iter"))
+                slab.write(
+                    f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{slab.get_chemical_formula()}.cif"
+                )
+
+            # TODO: save the trajectory
+            # optimize_slab(slab, **kwargs)
+
+            # these energies or forces are out of bounds, thus
+            # we set a high energy for mcmc to reject
+            energy = UNRELAXED_ENERGY_THRESHOLD
+            # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
+
             return energy, energy_std, max_force, force_std
+
         slab = optimize_slab(slab, **kwargs)
 
     if type(slab) is AtomsBatch:
