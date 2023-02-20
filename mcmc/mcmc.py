@@ -691,7 +691,9 @@ class MCMC:
         # end of sweep; append to history
         if self.relax:
             history_slab = optimize_slab(
-                self.slab, relax_steps=self.kwargs.get("relax_steps", 20)
+                self.slab,
+                relax_steps=self.kwargs.get("relax_steps", 20),
+                optimizer=self.kwargs.get("optimizer", None),
             )
             history_slab.calc = None
         elif type(self.slab) is AtomsBatch:
@@ -758,8 +760,8 @@ class MCMC:
 
         # perform actual mcmc sweeps
         # sweep over # sites
-        # self.sweep_size = len(self.ads_coords)
-        self.sweep_size = 20
+        self.sweep_size = len(self.ads_coords)
+        # self.sweep_size = 20
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"

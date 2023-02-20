@@ -124,22 +124,26 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
     return calc_slab
 
 
-def slab_energy(slab, relax=False, **kwargs):
+def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
     """Calculate slab energy."""
+
+    # threshold for unrelaxed energy
+    UNRELAXED_ENERGY_THRESHOLD = 200
+    UNRELAXED_MAX_FORCE_THRESHOLD = 1000
+
+    ENERGY_THRESHOLD = UNRELAXED_ENERGY_THRESHOLD
+
+    MAX_FORCE_THRESHOLD = UNRELAXED_MAX_FORCE_THRESHOLD
+
+    RELAXED_ENERGY_THRESHOLD = ENERGY_THRESHOLD
 
     if relax:
         # calculate without relax first
         energy, energy_std, max_force, force_std = slab_energy(
             slab, relax=False, **kwargs
         )
-        # threshold for unrelaxed energy
-        UNRELAXED_ENERGY_THRESHOLD = 1000
-        UNRELAXED_MAX_FORCE_THRESHOLD = 1000
 
-        if (
-            np.abs(energy) > UNRELAXED_ENERGY_THRESHOLD
-            or max_force > UNRELAXED_MAX_FORCE_THRESHOLD
-        ):
+        if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
             logger.info("encountered energy or forces out of bounds")
             logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
 
@@ -156,7 +160,7 @@ def slab_energy(slab, relax=False, **kwargs):
 
             # these energies or forces are out of bounds, thus
             # we set a high energy for mcmc to reject
-            energy = UNRELAXED_ENERGY_THRESHOLD
+            energy = ENERGY_THRESHOLD
             # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
 
             return energy, energy_std, max_force, force_std
@@ -164,9 +168,19 @@ def slab_energy(slab, relax=False, **kwargs):
         slab = optimize_slab(slab, **kwargs)
 
     if type(slab) is AtomsBatch:
-        slab.update_nbr_list(update_atoms=True)
+        if update_neighbors:
+            slab.update_nbr_list(update_atoms=True)
         slab.calc.calculate(slab)
         energy = float(slab.results["energy"])
+        max_force = float(np.abs(slab.results["forces"]).max())
+
+        if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+            logger.info("encountered energy out of bounds")
+            logger.info(f"energy {energy:.3f}")
+
+            # we set a high energy for mcmc to reject
+            energy = ENERGY_THRESHOLD
+
         if kwargs.get("offset", None):
             if not kwargs.get("offset_data", None):
                 raise Exception(f"No offset_data.json file specified!")
