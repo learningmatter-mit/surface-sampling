@@ -1,4 +1,4 @@
-# surface_sampling
+# Heuristic Free (HF) Surface Sampling
 
 Use own conda env with required packages in `env.yml` or install a new conda env from that file using command
 `conda env create -f environment.yml`
@@ -21,10 +21,10 @@ export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 ```
 
 ### Main script is:
-`sgmc_surf/mcmc.py`
+`mcmc/mcmc.py`
 
 ### Example mcmc surface reconstruction for Copper (Cu) in:
-`sgmc_surf/example.ipynb`
+`tutorials/example.ipynb`
 
 ### Run the following to initialize Git `pre-commit` package:
 `pre-commit install`
