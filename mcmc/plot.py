@@ -10,23 +10,22 @@ def plot_summary_stats(
 ):
     runs = range(1, num_sweeps + 1)
 
-    # do the plots
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
-    ax[0, 0].plot(runs, energy_hist)
-    ax[0, 0].set_xlabel("Iter")
-    ax[0, 0].set_ylabel("Energy (E)")
-    ax[0, 0].set_title("Energy (E) vs Sweeps")
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4))
+    ax[0].plot(runs, energy_hist)
+    ax[0].set_xlabel("Sweep #")
+    ax[0].set_ylabel("Energy (E)")
+    ax[0].set_title("Energy (E) vs Sweeps")
 
-    ax[0, 1].plot(runs, frac_accept_hist)
-    ax[0, 1].set_xlabel("Iter")
-    ax[0, 1].set_ylabel("Fraction accepted")
-    ax[0, 1].set_title("Fraction accepted vs Sweeps")
+    ax[1].plot(runs, frac_accept_hist)
+    ax[1].set_xlabel("Sweep #")
+    ax[1].set_ylabel("Fraction accepted")
+    ax[1].set_title("Fraction accepted vs Sweeps")
 
-    ax[1, 1].plot(runs, np.array(list(adsorption_count_hist.values())).T)
-    ax[1, 1].set_xlabel("Iter")
-    ax[1, 1].set_ylabel("Adsorption count")
-    ax[1, 1].legend(adsorption_count_hist.keys())
-    ax[1, 1].set_title("Adsorption count vs Iterations")
+    ax[2].plot(runs, np.array(list(adsorption_count_hist.values())).T)
+    ax[2].set_xlabel("Sweep #")
+    ax[2].set_ylabel("Adsorption count")
+    ax[2].legend(adsorption_count_hist.keys())
+    ax[2].set_title("Adsorption count vs Sweeps")
 
     fig.tight_layout()
     fig.savefig(os.path.join(title, "summary.png"))

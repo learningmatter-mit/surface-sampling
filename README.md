@@ -35,7 +35,7 @@ The code has been tested till the XXX branch YYY revision.
 
 This package has been tested on *Linux* Ubuntu 20.04.6 LTS. It should work on many *Linux* systems.
 ### Conda environment
-The (Conda)(https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) is required. Either Miniconda or Anaconda should be installed.
+The [Conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) is required. Either Miniconda or Anaconda should be installed.
 
 Following that, the Python dependencies for the code can be installed with the following command
 ```

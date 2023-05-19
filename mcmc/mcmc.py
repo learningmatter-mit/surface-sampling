@@ -1,30 +1,19 @@
-"""Performs Semi-Grand Monte Carlo (SGMC) reconstruction of a surface.
-Produces a temperature/structure map
-"""
+"""Performs sampling of surface reconstructions using MCMC-like algorithm"""
 
 import copy
-import os
-import sys
-
-from nff.io.ase import AtomsBatch
-
-sys.path.append("/home/dux/")
-import cProfile
 import logging
+import os
 from collections import Counter, defaultdict
 from datetime import datetime
-from pstats import Stats
-from time import perf_counter
 
 import ase
 import catkit
-import matplotlib.pyplot as plt
 import numpy as np
 from ase.calculators.eam import EAM
-from ase.calculators.lammpsrun import LAMMPS
 from ase.constraints import FixAtoms
-from ase.io import read, write
+from ase.io import write
 from catkit.gen.adsorption import get_adsorption_sites
+from nff.io.ase import AtomsBatch
 
 from .energy import optimize_slab, slab_energy
 from .plot import plot_summary_stats
@@ -36,9 +25,7 @@ from .slab import (
     get_random_idx,
     initialize_slab,
 )
-from .utils import filter_distances, filter_distances_new
-
-# from htvs.djangochem.pgmols.utils import surfaces
+from .utils import filter_distances_new
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -302,14 +289,6 @@ class MCMC:
                 self.slab,
             )
 
-        # if self.relax:
-        #     opt_slab = optimize_slab(
-        #         self.slab,
-        #         folder_name=self.run_folder,
-        #         relax_steps=self.kwargs.get("relax_steps", 20),
-        #     )
-        #     opt_slab.write(f"{self.run_folder}/optim_slab_run_{i+1:03}_{opt_slab.get_chemical_formula()}.cif")
-
         return energy
 
     def spin_flip_canonical(self, prev_energy=0, iter=1):
@@ -497,7 +476,6 @@ class MCMC:
         return energy, accept
 
     def spin_flip(self, prev_energy=0, iter=1, site_idx=None):
-
         """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
         is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
         atom from the slab and updates the state. It then calculates the energy of the new slab and compares
@@ -779,11 +757,6 @@ class MCMC:
             self.run_folder,
         )
 
-        # early stopping
-        # if i > 0 and abs(energy_hist[i-1] - energy_hist[i]) < 1e-2:
-        #     return history, energy_hist, frac_accept_hist, adsorption_count_hist
-
-        # TODO don't really need these, can cancel
         return (
             self.history,
             self.energy_hist,
@@ -794,64 +767,4 @@ class MCMC:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        format="%(levelname)s:%(message)s",
-        level=logging.DEBUG,
-        datefmt="%m/%d/%Y %I:%M:%S %p",
-    )
-
-    do_profiling = True
-
-    # use EAM
-    # eam_calc = EAM(potential='Cu2.eam.fs')
-
-    # use LAMMPS
-    alloy_parameters = {
-        "pair_style": "eam/alloy",
-        "pair_coeff": ["* * cu_ag_ymwu.eam.alloy Ag"],
-    }
-    alloy_potential_file = os.path.join(
-        os.path.dirname(__file__), "cu_ag_ymwu.eam.alloy"
-    )
-    alloy_calc = LAMMPS(
-        files=[alloy_potential_file],
-        keep_tmp_files=False,
-        keep_alive=False,
-        tmp_dir="/home/dux/surface_sampling/tmp_files",
-    )
-    alloy_calc.set(**alloy_parameters)
-
-    # Au from standard cell
-    atoms = read("Ag_mp-124_conventional_standard.cif")
-    # slab, surface_atoms = surfaces.surface_from_bulk(atoms, [1, 1, 1], size=[5, 5])
-    # TODO: fix this
-    slab.write("Ag_111_5x5_pristine_slab.cif")
-
-    element = "Ag"
-    # num_ads_atoms = 16 + 8
-    adsorbate = "Cu"
-    if do_profiling:
-        with cProfile.Profile() as pr:
-            start = perf_counter()
-            # chem pot 0 to less complicate things
-            # temp in terms of kbT
-            # history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(num_sweeps=10, temp=1, pot=0, slab=slab, calc=lammps_calc, element=element, canonical=True, num_ads_atoms=num_ads_atoms)
-            history, energy_hist, frac_accept_hist, adsorption_count_hist = mcmc_run(
-                num_sweeps=1,
-                temp=1,
-                pot=0,
-                alpha=0.99,
-                slab=slab,
-                calc=alloy_calc,
-                element=element,
-                adsorbates=adsorbate,
-            )
-            stop = perf_counter()
-            logger.info(f"Time taken = {stop - start} seconds")
-
-        with open("profiling_stats.txt", "w") as stream:
-            stats = Stats(pr, stream=stream)
-            stats.strip_dirs()
-            stats.sort_stats("time")
-            stats.dump_stats(".prof_stats")
-            stats.print_stats()
+    pass
