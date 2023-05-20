@@ -9,6 +9,5 @@
 *.out
 *.data
 *.png
-*.pkl
 __pycache__/
 *tmp_files/*
