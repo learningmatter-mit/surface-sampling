@@ -9,7 +9,9 @@ from ase import io
 from ase.optimize import BFGS
 from lammps import lammps
 from nff.io.ase import AtomsBatch
-from nff.utils.constants import HARTREE_TO_EV
+from nff.utils.constants import HARTREE_TO_KCAL_MOL, EV_TO_KCAL_MOL
+
+HARTREE_TO_EV = HARTREE_TO_KCAL_MOL/EV_TO_KCAL_MOL
 
 logger = logging.getLogger(__name__)
 

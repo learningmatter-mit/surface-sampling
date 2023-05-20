@@ -52,7 +52,7 @@ Installation should take only a few minutes
 
 # Setup
 
-Add the following to `~.bashrc` or equivalent
+Add the following to `~/.bashrc` or equivalent with the appropriate paths and then `source ~/.bashrc`
 ```
 export SURFSAMPLINGDIR="/path/to/surface_sampling"
 export PYTHONPATH="$SURFSAMPLINGDIR:$PYTHONPATH"
@@ -60,6 +60,9 @@ export PYTHONPATH="$SURFSAMPLINGDIR:$PYTHONPATH"
 export LAMMPS_COMMAND="/path/to/lammps/src/lmp_serial"
 export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
 export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
+
+export NFFDIR="/path/to/NeuralForceField"
+export PYTHONPATH=$NFFDIR:$PYTHONPATH
 ```
 
 # Demo

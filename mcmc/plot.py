@@ -13,8 +13,8 @@ def plot_summary_stats(
     fig, ax = plt.subplots(1, 3, figsize=(15, 4))
     ax[0].plot(runs, energy_hist)
     ax[0].set_xlabel("Sweep #")
-    ax[0].set_ylabel("Energy (E)")
-    ax[0].set_title("Energy (E) vs Sweeps")
+    ax[0].set_ylabel("Energy (eV)")
+    ax[0].set_title("Energy (eV) vs Sweeps")
 
     ax[1].plot(runs, frac_accept_hist)
     ax[1].set_xlabel("Sweep #")
