@@ -13,22 +13,22 @@ This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samp
 
 "Machine learning-accelerated simulations enable heuristic-free surface reconstruction", by X. Du, J.K. Damewood, J.R. Lunger, R. Millan, B. Yildiz, L. Li, and R. Gómez-Bombarelli. https://doi.org/10.48550/arXiv.2305.07251
 
-Please cite use if you find this work useful. Let us know in `issues` if you encounter any problems or have any questions.
+Please cite us if you find this work useful. Let us know in `issues` if you encounter any problems or have any questions.
 
 # System requirements
 
 ## Hardware requirements
 We recommend a computer with the following specs:
 
-RAM: 16+ GB
-CPU: 4+ cores, 3 GHz/core
+- RAM: 16+ GB
+- CPU: 4+ cores, 3 GHz/core
 
 We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM. 
 
 To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU.
 
 ## Software requirements
-The code has been tested up to commit `19c518be8d822b1c8fd3e2723337876713ef1ff2` on the `master` branch.
+The code has been tested up to commit `94be1f817e660d43fe92bc724a85f5747619cc76` on the `master` branch.
 
 ### Operating system
 This package has been tested on *Linux* Ubuntu 20.04.6 LTS but we expect it to be agnostic to the *Linux* system version.
@@ -51,7 +51,7 @@ Installation might take several minutes to resolve dependencies.
 
 Add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`.
 ```
-export SURFSAMPLINGDIR="/path/to/surface_sampling"
+export SURFSAMPLINGDIR="/path/to/surface-sampling"
 export PYTHONPATH="$SURFSAMPLINGDIR:$PYTHONPATH"
 
 export LAMMPS_COMMAND="/path/to/lammps/src/lmp_serial"
