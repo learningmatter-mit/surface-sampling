@@ -66,7 +66,7 @@ export PYTHONPATH=$NFFDIR:$PYTHONPATH
 
 A toy demo and other examples can be found in the `tutorials/` folder. More data/examples can be found in our Zenodo dataset (https://doi.org/10.5281/zenodo.7758174).
 
-### Toy example of Cu(100):
+### Toy example of Cu(100)
 A toy example to illustrate the use of VSSR-MC. It should only take about a minute to run. Refer to `tutorials/example.ipynb`.
 
 ### GaN(0001) surface sampling with Tersoff potential
