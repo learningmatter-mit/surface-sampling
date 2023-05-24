@@ -4,10 +4,12 @@
 /test
 *__pycache__*
 *.pyc
+*.traj
 *.cif
 *.in
 *.out
 *.data
 *.png
+*.lammps
 __pycache__/
 *tmp_files/*

@@ -23,7 +23,7 @@ We recommend a computer with the following specs:
 - RAM: 16+ GB
 - CPU: 4+ cores, 3 GHz/core
 
-We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM. 
+We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM.
 
 To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU.
 
@@ -74,3 +74,6 @@ We explicitly generate surface sites using `pymatgen`. This example could take 1
 
 ### SrTiO3(001) surface sampling with machine learning potential
 Demonstrates the integration of VSSR-MC with a neural network force field. This example could take 10 minutes or more to run. Refer to `tutorials/SrTiO3.ipynb`.
+
+### Clustering MC-sampled surfaces in the latent space
+Retrieving the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
