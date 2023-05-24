@@ -28,7 +28,7 @@ We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB
 To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU.
 
 ## Software requirements
-The code has been tested up to commit `94be1f817e660d43fe92bc724a85f5747619cc76` on the `master` branch.
+The code has been tested up to commit `branch` on the `master` branch.
 
 ### Operating system
 This package has been tested on *Linux* Ubuntu 20.04.6 LTS but we expect it to be agnostic to the *Linux* system version.
