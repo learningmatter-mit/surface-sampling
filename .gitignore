@@ -1,7 +1,6 @@
 .DS_Store
 .pytest_cache
-*/runs*
-/test
+*runs*
 *__pycache__*
 *.pyc
 *.traj
@@ -13,3 +12,7 @@
 *.lammps
 __pycache__/
 *tmp_files/*
+
+# test file should still be committed
+!tests/resources/*.pkl
+!tests/resources/*.cif
