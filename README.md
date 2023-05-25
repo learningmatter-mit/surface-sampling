@@ -41,7 +41,7 @@ Following that, the Python dependencies for the code can be installed with the f
 conda env create -f environment.yml
 ```
 
-Installation might take several minutes to resolve dependencies.
+Installation might take 10-20 minutes to resolve dependencies.
 
 ### Additional software
 1. [LAMMPS](https://docs.lammps.org/Install.html) for classical force field optimization
