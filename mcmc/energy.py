@@ -5,13 +5,13 @@ import os
 from collections import Counter
 
 import numpy as np
-from ase import io
+import ase
 from ase.optimize import BFGS
 from lammps import lammps
 from nff.io.ase import AtomsBatch
 from nff.utils.constants import HARTREE_TO_KCAL_MOL, EV_TO_KCAL_MOL
 
-HARTREE_TO_EV = HARTREE_TO_KCAL_MOL/EV_TO_KCAL_MOL
+HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +42,13 @@ def run_lammps_opt(slab, main_dir=os.getcwd()):
             TEMPLATE.format(lammps_data_file, potential_file, *atoms, lammps_out_file)
         )
 
-    lmp = lammps()
-
-    # run the LAMMPS here
+    # run LAMMPS without too much output
+    lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
     logger.debug(lmp.file(lammps_in_file))
     lmp.close()
 
     # Read from LAMMPS out
-    opt_slab = io.read(lammps_out_file, format="lammps-data", style="atomic")
+    opt_slab = ase.io.read(lammps_out_file, format="lammps-data", style="atomic")
 
     atomic_numbers_dict = config["atomic_numbers_dict"]
     actual_atomic_numbers = [
