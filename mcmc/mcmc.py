@@ -350,6 +350,7 @@ class MCMC:
             site1_idx,
             start_ads=site1_ads,
             end_ads=site2_ads,
+            **self.kwargs,
         )
         self.slab, self.state, _, _, _ = change_site(
             self.slab,
@@ -360,6 +361,7 @@ class MCMC:
             site2_idx,
             start_ads=site2_ads,
             end_ads=site1_ads,
+            **self.kwargs,
         )
 
         # make sure num atoms is conserved
@@ -397,6 +399,7 @@ class MCMC:
                     site1_idx,
                     start_ads=site2_ads,
                     end_ads=site1_ads,
+                    **self.kwargs,
                 )
                 self.slab, self.state, _, _, _ = change_site(
                     self.slab,
@@ -407,6 +410,7 @@ class MCMC:
                     site2_idx,
                     start_ads=site1_ads,
                     end_ads=site2_ads,
+                    **self.kwargs,
                 )
 
                 logger.debug("state kept the same with filtering")
@@ -454,6 +458,7 @@ class MCMC:
                     site1_idx,
                     start_ads=site2_ads,
                     end_ads=site1_ads,
+                    **self.kwargs,
                 )
                 self.slab, self.state, _, _, _ = change_site(
                     self.slab,
@@ -464,6 +469,7 @@ class MCMC:
                     site2_idx,
                     start_ads=site1_ads,
                     end_ads=site2_ads,
+                    **self.kwargs,
                 )
 
                 # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
@@ -550,6 +556,7 @@ class MCMC:
             site_idx,
             start_ads=None,
             end_ads=None,
+            **self.kwargs,
         )
 
         logger.debug(f"after proposed state is")
@@ -583,6 +590,7 @@ class MCMC:
                     site_idx,
                     start_ads=end_ads,
                     end_ads=start_ads,
+                    **self.kwargs,
                 )
                 logger.debug("state kept the same with filtering")
 
@@ -639,6 +647,7 @@ class MCMC:
                     site_idx,
                     start_ads=end_ads,
                     end_ads=start_ads,
+                    **self.kwargs,
                 )
 
                 logger.debug("state kept the same")

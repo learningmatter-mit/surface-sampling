@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 import random
 from collections import Counter
@@ -88,7 +89,15 @@ def get_complementary_idx(state, slab):
 
 
 def change_site(
-    slab, state, pots, adsorbates, coords, site_idx, start_ads=None, end_ads=None
+    slab,
+    state,
+    pots,
+    adsorbates,
+    coords,
+    site_idx,
+    start_ads=None,
+    end_ads=None,
+    **kwargs,
 ):
     ads_pot_dict = dict(zip(adsorbates, pots))
     chosen_ads = None
@@ -162,17 +171,26 @@ def change_site(
     new_ads_count = Counter(slab.get_chemical_symbols())
 
     # make sure that Sr, Ti, O in slab
-    if not set(["O", "Sr", "Ti"]) ^ new_ads_count.keys():
-        # create custom delta_pot
-        old_pot = (old_ads_count["O"] - 3 * old_ads_count["Ti"]) * ads_pot_dict["O"] + (
-            old_ads_count["Sr"] - old_ads_count["Ti"]
-        ) * ads_pot_dict["Sr"]
-        new_pot = (new_ads_count["O"] - 3 * new_ads_count["Ti"]) * ads_pot_dict["O"] + (
-            new_ads_count["Sr"] - new_ads_count["Ti"]
-        ) * ads_pot_dict["Sr"]
-        # delta_pot = (new_pot - old_pot)/2
+    if kwargs.get("offset_data", None):
+        with open(kwargs["offset_data"]) as f:
+            offset_data = json.load(f)
+        stoics = offset_data["stoics"]
+        ref_element = offset_data["ref_element"]
+
+        old_pot = 0
+        new_pot = 0
+        for ele, _ in old_ads_count.items():
+            if ele != ref_element:
+                old_pot += (
+                    old_ads_count[ele]
+                    - stoics[ele] / stoics[ref_element] * old_ads_count[ref_element]
+                ) * ads_pot_dict[ele]
+                new_pot += (
+                    new_ads_count[ele]
+                    - stoics[ele] / stoics[ref_element] * new_ads_count[ref_element]
+                ) * ads_pot_dict[ele]
+
         delta_pot = new_pot - old_pot
-        # breakpoint()
 
     return slab, state, delta_pot, start_ads, end_ads
 

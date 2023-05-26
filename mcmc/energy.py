@@ -4,12 +4,12 @@ import logging
 import os
 from collections import Counter
 
-import numpy as np
 import ase
+import numpy as np
 from ase.optimize import BFGS
 from lammps import lammps
 from nff.io.ase import AtomsBatch
-from nff.utils.constants import HARTREE_TO_KCAL_MOL, EV_TO_KCAL_MOL
+from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 
@@ -190,6 +190,9 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
                     offset_data = json.load(f)
                 bulk_energies = offset_data["bulk_energies"]
                 stoidict = offset_data["stoidict"]
+                stoics = offset_data["stoics"]
+                ref_formula = offset_data["ref_formula"]
+                ref_element = offset_data["ref_element"]
 
             ad = Counter(slab.get_chemical_symbols())
 
@@ -203,12 +206,12 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
             energy += ref_en * HARTREE_TO_EV
 
             # 2: subtract the bulk energies
-            # TODO: generalize this
-            bulk_ref_en = (
-                ad["Ti"] * bulk_energies["SrTiO3"]
-                + (ad["Sr"] - ad["Ti"]) * bulk_energies["Sr"]
-                + (ad["O"] - 3 * ad["Ti"]) * bulk_energies["O2"] / 2
-            )
+            bulk_ref_en = ad[ref_element] * bulk_energies[ref_formula]
+            for ele, _ in ad.items():
+                if ele != ref_element:
+                    bulk_ref_en += (
+                        ad[ele] - stoics[ele] / stoics[ref_element] * ad[ref_element]
+                    ) * bulk_energies[ele]
 
             energy -= bulk_ref_en * HARTREE_TO_EV
 
