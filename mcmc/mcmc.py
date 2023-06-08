@@ -1,4 +1,4 @@
-"""Performs sampling of surface reconstructions using MCMC-like algorithm"""
+"""Performs sampling of surface reconstructions using an MCMC-based algorithm"""
 
 import copy
 import json
@@ -31,17 +31,14 @@ from .utils import filter_distances
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
-ENERGY_DIFF_LIMIT = 1e3
+ENERGY_DIFF_LIMIT = 1e3  # in eV
 
 
 class MCMC:
+    """MCMC-based class for sampling surface reconstructions."""
+
     def __init__(
         self,
-        num_sweeps=1000,
-        temp=1,
-        pot=1,
-        alpha=0.9,
-        slab=None,
         calc=EAM(
             potential=os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
@@ -57,11 +54,6 @@ class MCMC:
         relax=False,
         **kwargs,
     ) -> None:
-        self.num_sweeps = num_sweeps
-        self.temp = temp
-        self.pot = pot
-        self.alpha = alpha
-        self.slab = slab
         self.calc = calc
         self.surface_name = surface_name
         self.element = element  # review this, might not be useful
@@ -74,6 +66,17 @@ class MCMC:
         self.kwargs = kwargs
 
         # initialize here for subsequent runs
+        self.num_sweeps = 100
+        self.temp = 1.0
+        self.pot = 1.0
+        self.alpha = 1.0
+        self.slab = None
+        self.num_pristine_atoms = 0
+        self.run_folder = ""
+        self.curr_energy = 0
+        self.sweep_size = 100
+        self.state = None
+        self.connectivity = None
         self.history = None
         self.energy_hist = None
         self.adsorption_count_hist = None
@@ -87,11 +90,16 @@ class MCMC:
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
     def run(self):
+        """The function "run" calls the function "mcmc_run"."""
         self.mcmc_run()
 
     def get_adsorption_coords(self):
+        """If not already set, this function sets the absolute adsorption coordinates for a given slab and element
+        using the catkit `get_adsorption_sites` method.
+
+        """
         # get absolute adsorption coords
-        metal = catkit.gratoms.Gratoms(self.element)
+        elem = catkit.gratoms.Gratoms(self.element)
 
         if not (
             (isinstance(self.ads_coords, list) and (len(self.ads_coords) > 0))
@@ -99,14 +107,14 @@ class MCMC:
         ):
             # get ALL the adsorption sites
             # top should have connectivity 1, bridge should be 2 and hollow more like 4
-            coords, self.connectivity, sym_idx = get_adsorption_sites(
+            _, self.connectivity, _ = get_adsorption_sites(
                 self.slab, symmetry_reduced=False
             )
             self.ads_coords = get_adsorption_coords(
-                self.slab, metal, self.connectivity, debug=True
+                self.slab, elem, self.connectivity, debug=True
             )
         else:
-            # fake connectivity
+            # fake connectivity for user defined adsorption sites
             self.connectivity = np.ones(len(self.ads_coords), dtype=int)
 
         self.site_types = set(self.connectivity)
@@ -119,6 +127,10 @@ class MCMC:
         )
 
     def set_constraints(self):
+        """This function sets constraints on the atoms in a slab object, fixing the positions of bulk atoms
+        and allowing surface atoms to move.
+
+        """
         num_bulk_atoms = len(self.slab)
         # constraint all the bulk atoms
         bulk_indices = list(range(num_bulk_atoms))
@@ -128,6 +140,10 @@ class MCMC:
         self.slab.set_constraint(c)
 
     def set_adsorbates(self):
+        """This function sets the adsorbates if not defined and converts the potential and adsorbate to a list if they are
+        not already in list format.
+
+        """
         # set adsorbate
         if not self.adsorbates:
             self.adsorbates = self.element
@@ -136,12 +152,13 @@ class MCMC:
         # change int pot and adsorbate to list
         if type(self.pot) == int:
             self.pot = list([self.pot])
-        if type(self.adsorbates) == str:
+        if isinstance(self.adsorbates, str):
             self.adsorbates = list([self.adsorbates])
 
     def initialize_tags(self):
+        """This function initializes tags for surface and bulk atoms in a slab object."""
         # initialize tags
-        # set tags; 1 for surface atoms, 2 for adsorbates, 0 for others
+        # set tags; 1 for surface atoms and 0 for bulk
         if type(self.slab) is catkit.gratoms.Gratoms:
             surface_atoms = self.slab.get_surface_atoms()
             atoms_arr = np.arange(0, len(self.slab))
@@ -149,6 +166,7 @@ class MCMC:
             self.slab.set_tags(list(base_tags))
 
     def prepare_slab(self):
+        """Initializes a default slab if not supplied by user. Attaches the calculator and sets the number of pristine atoms."""
         # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
         if (
             (type(self.slab) is not catkit.gratoms.Gratoms)
@@ -165,15 +183,13 @@ class MCMC:
         self.slab.calc = self.calc
         logger.info(f"using slab calc {self.slab.calc}")
 
-        # TODO try no constraints
-        # self.set_constraints()
-
         self.num_pristine_atoms = len(self.slab)
         logger.info(f"there are {self.num_pristine_atoms} atoms in pristine slab")
 
         self.initialize_tags()
 
     def setup_folders(self):
+        """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
         # set surface_name
         if not self.surface_name:
             self.surface_name = self.element
@@ -181,20 +197,20 @@ class MCMC:
         start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         # prepare both run folders
-        self.canonical_run_folder = os.path.join(
+        canonical_run_folder = os.path.join(
             os.getcwd(),
             f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
         )
-        self.sgc_run_folder = os.path.join(
+        sgc_run_folder = os.path.join(
             os.getcwd(),
             f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
         )
 
-        # default to sgc fun folder
+        # default to semi-grand canonical run folder unless canonical is specified
         if self.canonical:
-            self.run_folder = self.canonical_run_folder
+            self.run_folder = canonical_run_folder
         else:
-            self.run_folder = self.sgc_run_folder
+            self.run_folder = sgc_run_folder
 
         if not os.path.exists(self.run_folder):
             os.makedirs(self.run_folder)
@@ -212,7 +228,16 @@ class MCMC:
         )
 
     def get_initial_energy(self):
-        # sometimes slab.calc is fake
+        """This function returns the initial energy of a slab, which is calculated using the slab_energy
+        function if the slab does not exists.
+
+        Returns
+        -------
+            The function `get_initial_energy` returns the energy of the slab calculated using the `slab_energy`
+        function if `self.slab.calc` is not `None`, otherwise it returns 0.
+
+        """
+        # sometimes slab.calc does not exists
         if self.slab.calc:
             energy, _, _, _ = slab_energy(self.slab, **self.kwargs)
         else:
@@ -221,6 +246,10 @@ class MCMC:
         return energy
 
     def prepare_canonical(self):
+        """This function prepares a canonical slab by performing semi-grand canonical adsorption runs until the
+        desired number of adsorbed atoms are obtained.
+
+        """
         if self.canonical:
             # perform canonical runs
             # adsorb num_ads_atoms
@@ -228,18 +257,27 @@ class MCMC:
                 self.num_ads_atoms > 0
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
-            # perform grand canonical until num_ads_atoms are obtained
+            # perform semi-grand canonical until num_ads_atoms are obtained
             while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
-                self.curr_energy, accept = self.spin_flip(prev_energy=self.curr_energy)
+                self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
 
             self.slab.write(f"{self.surface_name}_canonical_init.cif")
 
-    def save_structures(self, i=0):
+    def save_structures(self, i: int = 0, **kwargs):
+        """This function saves the optimized structure of a slab and calculates its energy and force error.
+
+        Parameters
+        ----------
+        i : int, optional
+            The parameter `i` is an integer that represents the iteration number. It has a default value of
+        0.
+
+        Returns
+        -------
+            the energy of the optimized structure.
+
+        """
         if type(self.slab) is AtomsBatch:
-            # add in uncertainty information
-            # slab.update_nbr_list(update_atoms=True)
-            # slab.calc.calculate(slab)
-            # energy = float(slab.results["energy"])
             energy, energy_std, _, force_std = slab_energy(
                 self.slab,
                 relax=self.relax,
@@ -280,7 +318,6 @@ class MCMC:
                     )
                 )
             else:
-                # energy = float(slab.results["energy"])
                 logger.info(
                     f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}"
                 )
@@ -305,23 +342,23 @@ class MCMC:
 
         return energy
 
-    def spin_flip_canonical(self, prev_energy=0, iter=1):
-        """Based on the Ising model, models the adsorption/desorption of atoms from surface lattice sites.
-        Uses canonical ensemble, fixed number of atoms.
+    def change_site_canonical(self, prev_energy: float = 0, iter: int = 1):
+        """This function performs a canonical sampling step. It switches the adsorption sites of two
+        adsorbates and checks if the change is energetically favorable.
 
         Parameters
         ----------
-        state : np.array
-            dimension the number of sites
-        slab : catkit.gratoms.Gratoms
-            model of the surface slab
-        temp : float
-            temperature
+        prev_energy : float, optional
+            The energy of the current state before attempting to change it. If it is not provided and the
+        `testing` flag is not set, it will be calculated using the `slab_energy` function.
+        iter : int, optional
+            An integer representing the current iteration number of the function.
 
         Returns
         -------
-        np.array, float
-            new state, energy change
+            the energy of the new slab and a boolean value indicating whether the proposed change was
+        accepted or not.
+
         """
 
         if not prev_energy and not self.testing:
@@ -330,13 +367,10 @@ class MCMC:
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
 
-        # choose 2 sites of different ads (empty counts too) to flip
+        # choose 2 sites of different ads (empty counts too) to switch
         site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
             self.state, slab=self.slab
         )
-
-        # fake pots
-        # pots = list(range(len(self.adsorbates)))
 
         site1_coords = self.ads_coords[site1_idx]
         site2_coords = self.ads_coords[site2_idx]
@@ -396,7 +430,7 @@ class MCMC:
             filter_distance = self.kwargs["filter_distance"]
             energy = 0
 
-            if filter_distances_new(
+            if filter_distances(
                 self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
             ):
                 # succeeds! keep already changed slab
@@ -430,7 +464,6 @@ class MCMC:
                 logger.debug("state kept the same with filtering")
 
         elif self.testing:
-            # state = state.copy() # obviously inefficient but here for a reason
             energy = 0
         else:
             # use relaxation only to get lowest energy
@@ -442,7 +475,7 @@ class MCMC:
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
 
-            # energy change due to flipping spin
+            # energy change due to site change
             energy_diff = curr_energy - prev_energy
 
             # check if transition succeeds
@@ -495,48 +528,24 @@ class MCMC:
 
         return energy, accept
 
-    def spin_flip(self, prev_energy=0, iter=1, site_idx=None):
-        """It takes in a slab, a state, and a temperature, and it randomly chooses a site to flip. If the site
-        is empty, it adds an atom to the slab and updates the state. If the site is filled, it removes an
-        atom from the slab and updates the state. It then calculates the energy of the new slab and compares
-        it to the energy of the old slab. If the new energy is lower, it accepts the change. If the new
-        energy is higher, it accepts the change with a probability that depends on the temperature
+    def change_site(self, prev_energy: float = 0, iter: int = 1, site_idx: int = None):
+        """This function performs a semi-grand canonical sampling iteration. It randomly chooses a site to change identity in a slab, adds or removes an atom from the site,
+        optionally performs relaxation, calculates the energy of the new slab, and accepts or rejects the change based
+        on the Boltzmann-weighted energy difference, chemical potential change, and temperature.
 
         Parameters
         ----------
-        state
-            the current state of the adsorption sites, which is a list of the corresponding indices in the slab.
-        slab
-            the slab object
-        temp
-            the temperature of the system
-        pot
-            the chemical potential of the adsorbate
-        coords
-            the coordinates of the adsorption sites
-        connectivity
-            a list of lists, where each list is the indices of the sites that are connected to the site at the
-        same index.
-        prev_energy
-            the energy of the slab before the spin flip
-        save_cif, optional
-            if True, will save the proposed slab to a cif file
-        iter, optional
-            the iteration number
-        site_idx
-            the index of the site to switch
-        testing, optional
-            if True, always accept the proposed state
-        folder_name, optional
-            the folder where the cif files will be saved
-        adsorbate, optional
-            the type of atom to adsorb
-        relax, optional
-            whether to relax the slab after adsorption
+        prev_energy : float, optional
+            the energy of the slab before the
+        iter : int, optional
+            The iteration number of the simulation.
+        site_idx : int, optional
+            Specify the index of the site to switch.
 
         Returns
         -------
-            state, slab, energy, accept
+            the energy of the new slab and a boolean value indicating whether the proposed change was
+        accepted or not.
 
         """
         if not site_idx:
@@ -548,9 +557,7 @@ class MCMC:
             f"idx is {site_idx} with connectivity {self.connectivity[site_idx]} at {rand_site}"
         )
 
-        # determine if site vacant or filled
-        # filled = (state > 0)[site_idx]
-        logger.debug(f"before proposed state is")
+        logger.debug("before proposed state is")
         logger.debug(self.state)
 
         # change in number of adsorbates (atoms)
@@ -573,7 +580,7 @@ class MCMC:
             **self.kwargs,
         )
 
-        logger.debug(f"after proposed state is")
+        logger.debug("after proposed state is")
         logger.debug(self.state)
 
         if self.kwargs.get("save_cif", False):
@@ -587,7 +594,7 @@ class MCMC:
             filter_distance = self.kwargs["filter_distance"]
             energy = 0
 
-            if filter_distances_new(
+            if filter_distances(
                 self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
             ):
                 # succeeds! keep already changed slab
@@ -626,7 +633,7 @@ class MCMC:
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
 
-            # energy change due to flipping spin
+            # energy change due to site change
             energy_diff = curr_energy - prev_energy
 
             # check if transition succeeds
@@ -643,7 +650,6 @@ class MCMC:
                 base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
 
             logger.debug(f"base probability is {base_prob}")
-            # breakpoint()
             if np.random.rand() < base_prob:
                 # succeeds! keep already changed slab
                 # state = state.copy()
@@ -671,25 +677,35 @@ class MCMC:
             # logger.debug(f"energy after accept/reject {slab_energy(slab, relax=relax, folder_name=folder_name, iter=iter, **kwargs)}")
         return energy, accept
 
-    def mcmc_sweep(self, i=0):
+    def mcmc_sweep(self, i: int = 0):
+        """This function performs a Monte Carlo sweep and saves the resulting structures, energies, and adsorption site counts
+        to a history.
+
+        Parameters
+        ----------
+        i, optional
+            The parameter "i" is an optional integer argument that represents the current sweep number in the
+            MCMC simulation. It is used to keep track of the progress of the simulation and to append the
+            results to the appropriate indices in the output arrays.
+
+        """
         num_accept = 0
         # simulated annealing schedule
         self.temp = self.temp * self.alpha
         logger.info(f"In sweep {i+1} out of {self.num_sweeps}")
         for j in range(self.sweep_size):
-            # logger.info(f"In iter {j+1}")
             run_idx = self.sweep_size * i + j + 1
             if self.canonical:
-                self.curr_energy, accept = self.spin_flip_canonical(
+                self.curr_energy, accept = self.change_site_canonical(
                     prev_energy=self.curr_energy, iter=run_idx
                 )
             else:
-                self.curr_energy, accept = self.spin_flip(
+                self.curr_energy, accept = self.change_site(
                     prev_energy=self.curr_energy, iter=run_idx
                 )
             num_accept += accept
 
-        # end of sweep; append to history
+        # end of sweep, append to history
         if self.relax:
             history_slab = optimize_slab(
                 self.slab,
@@ -705,7 +721,7 @@ class MCMC:
         self.history.append(history_slab)
         # TODO can save some compute here
 
-        final_energy = self.save_structures(i=i)
+        final_energy = self.save_structures(i=i, **self.kwargs)
 
         # append values
         self.energy_hist[i] = final_energy
@@ -720,18 +736,40 @@ class MCMC:
         frac_accept = num_accept / self.sweep_size
         self.frac_accept_hist[i] = frac_accept
 
-    def mcmc_run(self, num_sweeps=1000, temp=1, pot=1, alpha=0.9, slab=None):
-        """Performs MCMC sweep with given parameters, initializing with a random slab if not given an input.
-        Each sweep is defined as running a number of trials equal to the number adsorption sites. Each trial
-        consists of randomly picking a site and proposing (and accept/reject) a flip (adsorption or desorption).
-        Only the resulting slab after one sweep is appended to the history. Corresponding observables are
-        calculated also after each run.
+    def mcmc_run(
+        self,
+        num_sweeps: int = 1000,
+        temp: float = 1.0,
+        pot: float or list = 1.0,
+        alpha: float = 0.9,
+        slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
+    ):
+        """This function runs an MC simulation for a given number of sweeps and temperature, and
+        returns the history of the simulation along with summary statistics.
+
+        Parameters
+        ----------
+        num_sweeps : int, optional
+            The number of MCMC sweeps to perform.
+        temp : float, optional
+            The temperature parameter is used in the Metropolis-Hastings algorithm for MC simulations.
+            It controls the probability of accepting a proposed move during the simulation. A higher temperature
+            leads to a higher probability of accepting a move, while a lower temperature leads to a lower probability
+            of accepting a move.
+        pot : float or list, optional
+            The chemical potential used in the simulation. The chemical potential can be a single value for one adsorbate or a list
+            of values for each adsorbate type.
+        alpha : float, optional
+            The alpha parameter is a value between 0 and 1 that determines the annealing rate. A higher
+            alpha results in a slower annealing rate, while a lower alpha results in a faster annealing rate.
+        slab : ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch, optional
+            The `slab` is the starting surface structure on which the MC simulation is
+            being performed.
 
         Returns
         -------
-            history is a list of slab objects, energy_hist is a list of energies, frac_accept_hist is a list of
-        fraction of accepted moves, adsorption_count_hist is a dictionary of lists of adsorption counts for
-        each site type
+            a tuple containing `self.history`, `self.energy_hist`, `self.frac_accept_hist`,
+        `self.adsorption_count_hist`, and `self.run_folder`.
 
         """
 
@@ -759,7 +797,6 @@ class MCMC:
 
         self.prepare_canonical()
 
-        # perform actual mcmc sweeps
         # sweep over # sites
         self.sweep_size = len(self.ads_coords)
         # self.sweep_size = 20
