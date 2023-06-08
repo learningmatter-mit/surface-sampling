@@ -170,7 +170,6 @@ def change_site(
 
     new_ads_count = Counter(slab.get_chemical_symbols())
 
-    # make sure that Sr, Ti, O in slab
     if kwargs.get("offset_data", None):
         with open(kwargs["offset_data"]) as f:
             offset_data = json.load(f)

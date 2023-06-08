@@ -1,6 +1,7 @@
 """Performs sampling of surface reconstructions using MCMC-like algorithm"""
 
 import copy
+import json
 import logging
 import os
 from collections import Counter, defaultdict
@@ -255,15 +256,28 @@ class MCMC:
                 energy, self.curr_energy, atol=1.0
             ), "self.curr_energy doesn't match calculated energy of current slab"
 
-            if not set(["O", "Sr", "Ti"]) ^ set(self.adsorbates):
-                ads_count = Counter(self.slab.get_chemical_symbols())
+            if kwargs.get("offset_data", None):
                 ads_pot_dict = dict(zip(self.adsorbates, self.pot))
-                delta_pot = (ads_count["O"] - 3 * ads_count["Ti"]) * ads_pot_dict[
-                    "O"
-                ] + (ads_count["Sr"] - ads_count["Ti"]) * ads_pot_dict["Sr"]
-                energy -= delta_pot
+                ads_count = Counter(self.slab.get_chemical_symbols())
+
+                with open(kwargs["offset_data"]) as f:
+                    offset_data = json.load(f)
+                stoics = offset_data["stoics"]
+                ref_element = offset_data["ref_element"]
+
+                pot = 0
+                for ele, _ in ads_count.items():
+                    if ele != ref_element:
+                        pot += (
+                            ads_count[ele]
+                            - stoics[ele] / stoics[ref_element] * ads_count[ref_element]
+                        ) * ads_pot_dict[ele]
+
+                energy -= pot
                 logger.info(
-                    f"optim structure has Free Energy = {energy:.3f}+/-{energy_std:.3f}"
+                    "optim structure has Free Energy = {:.3f}+/-{:.3f}".format(
+                        energy, energy_std
+                    )
                 )
             else:
                 # energy = float(slab.results["energy"])
