@@ -25,7 +25,7 @@ from .slab import (
     get_random_idx,
     initialize_slab,
 )
-from .utils import filter_distances_new
+from .utils import filter_distances
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
