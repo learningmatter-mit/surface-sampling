@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
+LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
+# LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
 class MCMC:
@@ -277,16 +279,15 @@ class MCMC:
             the energy of the optimized structure.
 
         """
+        energy, energy_std, _, force_std = slab_energy(
+            self.slab,
+            relax=self.relax,
+            folder_name=self.run_folder,
+            iter=i + 1,
+            save=True,
+            **self.kwargs,
+        )
         if type(self.slab) is AtomsBatch:
-            energy, energy_std, _, force_std = slab_energy(
-                self.slab,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                iter=i + 1,
-                save=True,
-                **self.kwargs,
-            )
-
             logger.info(
                 f"current energy is {self.curr_energy}, calculated energy is {energy}"
             )
@@ -705,10 +706,23 @@ class MCMC:
                 )
             num_accept += accept
 
+            # save low energy structure
+
+            if self.curr_energy < LOW_ENERGY_THRESHOLD:
+                optimized_slab = optimize_slab(
+                    self.slab,
+                    optimizer=self.kwargs["optimizer"],
+                    kim_potential=self.kwargs.get("kim_potential", None),
+                )
+                optimized_slab.write(
+                    f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
+                )
+
         # end of sweep, append to history
         if self.relax:
             history_slab = optimize_slab(
                 self.slab,
+                kim_potential=self.kwargs.get("kim_potential", None),
                 relax_steps=self.kwargs.get("relax_steps", 20),
                 optimizer=self.kwargs.get("optimizer", None),
             )
