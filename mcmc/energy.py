@@ -12,11 +12,16 @@ from nff.io.ase import AtomsBatch
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
+# threshold for unrelaxed energy
+# keep it at 100 eV above expected lowest energy
+UNRELAXED_ENERGY_THRESHOLD = -350  # for Si(111) 5x5 in eV
+# UNRELAXED_ENERGY_THRESHOLD = 0  # for Si(111) 3x3 in eV
+UNRELAXED_MAX_FORCE_THRESHOLD = 1000
 
 logger = logging.getLogger(__name__)
 
 
-def run_lammps_opt(slab, main_dir=os.getcwd()):
+def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
     curr_dir = os.getcwd()
 
     # config file is assumed to be stored in the folder you run lammps
@@ -38,9 +43,15 @@ def run_lammps_opt(slab, main_dir=os.getcwd()):
     TEMPLATE = open(f"{curr_dir}/lammps_template.txt", "r").read()
     # write lammps.in file
     with open(lammps_in_file, "w") as f:
-        f.writelines(
-            TEMPLATE.format(lammps_data_file, potential_file, *atoms, lammps_out_file)
-        )
+        # if using KIM potential
+        if kwargs.get("kim_potential", False):
+            f.writelines(TEMPLATE.format(lammps_data_file, lammps_out_file))
+        else:
+            f.writelines(
+                TEMPLATE.format(
+                    lammps_data_file, potential_file, *atoms, lammps_out_file
+                )
+            )
 
     # run LAMMPS without too much output
     lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
@@ -79,13 +90,15 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
     if "LAMMPS" in optimizer:
         if "folder_name" in kwargs:
             folder_name = kwargs["folder_name"]
-            calc_slab = run_lammps_opt(slab, main_dir=folder_name)
+            calc_slab = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
         else:
-            calc_slab = run_lammps_opt(slab)
+            calc_slab = run_lammps_opt(slab, **kwargs)
     else:
         if type(slab) is AtomsBatch:
             slab.update_nbr_list(update_atoms=True)
-        calc_slab = copy.deepcopy(slab)
+            calc_slab = copy.deepcopy(slab)
+        else:
+            calc_slab = slab.copy()
         calc_slab.calc = slab.calc
         if (
             kwargs.get("folder_name", None)
@@ -106,31 +119,27 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
         else:
             dyn = BFGS(calc_slab)
 
-        # default steps is 20 and max forces are 0.2
+        # default steps is 20 and max forces are 0.01
         # TODO set up a config file to change this
         steps = kwargs.get("relax_steps", 20)
-        dyn.run(steps=steps, fmax=0.2)
+        dyn.run(steps=steps, fmax=0.01)
 
-        if (
-            kwargs.get("folder_name", None)
-            and kwargs.get("iter", None)
-            and kwargs.get("save", False)
-        ):
-            # save the final frame as cif
-            iter = int(kwargs.get("iter"))
-            calc_slab.write(
-                f"{kwargs['folder_name']}/optim_slab_run_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
-            )
+    if (
+        kwargs.get("folder_name", None)
+        and kwargs.get("iter", None)
+        and kwargs.get("save", False)
+    ):
+        # save the final frame as cif
+        iter = int(kwargs.get("iter"))
+        calc_slab.write(
+            f"{kwargs['folder_name']}/optim_slab_run_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
+        )
 
     return calc_slab
 
 
 def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
     """Calculate slab energy."""
-
-    # threshold for unrelaxed energy
-    UNRELAXED_ENERGY_THRESHOLD = 200
-    UNRELAXED_MAX_FORCE_THRESHOLD = 1000
 
     ENERGY_THRESHOLD = UNRELAXED_ENERGY_THRESHOLD
 
@@ -144,7 +153,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
             slab, relax=False, **kwargs
         )
 
-        if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+        if energy > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
             logger.info("encountered energy or forces out of bounds")
             logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
 
