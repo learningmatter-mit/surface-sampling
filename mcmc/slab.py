@@ -99,6 +99,43 @@ def change_site(
     end_ads=None,
     **kwargs,
 ):
+    """The `change_site` function takes in various parameters related to a surface slab and adsorbates, and
+    performs operations to change the adsorption state of a specific site on the slab.
+
+    Parameters
+    ----------
+    slab
+        The `slab` parameter represents the slab structure on which the adsorption/desorption is being
+    performed. It is typically a `pymatgen` `Structure` object.
+    state
+        The `state` parameter is a list that represents the current state of the adsorption sites on the
+    slab. Each element in the list corresponds to a site on the slab, and the value of the element
+    indicates the adsorbate occupying that site. A value of 0 indicates an empty site.
+    pots
+        The `pots` parameter is a list of potentials corresponding to each adsorbate in the `adsorbates`
+    list. It is used to assign a potential to each adsorbate when adsorbing it onto the slab.
+    adsorbates
+        A list of adsorbate species that can be adsorbed onto the slab surface.
+    coords
+        The `coords` parameter is a list of coordinates representing the positions of the adsorbates on the
+    slab. Each coordinate is a tuple of three values (x, y, z) representing the position in
+    three-dimensional space.
+    site_idx
+        The `site_idx` parameter represents the index of the site on the slab where the adsorption or
+    desorption will take place.
+    start_ads
+        The `start_ads` parameter is used to specify the initial adsorbate on the site before the function
+    is called. It is an optional parameter and its default value is `None`.
+    end_ads
+        The `end_ads` parameter is used to specify the adsorbate that will be adsorbed on the chosen site.
+    If `end_ads` is not provided, a random adsorbate will be chosen from the available options.
+
+    Returns
+    -------
+        The function `change_site` returns multiple values: `slab`, `state`, `delta_pot`, `start_ads`, and
+    `end_ads`.
+
+    """
     ads_pot_dict = dict(zip(adsorbates, pots))
     chosen_ads = None
 
