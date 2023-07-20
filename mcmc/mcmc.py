@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
-LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
+LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
+# LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
@@ -241,7 +242,9 @@ class MCMC:
         """
         # sometimes slab.calc does not exists
         if self.slab.calc:
-            energy, _, _, _ = slab_energy(self.slab, **self.kwargs)
+            energy, _, _, _ = slab_energy(
+                self.slab, folder_name=self.run_folder, **self.kwargs
+            )
         else:
             energy = 0
 
@@ -253,15 +256,52 @@ class MCMC:
 
         """
         if self.canonical:
+            # new method to adsorb evenly
+            # change_site(
+            #     self.slab,
+            #     state,
+            #     pots,
+            #     adsorbates,
+            #     coords,
+            #     site_idx,
+            #     start_ads=None,
+            #     end_ads=None,
+            # )
+
+            # self.slab,
+            # self.state,
+            # self.pot,
+            # self.adsorbates,
+            # self.ads_coords,
+            # site_idx,
+            # start_ads=None,
+            # end_ads=None,
+
             # perform canonical runs
             # adsorb num_ads_atoms
             assert (
                 self.num_ads_atoms > 0
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
+            # new method to adsorb evenly
+            # select subset of sites to adsorb
+            # starting_sites = (
+            #     np.linspace(0, len(self.ads_coords), self.num_ads_atoms)
+            #     .astype(np.int)
+            #     .tolist()
+            # )
+            # print("canonical starting sites are", starting_sites)
+            # import itertools
+
+            # site_iterator = itertools.cycle(starting_sites)
 
             # perform semi-grand canonical until num_ads_atoms are obtained
             while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
                 self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
+
+                # site_idx = next(site_iterator)
+                # self.curr_energy, _ = self.change_site(
+                #     prev_energy=self.curr_energy, site_idx=site_idx
+                # )
 
             self.slab.write(f"{self.surface_name}_canonical_init.cif")
 
@@ -709,10 +749,11 @@ class MCMC:
             # save low energy structure
 
             if self.curr_energy < LOW_ENERGY_THRESHOLD:
-                optimized_slab = optimize_slab(
+                optimized_slab, _ = optimize_slab(
                     self.slab,
                     optimizer=self.kwargs["optimizer"],
                     kim_potential=self.kwargs.get("kim_potential", None),
+                    folder_name=self.run_folder,
                 )
                 optimized_slab.write(
                     f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
@@ -720,11 +761,12 @@ class MCMC:
 
         # end of sweep, append to history
         if self.relax:
-            history_slab = optimize_slab(
+            history_slab, _ = optimize_slab(
                 self.slab,
                 kim_potential=self.kwargs.get("kim_potential", None),
                 relax_steps=self.kwargs.get("relax_steps", 20),
                 optimizer=self.kwargs.get("optimizer", None),
+                folder_name=self.run_folder,
             )
             history_slab.calc = None
         elif type(self.slab) is AtomsBatch:
@@ -813,7 +855,7 @@ class MCMC:
 
         # sweep over # sites
         self.sweep_size = len(self.ads_coords)
-        # self.sweep_size = 20
+        # self.sweep_size = 5
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"
