@@ -7,27 +7,31 @@ from collections import Counter
 import ase
 import numpy as np
 from ase.optimize import BFGS
-from lammps import lammps
+from lammps import LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR, lammps
 from nff.io.ase import AtomsBatch
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
 # keep it at 100 eV above expected lowest energy
-UNRELAXED_ENERGY_THRESHOLD = -350  # for Si(111) 5x5 in eV
-# UNRELAXED_ENERGY_THRESHOLD = 0  # for Si(111) 3x3 in eV
+# UNRELAXED_ENERGY_THRESHOLD = -300  # for Si(111) 5x5 in eV
+UNRELAXED_ENERGY_THRESHOLD = 0  # for Si(111) 3x3 in eV
 UNRELAXED_MAX_FORCE_THRESHOLD = 1000
 
 logger = logging.getLogger(__name__)
+curr_dir = os.getcwd()
+OPT_TEMPLATE = open(f"{curr_dir}/lammps_opt_template.txt", "r").read()
+ENERGY_TEMPLATE = open(f"{curr_dir}/lammps_energy_template.txt", "r").read()
 
 
-def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
+def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **kwargs):
     curr_dir = os.getcwd()
 
     # config file is assumed to be stored in the folder you run lammps
     config = json.load(open(f"{curr_dir}/lammps_config.json"))
     potential_file = config["potential_file"]
     atoms = config["atoms"]
+    bulk_index = config["bulk_index"]
 
     # define necessary file locations
     lammps_data_file = f"{main_dir}/lammps.data"
@@ -40,36 +44,59 @@ def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
         lammps_data_file, format="lammps-data", units="real", atom_style="atomic"
     )
 
-    TEMPLATE = open(f"{curr_dir}/lammps_template.txt", "r").read()
     # write lammps.in file
     with open(lammps_in_file, "w") as f:
         # if using KIM potential
         if kwargs.get("kim_potential", False):
-            f.writelines(TEMPLATE.format(lammps_data_file, lammps_out_file))
+            f.writelines(
+                lammps_template.format(lammps_data_file, bulk_index, lammps_out_file)
+            )
         else:
             f.writelines(
-                TEMPLATE.format(
-                    lammps_data_file, potential_file, *atoms, lammps_out_file
+                lammps_template.format(
+                    lammps_data_file,
+                    bulk_index,
+                    potential_file,
+                    *atoms,
+                    lammps_out_file,
                 )
             )
 
     # run LAMMPS without too much output
     lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
     logger.debug(lmp.file(lammps_in_file))
+
+    energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
     lmp.close()
 
     # Read from LAMMPS out
-    opt_slab = ase.io.read(lammps_out_file, format="lammps-data", style="atomic")
+    new_slab = ase.io.read(lammps_out_file, format="lammps-data", style="atomic")
 
     atomic_numbers_dict = config["atomic_numbers_dict"]
     actual_atomic_numbers = [
-        atomic_numbers_dict[str(x)] for x in opt_slab.get_atomic_numbers()
+        atomic_numbers_dict[str(x)] for x in new_slab.get_atomic_numbers()
     ]
 
-    opt_slab.set_atomic_numbers(actual_atomic_numbers)
-    opt_slab.calc = slab.calc
+    new_slab.set_atomic_numbers(actual_atomic_numbers)
+    new_slab.calc = slab.calc
 
-    return opt_slab
+    return energy, new_slab
+
+
+def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
+    energy, opt_slab = run_lammps_calc(
+        slab, main_dir=main_dir, lammps_template=OPT_TEMPLATE, **kwargs
+    )
+    print(f"slab energy in relaxation: {energy}")
+    return opt_slab, energy
+
+
+def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
+    energy, _ = run_lammps_calc(
+        slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
+    )
+    print(f"slab energy in engrad: {energy}")
+    return energy
 
 
 def optimize_slab(slab, optimizer="BFGS", **kwargs):
@@ -90,10 +117,11 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
     if "LAMMPS" in optimizer:
         if "folder_name" in kwargs:
             folder_name = kwargs["folder_name"]
-            calc_slab = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
+            calc_slab, energy = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
         else:
-            calc_slab = run_lammps_opt(slab, **kwargs)
+            calc_slab, energy = run_lammps_opt(slab, **kwargs)
     else:
+        energy = None
         if type(slab) is AtomsBatch:
             slab.update_nbr_list(update_atoms=True)
             calc_slab = copy.deepcopy(slab)
@@ -135,7 +163,7 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             f"{kwargs['folder_name']}/optim_slab_run_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
         )
 
-    return calc_slab
+    return calc_slab, energy
 
 
 def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
@@ -146,36 +174,38 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
     MAX_FORCE_THRESHOLD = UNRELAXED_MAX_FORCE_THRESHOLD
 
     RELAXED_ENERGY_THRESHOLD = ENERGY_THRESHOLD
+    energy = 0.0
 
     if relax:
         # calculate without relax first
-        energy, energy_std, max_force, force_std = slab_energy(
-            slab, relax=False, **kwargs
-        )
+        # print(f"\ncalculating energy without relax")
+        # energy, energy_std, max_force, force_std = slab_energy(
+        #     slab, relax=False, **kwargs
+        # )
 
-        if energy > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
-            logger.info("encountered energy or forces out of bounds")
-            logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
+        # if energy > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+        #     logger.info("encountered energy or forces out of bounds")
+        #     logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
 
-            if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-                # save the final frame as cif
-                logger.info("saving this slab")
-                iter = int(kwargs.get("iter"))
-                slab.write(
-                    f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{slab.get_chemical_formula()}.cif"
-                )
+        #     if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+        #         # save the final frame as cif
+        #         logger.info("saving this slab")
+        #         iter = int(kwargs.get("iter"))
+        #         slab.write(
+        #             f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{slab.get_chemical_formula()}.cif"
+        #         )
 
-            # TODO: save the trajectory
-            # optimize_slab(slab, **kwargs)
+        #     # TODO: save the trajectory
+        #     # optimize_slab(slab, **kwargs)
 
-            # these energies or forces are out of bounds, thus
-            # we set a high energy for mcmc to reject
-            energy = ENERGY_THRESHOLD
-            # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
+        #     # these energies or forces are out of bounds, thus
+        #     # we set a high energy for mcmc to reject
+        #     energy = ENERGY_THRESHOLD
+        #     # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
 
-            return energy, energy_std, max_force, force_std
-
-        slab = optimize_slab(slab, **kwargs)
+        #     return energy, energy_std, max_force, force_std
+        print(f"performing relaxation")
+        slab, energy = optimize_slab(slab, **kwargs)
 
     if type(slab) is AtomsBatch:
         if update_neighbors:
@@ -228,10 +258,18 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         max_force = float(np.abs(slab.results["forces"]).max())
         force_std = float(slab.results["forces_std"].mean())
 
+    elif kwargs.get("optimizer", None) == "LAMMPS":
+        # BAD Code i know
+        # energy would have already been calculated
+        # folder_name = kwargs.get("folder_name", None)
+        # energy = run_lammps_energy(slab, main_dir=folder_name, **kwargs)
+        energy_std = 0.0
+        max_force = 0.0
+        force_std = 0.0
+
     else:
         energy = float(slab.get_potential_energy())
         energy_std = 0.0
         max_force = 0.0
         force_std = 0.0
-
     return energy, energy_std, max_force, force_std
