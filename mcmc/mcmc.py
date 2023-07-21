@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
-LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
-# LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
+# LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
+LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
@@ -69,7 +69,12 @@ class MCMC:
         self.kwargs = kwargs
 
         # initialize here for subsequent runs
-        self.num_sweeps = 100
+        self.total_sweeps = 800
+        self.start_temp = 1.0
+        self.peak_scale = 1 / 2
+        self.ramp_up_sweeps = 10
+        self.ramp_down_sweeps = 200
+
         self.temp = 1.0
         self.pot = 1.0
         self.alpha = 1.0
@@ -202,11 +207,11 @@ class MCMC:
         # prepare both run folders
         canonical_run_folder = os.path.join(
             os.getcwd(),
-            f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
+            f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
         )
         sgc_run_folder = os.path.join(
             os.getcwd(),
-            f"{self.surface_name}/runs{self.num_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
+            f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
         )
 
         # default to semi-grand canonical run folder unless canonical is specified
@@ -227,7 +232,7 @@ class MCMC:
         )
 
         logger.info(
-            f"Running with num_sweeps = {self.num_sweeps}, temp = {self.temp}, pot = {self.pot}, alpha = {self.alpha}"
+            f"Running with num_sweeps = {self.total_sweeps}, temp = {self.temp}, pot = {self.pot}, alpha = {self.alpha}"
         )
 
     def get_initial_energy(self):
@@ -731,9 +736,7 @@ class MCMC:
 
         """
         num_accept = 0
-        # simulated annealing schedule
-        self.temp = self.temp * self.alpha
-        logger.info(f"In sweep {i+1} out of {self.num_sweeps}")
+        logger.info(f"In sweep {i+1} out of {self.total_sweeps}")
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
             if self.canonical:
@@ -794,8 +797,11 @@ class MCMC:
 
     def mcmc_run(
         self,
-        num_sweeps: int = 1000,
-        temp: float = 1.0,
+        peak_scale: float = 1 / 2,
+        ramp_up_sweeps: int = 10,
+        ramp_down_sweeps: int = 200,
+        total_sweeps: int = 800,
+        start_temp: float = 1.0,
         pot: float or list = 1.0,
         alpha: float = 0.9,
         slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
@@ -829,17 +835,20 @@ class MCMC:
 
         """
 
-        self.num_sweeps = num_sweeps
-        self.temp = temp
+        self.total_sweeps = total_sweeps
+        self.start_temp = start_temp
+        self.peak_scale = peak_scale
+        self.ramp_up_sweeps = ramp_up_sweeps
+        self.ramp_down_sweeps = ramp_down_sweeps
         self.pot = pot
         self.alpha = alpha
         self.slab = slab
 
         # initialize history
         self.history = []
-        self.energy_hist = np.random.rand(self.num_sweeps)
+        self.energy_hist = np.random.rand(self.total_sweeps)
         self.adsorption_count_hist = defaultdict(list)
-        self.frac_accept_hist = np.random.rand(self.num_sweeps)
+        self.frac_accept_hist = np.random.rand(self.total_sweeps)
 
         self.setup_folders()
 
@@ -858,10 +867,19 @@ class MCMC:
         # self.sweep_size = 5
 
         logger.info(
-            f"running for {self.sweep_size} iterations per run over a total of {self.num_sweeps} runs"
+            f"running for {self.sweep_size} iterations per run over a total of {self.total_sweeps} runs"
         )
 
-        for i in range(self.num_sweeps):
+        # new parameters
+        # self.start_temp
+        # self.peak_scale
+        # self.ramp_up_sweeps
+        # self.ramp_down_sweeps
+        # self.total_sweeps
+        temp_list = self.create_anneal_schedule()
+
+        for i in range(self.total_sweeps):
+            self.temp = temp_list[i]
             self.mcmc_sweep(i=i)
 
         # plot and save the results
@@ -869,7 +887,7 @@ class MCMC:
             self.energy_hist,
             self.frac_accept_hist,
             self.adsorption_count_hist,
-            self.num_sweeps,
+            self.total_sweeps,
             self.run_folder,
         )
 
@@ -880,6 +898,36 @@ class MCMC:
             self.adsorption_count_hist,
             self.run_folder,
         )
+
+    def create_anneal_schedule(self):
+        temp_list = [self.temp]
+
+        curr_sweep = 1
+        curr_temp = self.start_temp
+        while curr_sweep < self.total_sweeps:
+            for i in range(self.ramp_down_sweeps):
+                # simulated annealing schedule
+                curr_temp = curr_temp * self.alpha
+                temp_list.append(curr_temp)
+                curr_sweep += 1
+
+            self.start_temp *= self.peak_scale
+            # ramp up
+            temp_list.extend(
+                np.linspace(curr_temp, self.start_temp, self.ramp_up_sweeps).tolist()
+            )
+            curr_temp = self.start_temp  # reset to new start temp
+
+            curr_sweep += self.ramp_up_sweeps
+        temp_list = temp_list[: self.total_sweeps]
+
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.plot(temp_list)
+        plt.savefig(f"{self.run_folder}/annealing_schedule.png")
+
+        return temp_list
 
 
 if __name__ == "__main__":
