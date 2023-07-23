@@ -7,7 +7,13 @@ from collections import Counter
 import ase
 import numpy as np
 from ase.optimize import BFGS
-from lammps import LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR, lammps
+from lammps import (
+    LMP_STYLE_ATOM,
+    LMP_STYLE_GLOBAL,
+    LMP_TYPE_SCALAR,
+    LMP_TYPE_VECTOR,
+    lammps,
+)
 from nff.io.ase import AtomsBatch
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
@@ -64,9 +70,14 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
 
     # run LAMMPS without too much output
     lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
+    # lmp = lammps()
     logger.debug(lmp.file(lammps_in_file))
 
     energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
+    pe_per_atom = lmp.extract_compute("pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR)
+    pe_per_atom = np.ctypeslib.as_array(
+        pe_per_atom, shape=(len(slab),)
+    )  # convert to numpy array
     lmp.close()
 
     # Read from LAMMPS out
@@ -80,11 +91,11 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
     new_slab.set_atomic_numbers(actual_atomic_numbers)
     new_slab.calc = slab.calc
 
-    return energy, new_slab
+    return energy, pe_per_atom, new_slab
 
 
 def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
-    energy, opt_slab = run_lammps_calc(
+    energy, pe_per_atom, opt_slab = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=OPT_TEMPLATE, **kwargs
     )
     print(f"slab energy in relaxation: {energy}")
@@ -92,11 +103,11 @@ def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
 
 
 def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
-    energy, _ = run_lammps_calc(
+    energy, pe_per_atom, _ = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
     )
     print(f"slab energy in engrad: {energy}")
-    return energy
+    return energy, pe_per_atom
 
 
 def optimize_slab(slab, optimizer="BFGS", **kwargs):
@@ -176,6 +187,8 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
     RELAXED_ENERGY_THRESHOLD = ENERGY_THRESHOLD
     energy = 0.0
 
+    pe_per_atom = []
+
     if relax:
         # calculate without relax first
         # print(f"\ncalculating energy without relax")
@@ -206,6 +219,11 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         #     return energy, energy_std, max_force, force_std
         print(f"performing relaxation")
         slab, energy = optimize_slab(slab, **kwargs)
+
+    if kwargs.get("require_per_atom_energies", False):
+        _, pe_per_atom = run_lammps_energy(
+            slab, main_dir=kwargs.get("folder_name", None), **kwargs
+        )
 
     if type(slab) is AtomsBatch:
         if update_neighbors:
@@ -272,4 +290,4 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         energy_std = 0.0
         max_force = 0.0
         force_std = 0.0
-    return energy, energy_std, max_force, force_std
+    return energy, energy_std, max_force, force_std, pe_per_atom

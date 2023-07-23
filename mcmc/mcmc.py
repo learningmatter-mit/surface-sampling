@@ -33,7 +33,7 @@ file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
 # LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
-LOW_ENERGY_THRESHOLD = -745  # for Si(111) 5x5 in eV
+LOW_ENERGY_THRESHOLD = -749  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
@@ -89,6 +89,8 @@ class MCMC:
         self.energy_hist = None
         self.adsorption_count_hist = None
         self.frac_accept_hist = None
+
+        self.per_atom_energies = []
 
         if self.canonical:
             # perform canonical runs
@@ -247,9 +249,9 @@ class MCMC:
         """
         # sometimes slab.calc does not exists
         if self.slab.calc:
-            energy, _, _, _ = slab_energy(
-                self.slab, folder_name=self.run_folder, **self.kwargs
-            )
+            results = slab_energy(self.slab, folder_name=self.run_folder, **self.kwargs)
+            energy = results[0]
+            self.per_atom_energies = results[-1]
         else:
             energy = 0
 
@@ -308,7 +310,9 @@ class MCMC:
                 #     prev_energy=self.curr_energy, site_idx=site_idx
                 # )
 
-            self.slab.write(f"{self.surface_name}_canonical_init.cif")
+            self.slab.write(
+                os.path.join(os.getcwd(), f"{self.surface_name}_canonical_init.cif")
+            )
 
     def save_structures(self, i: int = 0, **kwargs):
         """This function saves the optimized structure of a slab and calculates its energy and force error.
@@ -324,7 +328,7 @@ class MCMC:
             the energy of the optimized structure.
 
         """
-        energy, energy_std, _, force_std = slab_energy(
+        energy, energy_std, _, force_std, _ = slab_energy(
             self.slab,
             relax=self.relax,
             folder_name=self.run_folder,
@@ -409,13 +413,20 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             # calculate energy of current state
-            prev_energy, _, _, _ = slab_energy(
+            results = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
+            prev_energy = results[0]
+            self.per_atom_energies = results[-1]
 
         # choose 2 sites of different ads (empty counts too) to switch
         site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
-            self.state, slab=self.slab
+            self.state,
+            slab=self.slab,
+            require_per_atom_energies=self.kwargs.get(
+                "require_per_atom_energies", False
+            ),
+            per_atom_energies=self.per_atom_energies,
         )
 
         site1_coords = self.ads_coords[site1_idx]
@@ -514,9 +525,12 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy, _, _, _ = slab_energy(
+
+            results = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
+            curr_energy = results[0]
+            self.per_atom_energies = results[-1]
 
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
@@ -610,10 +624,11 @@ class MCMC:
         delta_N = 0
 
         if not prev_energy and not self.testing:
-            prev_energy, _, _, _ = slab_energy(
+            results = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
-
+            prev_energy = results[0]
+            self.per_atom_energies = results[-1]
         self.slab, self.state, delta_pot, start_ads, end_ads = change_site(
             self.slab,
             self.state,
@@ -668,13 +683,15 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            curr_energy, _, _, _ = slab_energy(
+            results = slab_energy(
                 self.slab,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 iter=iter,
                 **self.kwargs,
             )
+            curr_energy = results[0]
+            self.per_atom_energies = results[-1]
 
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
@@ -928,7 +945,6 @@ class MCMC:
         fig, ax = plt.subplots()
         ax.plot(temp_list)
         plt.savefig(f"{self.run_folder}/annealing_schedule.png")
-
         return temp_list
 
 

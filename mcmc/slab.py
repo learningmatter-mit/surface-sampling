@@ -9,6 +9,8 @@ import numpy as np
 from ase.build import bulk
 from ase.io import write
 
+from mcmc.energy import run_lammps_energy
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,9 +67,21 @@ def get_random_idx(connectivity, type=None):
     return site_idx
 
 
-def get_complementary_idx(state, slab):
-    """Get two indices, site1 occupied and site2 unoccupied."""
+def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs):
+    """Get two indices, site1 and site2 of different elemental identities."""
     adsorbed_idx = np.argwhere(state != 0).flatten()
+
+    # TODO use per_site energies
+    # optimized_slab, _ = optimize_slab(
+    #     self.slab,
+    #     optimizer=self.kwargs["optimizer"],
+
+    #     folder_name=self.run_folder,
+    # )
+    # optimized_slab.write(
+    #     f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
+    # )
+    per_atom_energies = kwargs.get("per_atom_energies", None)
 
     # select adsorbates present in slab
     curr_ads = {
@@ -78,12 +92,47 @@ def get_complementary_idx(state, slab):
     empty_idx = np.argwhere(state == 0).flatten().tolist()
     curr_ads["None"] = empty_idx
     logger.debug(f"current ads {curr_ads}")
+    # breakpoint()
+
+    if require_per_atom_energies:
+        if per_atom_energies is None:
+            raise ValueError(
+                "require_per_atom_energies is True, but no per_atom_energies were provided"
+            )
+        print("in `get_complementary_idx` using per atom energies")
+        # TODO might want to change the "temperature"
+        temp = 0.4
+        boltzmann_weights = np.exp(per_atom_energies / temp) / np.sum(
+            np.exp(per_atom_energies / temp)
+        )
+        # breakpoint()
+        # creat weights for each adsorbate except empty sites
+        weights = {
+            k: boltzmann_weights[state[v]] if k != "None" else np.ones_like(v)
+            for k, v in curr_ads.items()
+        }
+    else:
+        # all uniform weights
+        weights = {k: np.ones_like(v) for k, v in curr_ads.items()}
 
     # choose two types
     type1, type2 = random.sample(curr_ads.keys(), 2)
 
     # get random idx belonging to those types
-    site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
+    # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
+    # breakpoint()
+    # print(f"curr_ads type1 are: {curr_ads[type1]}")
+    # print(f"weights type1 are: {weights[type1]}")
+
+    # print(f"curr_ads type2 are: {curr_ads[type2]}")
+    # print(f"weights type2 are: {weights[type2]}")
+    site1_idx, site2_idx = [
+        random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
+    ]
+    slab_idx_1, slab_idx_2 = state[site1_idx], state[site2_idx]
+    print(f"type1 {type1}, type2 {type2}")
+    print(f"site1_idx {slab_idx_1}, site2_idx {slab_idx_2}")
+    print(f"coordinates are {slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]]}")
 
     return site1_idx, site2_idx, type1, type2
 
