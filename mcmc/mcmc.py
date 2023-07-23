@@ -910,8 +910,10 @@ class MCMC:
                 curr_temp = curr_temp * self.alpha
                 temp_list.append(curr_temp)
                 curr_sweep += 1
-
-            self.start_temp *= self.peak_scale
+            if self.start_temp >= 1.0:
+                self.start_temp *= self.peak_scale
+            else:
+                self.start_temp -= 0.1
             # ramp up
             temp_list.extend(
                 np.linspace(curr_temp, self.start_temp, self.ramp_up_sweeps).tolist()
