@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import os
+import pickle as pkl
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -33,7 +34,7 @@ file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
 # LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
-LOW_ENERGY_THRESHOLD = -749  # for Si(111) 5x5 in eV
+LOW_ENERGY_THRESHOLD = -750  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
@@ -79,6 +80,7 @@ class MCMC:
         self.pot = 1.0
         self.alpha = 1.0
         self.slab = None
+
         self.num_pristine_atoms = 0
         self.run_folder = ""
         self.curr_energy = 0
@@ -129,12 +131,18 @@ class MCMC:
 
         self.site_types = set(self.connectivity)
 
-        # state of each vacancy in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
-        self.state = np.zeros(len(self.ads_coords), dtype=int)
-
         logger.info(
             f"In pristine slab, there are a total of {len(self.ads_coords)} sites"
         )
+
+    def initialize_state(self):
+        # state of each adsorption site in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
+        if not (
+            (isinstance(self.state, list) and (len(self.state) > 0))
+            or isinstance(self.state, np.ndarray)
+        ):
+            self.state = np.zeros(len(self.ads_coords), dtype=int)
+        logger.info(f"initial state is {self.state}")
 
     def set_constraints(self):
         """This function sets constraints on the atoms in a slab object, fixing the positions of bulk atoms
@@ -193,9 +201,9 @@ class MCMC:
         self.slab.calc = self.calc
         logger.info(f"using slab calc {self.slab.calc}")
 
-        self.num_pristine_atoms = len(self.slab)
-        logger.info(f"there are {self.num_pristine_atoms} atoms in pristine slab")
-
+        self.slab.write(os.path.join(self.run_folder, "starting_slab.cif"))
+        # with open(os.path.join(self.run_folder, "starting_slab.pkl")) as f:
+        #     pkl.dump(self.slab, f)
         self.initialize_tags()
 
     def setup_folders(self):
@@ -247,9 +255,11 @@ class MCMC:
         function if `self.slab.calc` is not `None`, otherwise it returns 0.
 
         """
-        # sometimes slab.calc does not exists
+        # sometimes slab.calc does not exist
         if self.slab.calc:
-            results = slab_energy(self.slab, folder_name=self.run_folder, **self.kwargs)
+            results = slab_energy(
+                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+            )
             energy = results[0]
             self.per_atom_energies = results[-1]
         else:
@@ -311,7 +321,7 @@ class MCMC:
                 # )
 
             self.slab.write(
-                os.path.join(os.getcwd(), f"{self.surface_name}_canonical_init.cif")
+                os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
             )
 
     def save_structures(self, i: int = 0, **kwargs):
@@ -374,11 +384,18 @@ class MCMC:
 
             logger.info(f"average force error = {force_std:.3f}")
 
-            # save cif file
+            # save cif and pkl file
             write(
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.slab.get_chemical_formula()}.cif",
                 self.slab,
             )
+            save_slab = self.slab.copy()
+            save_slab.calc = None
+            with open(
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.slab.get_chemical_formula()}.pkl",
+                "wb",
+            ) as f:
+                pkl.dump(save_slab, f)
 
         else:
             energy = self.curr_energy
@@ -389,6 +406,13 @@ class MCMC:
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.slab.get_chemical_formula()}.cif",
                 self.slab,
             )
+            save_slab = self.slab.copy()
+            save_slab.calc = None
+            with open(
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.slab.get_chemical_formula()}.pkl",
+                "wb",
+            ) as f:
+                pkl.dump(save_slab, f)
 
         return energy
 
@@ -427,6 +451,7 @@ class MCMC:
                 "require_per_atom_energies", False
             ),
             per_atom_energies=self.per_atom_energies,
+            temp=self.temp,
         )
 
         site1_coords = self.ads_coords[site1_idx]
@@ -525,13 +550,11 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-
             results = slab_energy(
                 self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
             )
             curr_energy = results[0]
             self.per_atom_energies = results[-1]
-
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
 
@@ -778,6 +801,11 @@ class MCMC:
                 optimized_slab.write(
                     f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
                 )
+                with open(
+                    f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.pkl",
+                    "wb",
+                ) as f:
+                    pkl.dump(optimized_slab, f)
 
         # end of sweep, append to history
         if self.relax:
@@ -822,6 +850,8 @@ class MCMC:
         pot: float or list = 1.0,
         alpha: float = 0.9,
         slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
+        state: list or np.ndarray = None,
+        num_pristine_atoms: int = 0,
     ):
         """This function runs an MC simulation for a given number of sweeps and temperature, and
         returns the history of the simulation along with summary statistics.
@@ -860,6 +890,13 @@ class MCMC:
         self.pot = pot
         self.alpha = alpha
         self.slab = slab
+        self.state = state
+
+        if num_pristine_atoms == 0:
+            self.num_pristine_atoms = len(self.slab)
+        else:
+            self.num_pristine_atoms = num_pristine_atoms
+        logger.info("there are %d atoms in pristine slab", self.num_pristine_atoms)
 
         # initialize history
         self.history = []
@@ -875,13 +912,15 @@ class MCMC:
 
         self.get_adsorption_coords()
 
+        self.initialize_state()
+
         self.curr_energy = self.get_initial_energy()
 
         self.prepare_canonical()
 
         # sweep over # sites
-        self.sweep_size = len(self.ads_coords)
-        # self.sweep_size = 5
+        # self.sweep_size = len(self.ads_coords)
+        self.sweep_size = 300
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.total_sweeps} runs"
@@ -917,7 +956,7 @@ class MCMC:
         )
 
     def create_anneal_schedule(self):
-        temp_list = [self.temp]
+        temp_list = [self.start_temp]
 
         curr_sweep = 1
         curr_temp = self.start_temp
