@@ -106,7 +106,7 @@ def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
     energy, pe_per_atom, _ = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
     )
-    print(f"slab energy in engrad: {energy}")
+    # print(f"slab energy in engrad: {energy}")
     return energy, pe_per_atom
 
 
