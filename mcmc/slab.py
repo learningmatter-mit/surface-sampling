@@ -93,6 +93,7 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
     curr_ads["None"] = empty_idx
     logger.debug(f"current ads {curr_ads}")
     # breakpoint()
+    from scipy.special import softmax
 
     if require_per_atom_energies:
         if per_atom_energies is None:
@@ -101,10 +102,9 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
             )
         print("in `get_complementary_idx` using per atom energies")
         # TODO might want to change the "temperature"
-        temp = 0.4
-        boltzmann_weights = np.exp(per_atom_energies / temp) / np.sum(
-            np.exp(per_atom_energies / temp)
-        )
+        temp = kwargs.get("temp", 0.5)  # in terms of eV
+        print(f"temp is {temp}")
+        boltzmann_weights = softmax(per_atom_energies / temp)
         # breakpoint()
         # creat weights for each adsorbate except empty sites
         weights = {
