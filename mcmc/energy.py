@@ -74,10 +74,13 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
     logger.debug(lmp.file(lammps_in_file))
 
     energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
-    pe_per_atom = lmp.extract_compute("pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR)
-    pe_per_atom = np.ctypeslib.as_array(
-        pe_per_atom, shape=(len(slab),)
-    )  # convert to numpy array
+    if "opt" in lammps_template:
+        pe_per_atom = []
+    else:
+        pe_per_atom = lmp.extract_compute("pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR)
+        pe_per_atom = np.ctypeslib.as_array(
+            pe_per_atom, shape=(len(slab),)
+        )  # convert to numpy array
     lmp.close()
 
     # Read from LAMMPS out
