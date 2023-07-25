@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
-# LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
-LOW_ENERGY_THRESHOLD = -750  # for Si(111) 5x5 in eV
+LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
+# LOW_ENERGY_THRESHOLD = -750  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
 
@@ -212,23 +212,24 @@ class MCMC:
         if not self.surface_name:
             self.surface_name = self.element
 
-        start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        if not self.run_folder:
+            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        # prepare both run folders
-        canonical_run_folder = os.path.join(
-            os.getcwd(),
-            f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
-        )
-        sgc_run_folder = os.path.join(
-            os.getcwd(),
-            f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
-        )
+            # prepare both run folders
+            canonical_run_folder = os.path.join(
+                os.getcwd(),
+                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
+            )
+            sgc_run_folder = os.path.join(
+                os.getcwd(),
+                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
+            )
 
-        # default to semi-grand canonical run folder unless canonical is specified
-        if self.canonical:
-            self.run_folder = canonical_run_folder
-        else:
-            self.run_folder = sgc_run_folder
+            # default to semi-grand canonical run folder unless canonical is specified
+            if self.canonical:
+                self.run_folder = canonical_run_folder
+            else:
+                self.run_folder = sgc_run_folder
 
         if not os.path.exists(self.run_folder):
             os.makedirs(self.run_folder)
@@ -852,6 +853,9 @@ class MCMC:
         slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
         state: list or np.ndarray = None,
         num_pristine_atoms: int = 0,
+        anneal_schedule: list = None,
+        run_folder: str = None,
+        starting_iteration: list = 0
     ):
         """This function runs an MC simulation for a given number of sweeps and temperature, and
         returns the history of the simulation along with summary statistics.
@@ -881,6 +885,8 @@ class MCMC:
         `self.adsorption_count_hist`, and `self.run_folder`.
 
         """
+        if run_folder:
+            self.run_folder = run_folder
 
         self.total_sweeps = total_sweeps
         self.start_temp = start_temp
@@ -925,16 +931,19 @@ class MCMC:
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.total_sweeps} runs"
         )
-
         # new parameters
         # self.start_temp
         # self.peak_scale
         # self.ramp_up_sweeps
         # self.ramp_down_sweeps
         # self.total_sweeps
-        temp_list = self.create_anneal_schedule()
+        if type(anneal_schedule) == list or type(anneal_schedule) == np.ndarray :
+            temp_list = anneal_schedule
+        else:
+            temp_list = self.create_anneal_schedule()
 
-        for i in range(self.total_sweeps):
+        logger.info(f"starting with iteration {starting_iteration}")
+        for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
             self.mcmc_sweep(i=i)
 
@@ -983,7 +992,10 @@ class MCMC:
 
         fig, ax = plt.subplots()
         ax.plot(temp_list)
-        plt.savefig(f"{self.run_folder}/annealing_schedule.png")
+        plt.savefig(f"{self.run_folder}/anneal_schedule.png")
+        with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
+            f.write(",".join([str(temp) for temp in temp_list]))
+        
         return temp_list
 
 
