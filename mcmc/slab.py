@@ -101,10 +101,12 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
                 "require_per_atom_energies is True, but no per_atom_energies were provided"
             )
         print("in `get_complementary_idx` using per atom energies")
+        print(f"per atom energies are {per_atom_energies}")
         # TODO might want to change the "temperature"
         temp = kwargs.get("temp", 0.5)  # in terms of eV
         print(f"temp is {temp}")
         boltzmann_weights = softmax(per_atom_energies / temp)
+        print(f"boltzmann weights are {boltzmann_weights}")
         # breakpoint()
         # creat weights for each adsorbate except empty sites
         weights = {
@@ -121,13 +123,21 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
     # get random idx belonging to those types
     # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
     # breakpoint()
-    # print(f"curr_ads type1 are: {curr_ads[type1]}")
-    # print(f"weights type1 are: {weights[type1]}")
+    print(f"curr_ads type1 are: {curr_ads[type1]}")
+    print(f"weights type1 are: {weights[type1]}")
 
-    # print(f"curr_ads type2 are: {curr_ads[type2]}")
-    # print(f"weights type2 are: {weights[type2]}")
+    print(f"curr_ads type2 are: {curr_ads[type2]}")
+    print(f"weights type2 are: {weights[type2]}")
+
+    # Checking if the weights are valid, and if not, replace them with an array of ones.
+    weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+    weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
+
+    # site1_idx, site2_idx = [
+    #     random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
+    # ]
     site1_idx, site2_idx = [
-        random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
+        random.choices(curr_ads[x], weights=w, k=1)[0] for x, w in zip([type1, type2], [weights1, weights2])
     ]
     slab_idx_1, slab_idx_2 = state[site1_idx], state[site2_idx]
     print(f"type1 {type1}, type2 {type2}")
