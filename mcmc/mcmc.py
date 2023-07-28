@@ -311,15 +311,48 @@ class MCMC:
             # import itertools
 
             # site_iterator = itertools.cycle(starting_sites)
-
-            # perform semi-grand canonical until num_ads_atoms are obtained
-            while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
-                self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
-
-                # site_idx = next(site_iterator)
-                # self.curr_energy, _ = self.change_site(
-                #     prev_energy=self.curr_energy, site_idx=site_idx
+            if even_adsorption_sites:
+                logger.info("evenly adsorbing sites")
+                # Method 1
+                # sites_idx = np.linspace(0, len(self.ads_coords)-1, self.num_ads_atoms).astype(    
+                #     np.int
                 # )
+
+                # Method 2
+                # analytically determine the centroids
+                cell_lengths = self.slab.get_cell_lengths_and_angles()[0:3]
+                x = np.linspace(0, cell_lengths[0]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
+                y = np.linspace(0, cell_lengths[1]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
+                xx, yy = np.meshgrid(x, y)
+                centroids = np.vstack([xx.ravel(), yy.ravel()]).T
+                # sort by first coordinate then second
+                sorted_coords = np.array(sorted(self.ads_coords, key=lambda x: (x[0], x[1])))
+                # TBD
+
+                # then find the closest points to the centroids
+                closest_points_indices = cdist(self.ads_coords[:, :2], centroids).argmin(axis=0)
+                sites_idx = np.random.choice(closest_points_indices, size=self.num_ads_atoms, replace=False)
+
+                # Method 3
+                # do clustering
+                centers, labels = get_cluster_centers(self.ads_coords[:, :2], self.num_ads_atoms)
+                sites_idx = find_closest_points_indices(self.ads_coords[:, :2], centers, labels)
+                plot_clustering_results(self.ads_coords, self.num_ads_atoms, labels, sites_idx, save_folder=self.run_folder,)
+
+                for site_idx in sites_idx:
+                    self.curr_energy, _ = self.change_site(
+                        prev_energy=self.curr_energy, site_idx=site_idx
+                    )
+            else:
+                logger.info("randomly adsorbing sites")
+                # perform semi-grand canonical until num_ads_atoms are obtained
+                while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
+                    self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
+
+                    # site_idx = next(site_iterator)
+                    # self.curr_energy, _ = self.change_site(
+                    #     prev_energy=self.curr_energy, site_idx=site_idx
+                    # )
 
             self.slab.write(
                 os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
