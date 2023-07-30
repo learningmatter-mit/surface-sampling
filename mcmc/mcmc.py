@@ -16,6 +16,8 @@ from ase.constraints import FixAtoms
 from ase.io import write
 from catkit.gen.adsorption import get_adsorption_sites
 from nff.io.ase import AtomsBatch
+from scipy.spatial.distance import cdist
+from scipy.special import softmax
 
 from .energy import optimize_slab, slab_energy
 from .plot import plot_summary_stats
@@ -27,13 +29,13 @@ from .slab import (
     get_random_idx,
     initialize_slab,
 )
-from .utils import filter_distances
+from .utils import filter_distances, get_cluster_centers, find_closest_points_indices, plot_clustering_results, compute_distance_weight_matrix, plot_distance_weight_matrix, plot_decay_curve
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
-LOW_ENERGY_THRESHOLD = -1500  # for Si(111) 7x7 in eV
+LOW_ENERGY_THRESHOLD = -1490  # for Si(111) 7x7 in eV
 # LOW_ENERGY_THRESHOLD = -750  # for Si(111) 5x5 in eV
 # LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
 
@@ -56,6 +58,7 @@ class MCMC:
         testing=False,
         adsorbates=None,
         relax=False,
+        distance_weight_matrix=None,
         **kwargs,
     ) -> None:
         self.calc = calc
@@ -63,7 +66,8 @@ class MCMC:
         self.element = element  # review this, might not be useful
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms
-        self.ads_coords = ads_coords
+        self.ads_coords = np.array(ads_coords)
+        self.distance_weight_matrix = distance_weight_matrix
         self.testing = testing
         self.adsorbates = adsorbates
         self.relax = relax
@@ -128,6 +132,17 @@ class MCMC:
         else:
             # fake connectivity for user defined adsorption sites
             self.connectivity = np.ones(len(self.ads_coords), dtype=int)
+        
+        # if require distance decay
+        distance_decay_factor = self.kwargs.get("distance_decay_factor", 1.0)
+        if self.kwargs.get("require_distance_decay", False):
+            if self.distance_weight_matrix is None:
+                logger.info("computing distance weight matrix")
+                self.distance_weight_matrix = compute_distance_weight_matrix(self.ads_coords, distance_decay_factor)
+            else:
+                logger.info("using provided distance weight matrix")
+            plot_distance_weight_matrix(self.distance_weight_matrix, save_folder=self.run_folder)
+            plot_decay_curve(distance_decay_factor, save_folder=self.run_folder)
 
         self.site_types = set(self.connectivity)
 
@@ -268,7 +283,7 @@ class MCMC:
 
         return energy
 
-    def prepare_canonical(self):
+    def prepare_canonical(self, even_adsorption_sites: bool = False):
         """This function prepares a canonical slab by performing semi-grand canonical adsorption runs until the
         desired number of adsorbed atoms are obtained.
 
@@ -319,19 +334,19 @@ class MCMC:
                 # )
 
                 # Method 2
-                # analytically determine the centroids
-                cell_lengths = self.slab.get_cell_lengths_and_angles()[0:3]
-                x = np.linspace(0, cell_lengths[0]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
-                y = np.linspace(0, cell_lengths[1]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
-                xx, yy = np.meshgrid(x, y)
-                centroids = np.vstack([xx.ravel(), yy.ravel()]).T
-                # sort by first coordinate then second
-                sorted_coords = np.array(sorted(self.ads_coords, key=lambda x: (x[0], x[1])))
                 # TBD
-
-                # then find the closest points to the centroids
-                closest_points_indices = cdist(self.ads_coords[:, :2], centroids).argmin(axis=0)
-                sites_idx = np.random.choice(closest_points_indices, size=self.num_ads_atoms, replace=False)
+                # # analytically determine the centroids
+                # cell_lengths = self.slab.get_cell_lengths_and_angles()[0:3]
+                # x = np.linspace(0, cell_lengths[0]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
+                # y = np.linspace(0, cell_lengths[1]*0.95, np.ceil(np.sqrt(self.num_ads_atoms)).astype(np.int))
+                # xx, yy = np.meshgrid(x, y)
+                # centroids = np.vstack([xx.ravel(), yy.ravel()]).T
+                # # sort by first coordinate then second
+                # sorted_coords = np.array(sorted(self.ads_coords, key=lambda x: (x[0], x[1])))
+                # # TBD
+                # # then find the closest points to the centroids
+                # closest_points_indices = cdist(self.ads_coords[:, :2], centroids).argmin(axis=0)
+                # # sites_idx = np.random.choice(closest_points_indices, size=self.num_ads_atoms, replace=False)
 
                 # Method 3
                 # do clustering
@@ -468,6 +483,11 @@ class MCMC:
         accepted or not.
 
         """
+        if iter % self.sweep_size == 0:
+            logger.info(f"At iter {iter}")
+            plot_specific_distance_weights = True
+        else:
+            plot_specific_distance_weights = False
 
         if not prev_energy and not self.testing:
             # calculate energy of current state
@@ -484,8 +504,16 @@ class MCMC:
             require_per_atom_energies=self.kwargs.get(
                 "require_per_atom_energies", False
             ),
+            require_distance_decay=self.kwargs.get(
+                "require_distance_decay", False
+            ),
             per_atom_energies=self.per_atom_energies,
+            distance_weight_matrix=self.distance_weight_matrix,
             temp=self.temp,
+            ads_coords=self.ads_coords,
+            run_folder=self.run_folder,
+            plot_weights=plot_specific_distance_weights,
+            run_iter=iter,
         )
 
         site1_coords = self.ads_coords[site1_idx]
@@ -888,7 +916,9 @@ class MCMC:
         num_pristine_atoms: int = 0,
         anneal_schedule: list = None,
         run_folder: str = None,
-        starting_iteration: list = 0
+        starting_iteration: list = 0,
+        sweep_size: int = 300,
+        even_adsorption_sites: bool = False,
     ):
         """This function runs an MC simulation for a given number of sweeps and temperature, and
         returns the history of the simulation along with summary statistics.
@@ -955,11 +985,11 @@ class MCMC:
 
         self.curr_energy = self.get_initial_energy()
 
-        self.prepare_canonical()
+        self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
 
         # sweep over # sites
         # self.sweep_size = len(self.ads_coords)
-        self.sweep_size = 300
+        self.sweep_size = sweep_size
 
         logger.info(
             f"running for {self.sweep_size} iterations per run over a total of {self.total_sweeps} runs"
@@ -1010,7 +1040,7 @@ class MCMC:
                 curr_sweep += 1
             if self.start_temp >= 1.0:
                 self.start_temp *= self.peak_scale
-            else:
+            elif self.start_temp > 0.3:
                 self.start_temp -= 0.1
             # ramp up
             temp_list.extend(

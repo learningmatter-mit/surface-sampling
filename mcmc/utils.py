@@ -147,7 +147,7 @@ def compute_distance_weight_matrix(ads_coords, distance_decay_factor):
 
     return distance_weight_matrix
 
-def plot_distance_weight_matrix(distance_weight_matrix, save_folder='.',):
+def plot_distance_weight_matrix(distance_weight_matrix, save_folder='.'):
     # Define colors
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
 
@@ -163,5 +163,33 @@ def plot_distance_weight_matrix(distance_weight_matrix, save_folder='.',):
     plt.xlabel('Dimension 1', fontsize=14)
     plt.ylabel('Dimension 2', fontsize=14)
     plt.title("Distance Weight Matrix")
-    plt.legend(fontsize=12)
     plt.savefig(f'{save_folder}/distance_weight_matrix.png')
+
+def plot_decay_curve(decay_factor, save_folder='.'):
+    plt.figure(figsize=(10, 7))
+    distances = np.linspace(0, 3*decay_factor, 100)
+    factor = softmax(-distances/decay_factor)
+    plt.plot(distances, factor, color='blue', label='Decay Factor')
+
+    plt.xlabel('Distance [Å]', fontsize=14)
+    plt.ylabel('Probability density', fontsize=14)
+    plt.title("Distance Decay Plot")
+    plt.legend(fontsize=12)
+    plt.savefig(f'{save_folder}/distance_weight_decay.png')
+
+def plot_specific_weights(coords, weights, site_idx, save_folder='.', run_iter=0):
+    # Create a larger plot
+    plt.figure(figsize=(10, 7))
+    curr_site = coords[site_idx]
+
+    # Create a scatter plot of all points, color-coded by weights
+    plt.scatter(coords[:, 0], coords[:, 1], c=weights, alpha=0.6, edgecolor='black', linewidth=1, s=100)
+    plt.scatter(curr_site[0], curr_site[1], marker='*', color='black', 
+                    edgecolor='black', linewidth=1, s=200)
+    # Add a colorbar to the figure to show how colors correspond to values
+    plt.colorbar()
+    plt.grid(True)
+    plt.xlabel('Dimension 1', fontsize=14)
+    plt.ylabel('Dimension 2', fontsize=14)
+    plt.title('2D representation of adsorption sites color-coded by weights', fontsize=16)
+    plt.savefig(f'{save_folder}/specific_weights_on_lattice_iter_{run_iter:06}.png')

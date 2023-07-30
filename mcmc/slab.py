@@ -8,7 +8,9 @@ import catkit
 import numpy as np
 from ase.build import bulk
 from ase.io import write
+from scipy.special import softmax
 
+from mcmc.utils import plot_specific_weights
 from mcmc.energy import run_lammps_energy
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ def get_random_idx(connectivity, type=None):
     return site_idx
 
 
-def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs):
+def get_complementary_idx(state, slab, require_per_atom_energies=False, require_distance_decay=False, **kwargs):
     """Get two indices, site1 and site2 of different elemental identities."""
     adsorbed_idx = np.argwhere(state != 0).flatten()
 
@@ -82,7 +84,8 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
     #     f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
     # )
     per_atom_energies = kwargs.get("per_atom_energies", None)
-
+    distance_weight_matrix = kwargs.get("distance_weight_matrix", None)
+    # logger.info(f"distance weight matrix has shape {distance_weight_matrix.shape}")
     # select adsorbates present in slab
     curr_ads = {
         k: list(g)
@@ -93,7 +96,7 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
     curr_ads["None"] = empty_idx
     logger.debug(f"current ads {curr_ads}")
     # breakpoint()
-    from scipy.special import softmax
+   
 
     if require_per_atom_energies:
         if per_atom_energies is None:
@@ -103,7 +106,8 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
         print("in `get_complementary_idx` using per atom energies")
         print(f"per atom energies are {per_atom_energies}")
         # TODO might want to change the "temperature"
-        temp = kwargs.get("temp", 0.5)  # in terms of eV
+        # temp = kwargs.get("temp", 0.5)  # in terms of eV
+        temp = 1 # fixed at 1 eV
         print(f"temp is {temp}")
         boltzmann_weights = softmax(per_atom_energies / temp)
         print(f"boltzmann weights are {boltzmann_weights}")
@@ -116,33 +120,55 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, **kwargs
     else:
         # all uniform weights
         weights = {k: np.ones_like(v) for k, v in curr_ads.items()}
-
     # choose two types
     type1, type2 = random.sample(curr_ads.keys(), 2)
+    
+    if require_distance_decay:
+        # TODO merge with per atom energies
+        if distance_weight_matrix is None:
+            raise ValueError(
+                "require_distance_decay is True, but no distance_weight_matrix was provided"
+            )
+        logger.info("in `get_complementary_idx` using distance decay")
+        # these are 2D matrices
+        # weights = {
+        #     k: distance_weight_matrix[v] for k, v in curr_ads.items() # get the rows corresponding to the adsorption sites
+        # }
+        # get random idx for type 1 first
+        site1_idx = random.choices(curr_ads[type1], weights=np.ones(len(curr_ads[type1])), k=1)[0] # even weights
+        
+        ads_coords = kwargs.get("ads_coords", None)
+        specific_weights = distance_weight_matrix[site1_idx] # get the weights for the second type
+        # logger.info(f"specific weights shape is {specific_weights.shape}")
+        if kwargs.get("plot_weights", False):
+            logger.info(f"plotting weights")
+            plot_specific_weights(ads_coords, specific_weights, site1_idx, save_folder=kwargs.get("run_folder", "."), run_iter=kwargs.get("run_iter", 0))
 
-    # get random idx belonging to those types
-    # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
-    # breakpoint()
-    print(f"curr_ads type1 are: {curr_ads[type1]}")
-    print(f"weights type1 are: {weights[type1]}")
+        site2_idx = random.choices(curr_ads[type2], weights=specific_weights[curr_ads[type2]], k=1)[0] # weighted by distance decay
+    else:
+        # get random idx belonging to those types
+        # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
+        # breakpoint()
+        # print(f"curr_ads type1 are: {curr_ads[type1]}")
+        # print(f"weights type1 are: {weights[type1]}")
 
-    print(f"curr_ads type2 are: {curr_ads[type2]}")
-    print(f"weights type2 are: {weights[type2]}")
+        # print(f"curr_ads type2 are: {curr_ads[type2]}")
+        # print(f"weights type2 are: {weights[type2]}")
 
-    # Checking if the weights are valid, and if not, replace them with an array of ones.
-    weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-    weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
+        # Checking if the weights are valid, and if not, replace them with an array of ones.
+        weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+        weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
 
-    # site1_idx, site2_idx = [
-    #     random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
-    # ]
-    site1_idx, site2_idx = [
-        random.choices(curr_ads[x], weights=w, k=1)[0] for x, w in zip([type1, type2], [weights1, weights2])
+        # site1_idx, site2_idx = [
+        #     random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
+        # ]
+        site1_idx, site2_idx = [
+            random.choices(curr_ads[x], weights=w, k=1)[0] for x, w in zip([type1, type2], [weights1, weights2])
     ]
     slab_idx_1, slab_idx_2 = state[site1_idx], state[site2_idx]
-    print(f"type1 {type1}, type2 {type2}")
-    print(f"site1_idx {slab_idx_1}, site2_idx {slab_idx_2}")
-    print(f"coordinates are {slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]]}")
+    logger.info("type1 %s, type2 %s", type1, type2)
+    logger.info("site1_idx %s, site2_idx %s", slab_idx_1, slab_idx_2)
+    logger.info("coordinates are %s", slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]])
 
     return site1_idx, site2_idx, type1, type2
 

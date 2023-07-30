@@ -49,7 +49,6 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
     slab.write(
         lammps_data_file, format="lammps-data", units="real", atom_style="atomic"
     )
-
     # write lammps.in file
     with open(lammps_in_file, "w") as f:
         # if using KIM potential
