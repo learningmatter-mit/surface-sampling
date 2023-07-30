@@ -103,14 +103,14 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
             raise ValueError(
                 "require_per_atom_energies is True, but no per_atom_energies were provided"
             )
-        print("in `get_complementary_idx` using per atom energies")
-        print(f"per atom energies are {per_atom_energies}")
+        logger.info("in `get_complementary_idx` using per atom energies")
+        logger.debug("per atom energies are %s", per_atom_energies)
         # TODO might want to change the "temperature"
         # temp = kwargs.get("temp", 0.5)  # in terms of eV
         temp = 1 # fixed at 1 eV
-        print(f"temp is {temp}")
+        logger.info("temp is %s", temp)
         boltzmann_weights = softmax(per_atom_energies / temp)
-        print(f"boltzmann weights are {boltzmann_weights}")
+        logger.debug("boltzmann weights are %s", boltzmann_weights)
         # breakpoint()
         # creat weights for each adsorbate except empty sites
         weights = {
@@ -123,6 +123,10 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
     # choose two types
     type1, type2 = random.sample(curr_ads.keys(), 2)
     
+    # Checking if the weights are valid, and if not, replace them with an array of ones.
+    weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+    weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
+    
     if require_distance_decay:
         # TODO merge with per atom energies
         if distance_weight_matrix is None:
@@ -130,21 +134,19 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
                 "require_distance_decay is True, but no distance_weight_matrix was provided"
             )
         logger.info("in `get_complementary_idx` using distance decay")
-        # these are 2D matrices
-        # weights = {
-        #     k: distance_weight_matrix[v] for k, v in curr_ads.items() # get the rows corresponding to the adsorption sites
-        # }
         # get random idx for type 1 first
-        site1_idx = random.choices(curr_ads[type1], weights=np.ones(len(curr_ads[type1])), k=1)[0] # even weights
+        # weights_type1 = np.ones(len(curr_ads[type1]))
+        # weights_type1_new = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+        site1_idx = random.choices(curr_ads[type1], weights=weights1, k=1)[0] # even weights
         
         ads_coords = kwargs.get("ads_coords", None)
-        specific_weights = distance_weight_matrix[site1_idx] # get the weights for the second type
-        # logger.info(f"specific weights shape is {specific_weights.shape}")
+        specific_distance_weights = distance_weight_matrix[site1_idx] # get the weights for the second type
+        # logger.info(f"specific weights shape is {specific_distance_weights.shape}")
         if kwargs.get("plot_weights", False):
             logger.info(f"plotting weights")
-            plot_specific_weights(ads_coords, specific_weights, site1_idx, save_folder=kwargs.get("run_folder", "."), run_iter=kwargs.get("run_iter", 0))
-
-        site2_idx = random.choices(curr_ads[type2], weights=specific_weights[curr_ads[type2]], k=1)[0] # weighted by distance decay
+            plot_specific_weights(ads_coords, specific_distance_weights, site1_idx, save_folder=kwargs.get("run_folder", "."), run_iter=kwargs.get("run_iter", 0))
+        combined_type2_weights = weights2 * specific_distance_weights[curr_ads[type2]] # energy based weights * distance decay weights
+        site2_idx = random.choices(curr_ads[type2], weights=combined_type2_weights, k=1)[0] # weighted by distance decay
     else:
         # get random idx belonging to those types
         # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
@@ -154,10 +156,6 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
 
         # print(f"curr_ads type2 are: {curr_ads[type2]}")
         # print(f"weights type2 are: {weights[type2]}")
-
-        # Checking if the weights are valid, and if not, replace them with an array of ones.
-        weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-        weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
 
         # site1_idx, site2_idx = [
         #     random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
