@@ -15,6 +15,10 @@ This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samp
 
 Please cite us if you find this work useful. Let us know in `issues` if you encounter any problems or have any questions.
 
+To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
+
+Read through the following in order before running our code.
+
 # System requirements
 
 ## Hardware requirements
@@ -48,6 +52,7 @@ Installation might take 10-20 minutes to resolve dependencies.
 2. [NFF](https://github.com/learningmatter-mit/NeuralForceField) for neural network force field
 
 # Setup
+Assuming you have cloned our `surface-sampling` repo to `/path/to/surface-sampling`.
 
 Add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`.
 ```
@@ -61,6 +66,8 @@ export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 export NFFDIR="/path/to/NeuralForceField"
 export PYTHONPATH=$NFFDIR:$PYTHONPATH
 ```
+
+You might have to re-open/re-login to your shell for the new settings to take effect.
 
 # Demo
 
