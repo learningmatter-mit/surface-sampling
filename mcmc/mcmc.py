@@ -29,7 +29,15 @@ from .slab import (
     get_random_idx,
     initialize_slab,
 )
-from .utils import filter_distances, get_cluster_centers, find_closest_points_indices, plot_clustering_results, compute_distance_weight_matrix, plot_distance_weight_matrix, plot_decay_curve
+from .utils import (
+    compute_distance_weight_matrix,
+    filter_distances,
+    find_closest_points_indices,
+    get_cluster_centers,
+    plot_clustering_results,
+    plot_decay_curve,
+    plot_distance_weight_matrix,
+)
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -132,16 +140,20 @@ class MCMC:
         else:
             # fake connectivity for user defined adsorption sites
             self.connectivity = np.ones(len(self.ads_coords), dtype=int)
-        
+
         # if require distance decay
         distance_decay_factor = self.kwargs.get("distance_decay_factor", 1.0)
         if self.kwargs.get("require_distance_decay", False):
             if self.distance_weight_matrix is None:
                 logger.info("computing distance weight matrix")
-                self.distance_weight_matrix = compute_distance_weight_matrix(self.ads_coords, distance_decay_factor)
+                self.distance_weight_matrix = compute_distance_weight_matrix(
+                    self.ads_coords, distance_decay_factor
+                )
             else:
                 logger.info("using provided distance weight matrix")
-            plot_distance_weight_matrix(self.distance_weight_matrix, save_folder=self.run_folder)
+            plot_distance_weight_matrix(
+                self.distance_weight_matrix, save_folder=self.run_folder
+            )
             plot_decay_curve(distance_decay_factor, save_folder=self.run_folder)
 
         self.site_types = set(self.connectivity)
@@ -228,7 +240,7 @@ class MCMC:
             self.surface_name = self.element
 
         if not self.run_folder:
-            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f")
+            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f.%f")
             
             # prepare both run folders
             canonical_run_folder = os.path.join(
@@ -329,7 +341,7 @@ class MCMC:
             if even_adsorption_sites:
                 logger.info("evenly adsorbing sites")
                 # Method 1
-                # sites_idx = np.linspace(0, len(self.ads_coords)-1, self.num_ads_atoms).astype(    
+                # sites_idx = np.linspace(0, len(self.ads_coords)-1, self.num_ads_atoms).astype(
                 #     np.int
                 # )
 
@@ -350,9 +362,19 @@ class MCMC:
 
                 # Method 3
                 # do clustering
-                centers, labels = get_cluster_centers(self.ads_coords[:, :2], self.num_ads_atoms)
-                sites_idx = find_closest_points_indices(self.ads_coords[:, :2], centers, labels)
-                plot_clustering_results(self.ads_coords, self.num_ads_atoms, labels, sites_idx, save_folder=self.run_folder,)
+                centers, labels = get_cluster_centers(
+                    self.ads_coords[:, :2], self.num_ads_atoms
+                )
+                sites_idx = find_closest_points_indices(
+                    self.ads_coords[:, :2], centers, labels
+                )
+                plot_clustering_results(
+                    self.ads_coords,
+                    self.num_ads_atoms,
+                    labels,
+                    sites_idx,
+                    save_folder=self.run_folder,
+                )
 
                 for site_idx in sites_idx:
                     self.curr_energy, _ = self.change_site(
@@ -504,9 +526,7 @@ class MCMC:
             require_per_atom_energies=self.kwargs.get(
                 "require_per_atom_energies", False
             ),
-            require_distance_decay=self.kwargs.get(
-                "require_distance_decay", False
-            ),
+            require_distance_decay=self.kwargs.get("require_distance_decay", False),
             per_atom_energies=self.per_atom_energies,
             distance_weight_matrix=self.distance_weight_matrix,
             temp=self.temp,
@@ -1001,7 +1021,7 @@ class MCMC:
         # self.ramp_up_sweeps
         # self.ramp_down_sweeps
         # self.total_sweeps
-        if type(anneal_schedule) == list or type(anneal_schedule) == np.ndarray :
+        if type(anneal_schedule) == list or type(anneal_schedule) == np.ndarray:
             temp_list = anneal_schedule
         elif perform_annealing:
             temp_list = self.create_anneal_schedule()
@@ -1075,6 +1095,7 @@ class MCMC:
         plt.savefig(f"{self.run_folder}/anneal_schedule.png")
         with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
             f.write(",".join([str(temp) for temp in temp_list]))
+        
         return temp_list
 
 if __name__ == "__main__":
