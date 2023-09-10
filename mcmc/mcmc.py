@@ -228,8 +228,8 @@ class MCMC:
             self.surface_name = self.element
 
         if not self.run_folder:
-            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
+            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f")
+            
             # prepare both run folders
             canonical_run_folder = os.path.join(
                 os.getcwd(),
@@ -914,6 +914,7 @@ class MCMC:
         slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
         state: list or np.ndarray = None,
         num_pristine_atoms: int = 0,
+        perform_annealing = False,
         anneal_schedule: list = None,
         run_folder: str = None,
         starting_iteration: list = 0,
@@ -1002,9 +1003,10 @@ class MCMC:
         # self.total_sweeps
         if type(anneal_schedule) == list or type(anneal_schedule) == np.ndarray :
             temp_list = anneal_schedule
-        else:
+        elif perform_annealing:
             temp_list = self.create_anneal_schedule()
-
+        else:
+            temp_list = np.repeat(self.start_temp, self.total_sweeps) # constant temperature
         logger.info(f"starting with iteration {starting_iteration}")
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
@@ -1033,15 +1035,30 @@ class MCMC:
         curr_sweep = 1
         curr_temp = self.start_temp
         while curr_sweep < self.total_sweeps:
-            for i in range(self.ramp_down_sweeps):
-                # simulated annealing schedule
-                curr_temp = curr_temp * self.alpha
-                temp_list.append(curr_temp)
-                curr_sweep += 1
+            end_temp = 0.0257 # RT at 300K
+            # linear ramp down
+            temp_list.extend(np.linspace(self.start_temp, end_temp, self.ramp_down_sweeps).tolist())
+            curr_sweep += self.ramp_down_sweeps
+
+            curr_temp = end_temp
+            anneal_sweeps = 50
+            # extend current temp 
+            temp_list.extend(np.repeat(curr_temp, anneal_sweeps).tolist())
+            curr_sweep += anneal_sweeps
+
+            # for i in range(self.ramp_down_sweeps):
+            #     # simulated annealing schedule
+            #     curr_temp = curr_temp * self.alpha
+            #     temp_list.append(curr_temp)
+            #     curr_sweep += 1
+
             if self.start_temp >= 1.0:
                 self.start_temp *= self.peak_scale
-            elif self.start_temp > 0.3:
+            # oscillate between 0.4 and 0.3
+            elif self.start_temp >= 0.4:
                 self.start_temp -= 0.1
+            elif self.start_temp < 0.4:
+                self.start_temp += 0.1
             # ramp up
             temp_list.extend(
                 np.linspace(curr_temp, self.start_temp, self.ramp_up_sweeps).tolist()
@@ -1058,9 +1075,7 @@ class MCMC:
         plt.savefig(f"{self.run_folder}/anneal_schedule.png")
         with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
             f.write(",".join([str(temp) for temp in temp_list]))
-        
         return temp_list
-
 
 if __name__ == "__main__":
     pass
