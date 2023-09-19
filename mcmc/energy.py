@@ -107,7 +107,7 @@ def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
     energy, pe_per_atom, opt_slab = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=OPT_TEMPLATE, **kwargs
     )
-    print(f"slab energy in relaxation: {energy}")
+    logger.info(f"slab energy in relaxation: {energy}")
     return opt_slab, energy
 
 
@@ -115,7 +115,7 @@ def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
     energy, pe_per_atom, _ = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
     )
-    # print(f"slab energy in engrad: {energy}")
+    # logger.info(f"slab energy in engrad: {energy}")
     return energy, pe_per_atom
 
 
@@ -200,7 +200,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
 
     if relax:
         # calculate without relax first
-        # print(f"\ncalculating energy without relax")
+        # logger.info(f"\ncalculating energy without relax")
         # energy, energy_std, max_force, force_std = slab_energy(
         #     slab, relax=False, **kwargs
         # )
@@ -226,7 +226,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         #     # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
 
         #     return energy, energy_std, max_force, force_std
-        print(f"performing relaxation")
+        logger.info(f"performing relaxation")
         slab, energy = optimize_slab(slab, **kwargs)
 
     if kwargs.get("require_per_atom_energies", False):
