@@ -21,16 +21,21 @@ HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
 # keep it at 100 eV above expected lowest energy
 # UNRELAXED_ENERGY_THRESHOLD = -300  # for Si(111) 5x5 in eV
-UNRELAXED_ENERGY_THRESHOLD = 0  # for Si(111) 3x3 in eV
+# UNRELAXED_ENERGY_THRESHOLD = 0  # for Si(111) 3x3 in eV
+UNRELAXED_ENERGY_THRESHOLD = 200  # general
 UNRELAXED_MAX_FORCE_THRESHOLD = 1000
 
 logger = logging.getLogger(__name__)
 curr_dir = os.getcwd()
-OPT_TEMPLATE = open(f"{curr_dir}/lammps_opt_template.txt", "r").read()
-ENERGY_TEMPLATE = open(f"{curr_dir}/lammps_energy_template.txt", "r").read()
+OPT_TEMPLATE = f"{curr_dir}/lammps_opt_template.txt"
+ENERGY_TEMPLATE = f"{curr_dir}/lammps_energy_template.txt"
+# OPT_TEMPLATE = open(f"{curr_dir}/lammps_opt_template.txt", "r").read()
+# ENERGY_TEMPLATE = open(f"{curr_dir}/lammps_energy_template.txt", "r").read()
 
 
 def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **kwargs):
+    lammps_template = open(lammps_template, "r").read()
+
     curr_dir = os.getcwd()
 
     # config file is assumed to be stored in the folder you run lammps
@@ -76,7 +81,9 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
     if "opt" in lammps_template:
         pe_per_atom = []
     else:
-        pe_per_atom = lmp.extract_compute("pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR)
+        pe_per_atom = lmp.extract_compute(
+            "pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR
+        )
         pe_per_atom = np.ctypeslib.as_array(
             pe_per_atom, shape=(len(slab),)
         )  # convert to numpy array
@@ -237,6 +244,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
             logger.info("encountered energy out of bounds")
             logger.info(f"energy {energy:.3f}")
+            logger.info(f"max force {max_force:.3f}")
 
             # we set a high energy for mcmc to reject
             energy = ENERGY_THRESHOLD
