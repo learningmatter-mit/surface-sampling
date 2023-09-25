@@ -6,7 +6,9 @@ from collections import Counter
 
 import ase
 import numpy as np
-from ase.optimize import BFGS
+from ase.optimize import BFGS, FIRE
+from ase.optimize.sciopt import SciPyFminCG
+from ase.optimize.bfgslinesearch import BFGSLineSearch
 from lammps import (
     LMP_STYLE_ATOM,
     LMP_STYLE_GLOBAL,
@@ -142,6 +144,14 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             calc_slab, energy = run_lammps_opt(slab, **kwargs)
     else:
         energy = None
+        if "BFGSLineSearch" in optimizer:
+            Optimizer = BFGSLineSearch
+        elif "FIRE" in optimizer:
+            Optimizer = FIRE
+        elif "CG" in optimizer:
+            Optimizer = SciPyFminCG
+        else:
+            Optimizer = BFGS
         if type(slab) is AtomsBatch:
             slab.update_nbr_list(update_atoms=True)
             calc_slab = copy.deepcopy(slab)
@@ -157,7 +167,8 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             iter = int(kwargs.get("iter"))
             # if iter % 10 == 0:
             # save only when told to
-            dyn = BFGS(
+            # use BFGSLineSearch to ensure energy and forces go down
+            dyn = Optimizer(
                 calc_slab,
                 trajectory=os.path.join(
                     kwargs["folder_name"],
@@ -165,7 +176,7 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
                 ),
             )
         else:
-            dyn = BFGS(calc_slab)
+            dyn = Optimizer(calc_slab)
 
         # default steps is 20 and max forces are 0.01
         # TODO set up a config file to change this
@@ -242,7 +253,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         max_force = float(np.abs(slab.results["forces"]).max())
 
         if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
-            logger.info("encountered energy out of bounds")
+            logger.info("encountered energy or force out of bounds")
             logger.info(f"energy {energy:.3f}")
             logger.info(f"max force {max_force:.3f}")
 
