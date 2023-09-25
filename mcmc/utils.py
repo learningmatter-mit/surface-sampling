@@ -3,6 +3,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import distance
 from scipy.special import softmax
+from ase.atoms import Atoms
+from nff.io.ase import AtomsBatch
+
+def get_atoms_batch(slab: Atoms, neighbor_cutoff: float, nff_calc, device: str):
+    return AtomsBatch(
+        positions=slab.positions,
+        numbers=slab.numbers,
+        cell=slab.cell,
+        pbc=True,
+        cutoff=neighbor_cutoff,
+        props={"energy": 0, "energy_grad": []},
+        calculator=nff_calc,
+        requires_large_offsets=True,
+        directed=True,
+        device=device,
+    )
 
 def filter_distances(slab, ads=["O"], cutoff_distance: float = 1.5):
     """This function filters out slabs that have atoms too close to each other based on a
