@@ -16,6 +16,7 @@ from lammps import (
     LMP_TYPE_VECTOR,
     lammps,
 )
+from .utils import get_atoms_batch
 from nff.io.ase import AtomsBatch
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
@@ -142,6 +143,10 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             calc_slab, energy = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
         else:
             calc_slab, energy = run_lammps_opt(slab, **kwargs)
+        
+        if isinstance(slab, AtomsBatch):
+            calc_slab = get_atoms_batch(calc_slab, neighbor_cutoff=slab.cutoff, nff_calc=slab.calc, device=slab.device)
+
     else:
         energy = None
         if "BFGSLineSearch" in optimizer:
@@ -245,7 +250,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
             slab, main_dir=kwargs.get("folder_name", None), **kwargs
         )
 
-    if type(slab) is AtomsBatch:
+    if type(slab) is AtomsBatch and kwargs.get("optimizer", None) != "LAMMPS":
         if update_neighbors:
             slab.update_nbr_list(update_atoms=True)
         slab.calc.calculate(slab)
