@@ -873,21 +873,21 @@ class MCMC:
 
             # save low energy structure
 
-            if self.curr_energy < LOW_ENERGY_THRESHOLD:
-                optimized_slab, _ = optimize_slab(
-                    self.slab,
-                    optimizer=self.kwargs["optimizer"],
-                    kim_potential=self.kwargs.get("kim_potential", None),
-                    folder_name=self.run_folder,
-                )
-                optimized_slab.write(
-                    f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
-                )
-                with open(
-                    f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.pkl",
-                    "wb",
-                ) as f:
-                    pkl.dump(optimized_slab, f)
+            # if self.curr_energy < LOW_ENERGY_THRESHOLD:
+            #     optimized_slab, _ = optimize_slab(
+            #         self.slab,
+            #         optimizer=self.kwargs["optimizer"],
+            #         kim_potential=self.kwargs.get("kim_potential", None),
+            #         folder_name=self.run_folder,
+            #     )
+            #     optimized_slab.write(
+            #         f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
+            #     )
+            #     with open(
+            #         f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.pkl",
+            #         "wb",
+            #     ) as f:
+            #         pkl.dump(optimized_slab, f)
 
         # end of sweep, append to history
         if self.relax:
@@ -899,11 +899,14 @@ class MCMC:
                 folder_name=self.run_folder,
             )
             history_slab.calc = None
-        elif type(self.slab) is AtomsBatch:
-            history_slab = copy.deepcopy(self.slab)
-            history_slab.calc = None
+            history_slab = history_slab.copy()
+        # elif type(self.slab) is AtomsBatch:
+        #     history_slab = copy.deepcopy(self.slab)
+        #     history_slab.calc = None
         else:
             history_slab = self.slab.copy()
+        # breakpoint()
+        # save space, don't copy neighbor li
         self.history.append(history_slab)
         # TODO can save some compute here
 
