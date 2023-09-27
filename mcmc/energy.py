@@ -7,8 +7,8 @@ from collections import Counter
 import ase
 import numpy as np
 from ase.optimize import BFGS, FIRE
-from ase.optimize.sciopt import SciPyFminCG
 from ase.optimize.bfgslinesearch import BFGSLineSearch
+from ase.optimize.sciopt import SciPyFminCG
 from lammps import (
     LMP_STYLE_ATOM,
     LMP_STYLE_GLOBAL,
@@ -16,9 +16,10 @@ from lammps import (
     LMP_TYPE_VECTOR,
     lammps,
 )
-from .utils import get_atoms_batch
 from nff.io.ase import AtomsBatch
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
+
+from .utils import get_atoms_batch
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
@@ -143,9 +144,14 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
             calc_slab, energy = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
         else:
             calc_slab, energy = run_lammps_opt(slab, **kwargs)
-        
+
         if isinstance(slab, AtomsBatch):
-            calc_slab = get_atoms_batch(calc_slab, neighbor_cutoff=slab.cutoff, nff_calc=slab.calc, device=slab.device)
+            calc_slab = get_atoms_batch(
+                calc_slab,
+                neighbor_cutoff=slab.cutoff,
+                nff_calc=slab.calc,
+                device=slab.device,
+            )
 
     else:
         energy = None
