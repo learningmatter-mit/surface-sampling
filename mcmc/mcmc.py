@@ -45,10 +45,6 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
-# LOW_ENERGY_THRESHOLD = -1490  # for Si(111) 7x7 in eV
-# LOW_ENERGY_THRESHOLD = -750  # for Si(111) 5x5 in eV
-# LOW_ENERGY_THRESHOLD = -282  # for Si(111) 3x3 in eV
-
 
 class MCMC:
     """MCMC-based class for sampling surface reconstructions."""
@@ -270,11 +266,11 @@ class MCMC:
             # prepare both run folders
             canonical_run_folder = os.path.join(
                 os.getcwd(),
-                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
+                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.start_temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
             )
             sgc_run_folder = os.path.join(
                 os.getcwd(),
-                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
+                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.start_temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
             )
 
             # default to semi-grand canonical run folder unless canonical is specified
@@ -295,7 +291,7 @@ class MCMC:
         )
 
         logger.info(
-            f"Running with num_sweeps = {self.total_sweeps}, temp = {self.temp}, pot = {self.pot}, alpha = {self.alpha}"
+            f"Running with num_sweeps = {self.total_sweeps}, temp = {self.start_temp}, pot = {self.pot}, alpha = {self.alpha}"
         )
 
     def get_initial_energy(self):
@@ -1146,37 +1142,18 @@ class MCMC:
         curr_sweep = 1
         curr_temp = self.start_temp
         while curr_sweep < self.total_sweeps:
-            end_temp = 0.0257 # RT at 300K
-            # linear ramp down
-            temp_list.extend(np.linspace(self.start_temp, end_temp, self.ramp_down_sweeps).tolist())
-            curr_sweep += self.ramp_down_sweeps
+            # new low temperature annealing schedule
+            # **0.2 to 0.10 relatively fast, say 100 steps**
+            # **then 0.10 to 0.08 for 200 steps**
+            # **0.08 for 200 steps, go up to 0.2 in 10 steps**
+            temp_list.extend(np.linspace(curr_temp, 0.10, 100).tolist())
+            curr_sweep += 100
+            temp_list.extend(np.linspace(0.10, 0.08, 200).tolist())
+            curr_sweep += 200
+            temp_list.extend(np.repeat(0.08, 200).tolist())
+            curr_sweep += 200
+            temp_list.extend(np.linspace(0.08, curr_temp, 10).tolist())
 
-            curr_temp = end_temp
-            anneal_sweeps = 50
-            # extend current temp 
-            temp_list.extend(np.repeat(curr_temp, anneal_sweeps).tolist())
-            curr_sweep += anneal_sweeps
-
-            # for i in range(self.ramp_down_sweeps):
-            #     # simulated annealing schedule
-            #     curr_temp = curr_temp * self.alpha
-            #     temp_list.append(curr_temp)
-            #     curr_sweep += 1
-
-            if self.start_temp >= 1.0:
-                self.start_temp *= self.peak_scale
-            # oscillate between 0.4 and 0.3
-            elif self.start_temp >= 0.4:
-                self.start_temp -= 0.1
-            elif self.start_temp < 0.4:
-                self.start_temp += 0.1
-            # ramp up
-            temp_list.extend(
-                np.linspace(curr_temp, self.start_temp, self.ramp_up_sweeps).tolist()
-            )
-            curr_temp = self.start_temp  # reset to new start temp
-
-            curr_sweep += self.ramp_up_sweeps
         temp_list = temp_list[: self.total_sweeps]
 
         import matplotlib.pyplot as plt
@@ -1186,7 +1163,6 @@ class MCMC:
         plt.savefig(f"{self.run_folder}/anneal_schedule.png")
         with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
             f.write(",".join([str(temp) for temp in temp_list]))
-        
         return temp_list
 
 if __name__ == "__main__":
