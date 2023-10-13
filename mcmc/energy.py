@@ -24,12 +24,13 @@ from .utils import get_atoms_batch
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
 ENERGY_THRESHOLD = 200  # eV
-MAX_FORCE_THRESHOLD = 1000 # eV/Angstrom
+MAX_FORCE_THRESHOLD = 1000  # eV/Angstrom
 
 logger = logging.getLogger(__name__)
 curr_dir = os.getcwd()
 OPT_TEMPLATE = f"{curr_dir}/lammps_opt_template.txt"
 ENERGY_TEMPLATE = f"{curr_dir}/lammps_energy_template.txt"
+
 
 def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **kwargs):
     lammps_template = open(lammps_template, "r").read()
@@ -59,7 +60,9 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
         # if using KIM potential
         if kwargs.get("kim_potential", False):
             f.writelines(
-                lammps_template.format(lammps_data_file, bulk_index, steps, lammps_out_file)
+                lammps_template.format(
+                    lammps_data_file, bulk_index, steps, lammps_out_file
+                )
             )
         else:
             f.writelines(
@@ -69,7 +72,7 @@ def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **
                     potential_file,
                     *atoms,
                     steps,
-                    lammps_out_file
+                    lammps_out_file,
                 )
             )
 
@@ -108,7 +111,7 @@ def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
     energy, pe_per_atom, opt_slab = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=OPT_TEMPLATE, **kwargs
     )
-    logger.info(f"slab energy in relaxation: {energy}")
+    logger.debug(f"slab energy in relaxation: {energy}")
     return opt_slab, energy
 
 
@@ -116,7 +119,7 @@ def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
     energy, pe_per_atom, _ = run_lammps_calc(
         slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
     )
-    # logger.info(f"slab energy in engrad: {energy}")
+    logger.debug(f"slab energy in engrad: {energy}")
     return energy, pe_per_atom
 
 
@@ -214,8 +217,8 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
     if relax:
         if type(slab) is AtomsBatch:
             # calculate without relax first for NFF energies, which might be too high
-            logger.info(f"\ncalculating energy without relax")
-            energy, energy_std, max_force, force_std = slab_energy(
+            logger.debug(f"\ncalculating energy without relax")
+            energy, energy_std, max_force, force_std, _ = slab_energy(
                 slab, relax=False, **kwargs
             )
 
@@ -238,7 +241,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
 
                 return energy, energy_std, max_force, force_std
 
-        logger.info(f"performing relaxation")
+        logger.debug(f"performing relaxation")
         slab, energy = optimize_slab(slab, **kwargs)
 
     if kwargs.get("require_per_atom_energies", False):
@@ -298,7 +301,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
         max_force = float(np.abs(slab.results["forces"]).max())
         force_std = float(slab.results["forces_std"].mean())
 
-    elif kwargs.get("optimizer", None) == "LAMMPS":
+    elif kwargs.get("optimizer", None) == "LAMMPS" and relax:
         # energy would have already been calculated
         # folder_name = kwargs.get("folder_name", None)
         # energy = run_lammps_energy(slab, main_dir=folder_name, **kwargs)

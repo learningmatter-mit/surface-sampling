@@ -10,8 +10,8 @@ from ase.build import bulk
 from ase.io import write
 from scipy.special import softmax
 
-from mcmc.utils import plot_specific_weights
 from mcmc.energy import run_lammps_energy
+from mcmc.utils import plot_specific_weights
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,9 @@ def get_random_idx(connectivity, type=None):
     return site_idx
 
 
-def get_complementary_idx(state, slab, require_per_atom_energies=False, require_distance_decay=False, **kwargs):
+def get_complementary_idx(
+    state, slab, require_per_atom_energies=False, require_distance_decay=False, **kwargs
+):
     """Get two indices, site1 and site2 of different elemental identities."""
     adsorbed_idx = np.argwhere(state != 0).flatten()
 
@@ -95,23 +97,20 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
     empty_idx = np.argwhere(state == 0).flatten().tolist()
     curr_ads["None"] = empty_idx
     logger.debug(f"current ads {curr_ads}")
-    # breakpoint()
-   
 
     if require_per_atom_energies:
         if per_atom_energies is None:
             raise ValueError(
                 "require_per_atom_energies is True, but no per_atom_energies were provided"
             )
-        logger.info("in `get_complementary_idx` using per atom energies")
+        logger.debug("in `get_complementary_idx` using per atom energies")
         logger.debug("per atom energies are %s", per_atom_energies)
         # TODO might want to change the "temperature"
         # temp = kwargs.get("temp", 0.5)  # in terms of eV
-        temp = 1 # fixed at 1 eV
-        logger.info("temp is %s", temp)
+        temp = 1  # fixed at 1 eV
+        logger.debug("temp is %s", temp)
         boltzmann_weights = softmax(per_atom_energies / temp)
         logger.debug("boltzmann weights are %s", boltzmann_weights)
-        # breakpoint()
         # creat weights for each adsorbate except empty sites
         weights = {
             k: boltzmann_weights[state[v]] if k != "None" else np.ones_like(v)
@@ -122,51 +121,63 @@ def get_complementary_idx(state, slab, require_per_atom_energies=False, require_
         weights = {k: np.ones_like(v) for k, v in curr_ads.items()}
     # choose two types
     type1, type2 = random.sample(curr_ads.keys(), 2)
-    
+
     # Checking if the weights are valid, and if not, replace them with an array of ones.
-    weights1 = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-    weights2 = weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
-    
+    weights1 = (
+        weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+    )
+    weights2 = (
+        weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
+    )
+
     if require_distance_decay:
         # TODO merge with per atom energies
         if distance_weight_matrix is None:
             raise ValueError(
                 "require_distance_decay is True, but no distance_weight_matrix was provided"
             )
-        logger.info("in `get_complementary_idx` using distance decay")
+        logger.debug("in `get_complementary_idx` using distance decay")
         # get random idx for type 1 first
         # weights_type1 = np.ones(len(curr_ads[type1]))
         # weights_type1_new = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-        site1_idx = random.choices(curr_ads[type1], weights=weights1, k=1)[0] # even weights
-        
+        site1_idx = random.choices(curr_ads[type1], weights=weights1, k=1)[
+            0
+        ]  # even weights
+
         ads_coords = kwargs.get("ads_coords", None)
-        specific_distance_weights = distance_weight_matrix[site1_idx] # get the weights for the second type
-        # logger.info(f"specific weights shape is {specific_distance_weights.shape}")
+        specific_distance_weights = distance_weight_matrix[
+            site1_idx
+        ]  # get the weights for the second type
+        logger.debug(f"specific weights shape is {specific_distance_weights.shape}")
         if kwargs.get("plot_weights", False):
-            logger.info(f"plotting weights")
-            plot_specific_weights(ads_coords, specific_distance_weights, site1_idx, save_folder=kwargs.get("run_folder", "."), run_iter=kwargs.get("run_iter", 0))
-        combined_type2_weights = weights2 * specific_distance_weights[curr_ads[type2]] # energy based weights * distance decay weights
-        site2_idx = random.choices(curr_ads[type2], weights=combined_type2_weights, k=1)[0] # weighted by distance decay
+            logger.debug(f"plotting weights")
+            plot_specific_weights(
+                ads_coords,
+                specific_distance_weights,
+                site1_idx,
+                save_folder=kwargs.get("run_folder", "."),
+                run_iter=kwargs.get("run_iter", 0),
+            )
+        combined_type2_weights = (
+            weights2 * specific_distance_weights[curr_ads[type2]]
+        )  # energy based weights * distance decay weights
+        site2_idx = random.choices(
+            curr_ads[type2], weights=combined_type2_weights, k=1
+        )[
+            0
+        ]  # weighted by distance decay
     else:
         # get random idx belonging to those types
-        # site1_idx, site2_idx = [random.choice(curr_ads[x]) for x in [type1, type2]]
-        # breakpoint()
-        # print(f"curr_ads type1 are: {curr_ads[type1]}")
-        # print(f"weights type1 are: {weights[type1]}")
-
-        # print(f"curr_ads type2 are: {curr_ads[type2]}")
-        # print(f"weights type2 are: {weights[type2]}")
-
-        # site1_idx, site2_idx = [
-        #     random.choices(curr_ads[x], weights=weights[x], k=1)[0] for x in [type1, type2]
-        # ]
         site1_idx, site2_idx = [
-            random.choices(curr_ads[x], weights=w, k=1)[0] for x, w in zip([type1, type2], [weights1, weights2])
-    ]
+            random.choices(curr_ads[x], weights=w, k=1)[0]
+            for x, w in zip([type1, type2], [weights1, weights2])
+        ]
     slab_idx_1, slab_idx_2 = state[site1_idx], state[site2_idx]
-    logger.info("type1 %s, type2 %s", type1, type2)
-    logger.info("site1_idx %s, site2_idx %s", slab_idx_1, slab_idx_2)
-    logger.info("coordinates are %s", slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]])
+    logger.debug("type1 %s, type2 %s", type1, type2)
+    logger.debug("site1_idx %s, site2_idx %s", slab_idx_1, slab_idx_2)
+    logger.debug(
+        "coordinates are %s", slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]]
+    )
 
     return site1_idx, site2_idx, type1, type2
 
