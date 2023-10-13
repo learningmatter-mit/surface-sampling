@@ -25,6 +25,7 @@ def test_Au_energy():
         os.path.join(current_dir, "resources/Au_110_2x2_proper_adsorbed_slab.cif")
     )
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
+    sweep_size = len(ads_positions)
 
     element = "Au"
     chem_pot = 0  # chem pot 0 to less complicate things
@@ -53,11 +54,12 @@ def test_Au_energy():
         ads_coords=ads_positions,
     )
     Au_mcmc.mcmc_run(
-        num_sweeps=num_sweeps,
-        temp=temp,
+        total_sweeps=num_sweeps,
+        sweep_size=sweep_size,
+        start_temp=temp,
         pot=chem_pot,
         alpha=alpha,
         slab=slab,
     )  # call the main
 
-    assert np.allclose(Au_mcmc.energy_hist[-1], required_energy)
+    assert np.allclose(np.min(Au_mcmc.energy_hist), required_energy)

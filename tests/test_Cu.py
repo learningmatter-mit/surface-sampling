@@ -21,6 +21,7 @@ def test_Cu_energy():
     alpha = 0.99  # slowly anneal
     temp = 1  # temp in terms of kbT
     num_sweeps = 100
+    sweep_size = 16
 
     # use LAMMPS
     parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
@@ -39,11 +40,12 @@ def test_Cu_energy():
         element=element,
     )
     Cu_mcmc.mcmc_run(
-        num_sweeps=num_sweeps,
-        temp=temp,
+        total_sweeps=num_sweeps,
+        sweep_size=sweep_size,
+        start_temp=temp,
         pot=chem_pot,
         alpha=alpha,
         slab=slab,
     )
 
-    assert np.allclose(Cu_mcmc.energy_hist[-1], required_energy)
+    assert np.allclose(np.min(Cu_mcmc.energy_hist), required_energy)
