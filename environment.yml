@@ -22,6 +22,7 @@ dependencies:
   - e3fp
   - scikit-learn
   - lammps
+  - openkim-models
   - pip
   - pip:
     - git+https://github.com/SUNCAT-Center/CatKit.git

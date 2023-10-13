@@ -1,0 +1,10 @@
+{
+    "potential_file": "/home/pleon/mylammps/potentials/Si.sw",
+    "atoms": [
+        "Si"
+    ],
+    "atomic_numbers_dict": {
+        "1": 14
+    },
+    "bulk_index": 75
+}

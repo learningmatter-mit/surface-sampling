@@ -77,10 +77,13 @@ A toy demo and other examples can be found in the `tutorials/` folder. More data
 A toy example to illustrate the use of VSSR-MC. It should only take about a minute to run. Refer to `tutorials/example.ipynb`.
 
 ### GaN(0001) surface sampling with Tersoff potential
-We explicitly generate surface sites using `pymatgen`. This example could take 10 minutes or more to run. Refer to `tutorials/GaN.ipynb`.
+We explicitly generate surface sites using `pymatgen`. This example could take 5 minutes or more to run. Refer to `tutorials/GaN_0001.ipynb`.
+
+### Si(111) 5x5 surface sampling with modified Stillinger–Weber potential
+We explicitly generate surface sites using `pymatgen`. This example could take 5 minutes or more to run. Refer to `tutorials/Si_111_5x5.ipynb`.
 
 ### SrTiO3(001) surface sampling with machine learning potential
-Demonstrates the integration of VSSR-MC with a neural network force field. This example could take 10 minutes or more to run. Refer to `tutorials/SrTiO3.ipynb`.
+Demonstrates the integration of VSSR-MC with a neural network force field. This example could take 10 minutes or more to run. Refer to `tutorials/SrTiO3_001.ipynb`.
 
 ### Clustering MC-sampled surfaces in the latent space
 Retrieving the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
