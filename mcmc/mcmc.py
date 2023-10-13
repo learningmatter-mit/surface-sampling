@@ -10,14 +10,14 @@ from datetime import datetime
 
 import ase
 import catkit
-from scipy.spatial import distance
 import numpy as np
 from ase.calculators.eam import EAM
 from ase.constraints import FixAtoms
 from ase.io import write
 from catkit.gen.adsorption import get_adsorption_sites
-from nff.io.ase import AtomsBatch, NeuralFF, EnsembleNFF
+from nff.io.ase import AtomsBatch, EnsembleNFF, NeuralFF
 from nff.utils.cuda import batch_to
+from scipy.spatial import distance
 from scipy.spatial.distance import cdist
 from scipy.special import softmax
 
@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
+
 
 class MCMC:
     """MCMC-based class for sampling surface reconstructions."""
@@ -120,14 +121,16 @@ class MCMC:
     def run(self):
         """The function "run" calls the function "mcmc_run"."""
         self.mcmc_run()
-    
+
     def get_structure_embeddings(self, slab: AtomsBatch):
         """This function calculates the structure embeddings for a given slab."""
         batch = batch_to(slab.get_batch(), self.device)
         if not (isinstance(self.calc, NeuralFF) or isinstance(self.calc, EnsembleNFF)):
             raise ValueError("This function only works with NeuralFF")
         atomwise_out, xyz, r_ij, nbrs = self.calc.model.atomwise(batch=batch)
-        structure_embeddings = atomwise_out['features'].sum(axis=0).detach().cpu().numpy()
+        structure_embeddings = (
+            atomwise_out["features"].sum(axis=0).detach().cpu().numpy()
+        )
         return structure_embeddings
 
     def get_cosine_similarity(self, slab: AtomsBatch):
@@ -147,8 +150,11 @@ class MCMC:
         elem = catkit.gratoms.Gratoms(self.element)
 
         if not (
-            (isinstance(self.ads_coords, list) and (len(self.ads_coords) > 0))
-            or isinstance(self.ads_coords, np.ndarray)
+            (
+                isinstance(self.ads_coords, list)
+                or isinstance(self.ads_coords, np.ndarray)
+            )
+            and (len(self.ads_coords) > 0)
         ):
             # get ALL the adsorption sites
             # top should have connectivity 1, bridge should be 2 and hollow more like 4
@@ -262,7 +268,7 @@ class MCMC:
 
         if not self.run_folder:
             start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f.%f")
-            
+
             # prepare both run folders
             canonical_run_folder = os.path.join(
                 os.getcwd(),
@@ -410,7 +416,6 @@ class MCMC:
                     # self.curr_energy, _ = self.change_site(
                     #     prev_energy=self.curr_energy, site_idx=site_idx
                     # )
-            
 
             self.slab.write(
                 os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
@@ -652,7 +657,9 @@ class MCMC:
             # use cosine distance from ideal structure
             prev_similarity = self.curr_similarity
             # relax structure
-            relaxed_slab, _ = optimize_slab(self.slab, folder_name=self.run_folder, **self.kwargs)
+            relaxed_slab, _ = optimize_slab(
+                self.slab, folder_name=self.run_folder, **self.kwargs
+            )
             # get the current cosine similarity
             curr_similarity = self.get_cosine_similarity(relaxed_slab)
 
@@ -660,8 +667,8 @@ class MCMC:
             similarity_diff = curr_similarity - prev_similarity
             logger.debug(f"prev similarity is {prev_similarity}")
             logger.debug(f"curr similarity is {curr_similarity}")
-            logger.debug(f"similarity diff is {similarity_diff}")   
-        
+            logger.debug(f"similarity diff is {similarity_diff}")
+
             base_prob = np.exp(similarity_diff / self.temp)
             logger.debug(f"base probability is {base_prob}")
 
@@ -671,12 +678,15 @@ class MCMC:
                 logger.debug("state changed!")
                 # still give the relaxed energy
                 results = slab_energy(
-                    self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                    self.slab,
+                    relax=self.relax,
+                    folder_name=self.run_folder,
+                    **self.kwargs,
                 )
                 curr_energy = results[0]
                 energy = curr_energy
                 accept = True
-                self.curr_similarity = curr_similarity # update current similarity
+                self.curr_similarity = curr_similarity  # update current similarity
             else:
                 # failed, keep current state and revert slab back to original
                 self.slab, self.state, _, _, _ = change_site(
@@ -703,7 +713,7 @@ class MCMC:
                 )
                 logger.debug("state kept the same")
                 energy = prev_energy
-                accept = False            
+                accept = False
         elif self.testing:
             energy = 0
         else:
@@ -948,24 +958,6 @@ class MCMC:
                 )
             num_accept += accept
 
-            # save low energy structure
-
-            # if self.curr_energy < LOW_ENERGY_THRESHOLD:
-            #     optimized_slab, _ = optimize_slab(
-            #         self.slab,
-            #         optimizer=self.kwargs["optimizer"],
-            #         kim_potential=self.kwargs.get("kim_potential", None),
-            #         folder_name=self.run_folder,
-            #     )
-            #     optimized_slab.write(
-            #         f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.cif"
-            #     )
-            #     with open(
-            #         f"{self.run_folder}/optim_slab_run_idx_{run_idx:06}_{optimized_slab.get_chemical_formula()}_energy_{optimized_slab.get_potential_energy():.3f}.pkl",
-            #         "wb",
-            #     ) as f:
-            #         pkl.dump(optimized_slab, f)
-
         # end of sweep, append to history
         if self.relax:
             history_slab, _ = optimize_slab(
@@ -1014,7 +1006,7 @@ class MCMC:
         slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
         state: list or np.ndarray = None,
         num_pristine_atoms: int = 0,
-        perform_annealing = False,
+        perform_annealing=False,
         anneal_schedule: list = None,
         run_folder: str = None,
         starting_iteration: list = 0,
@@ -1087,8 +1079,12 @@ class MCMC:
         self.curr_energy = self.get_initial_energy()
 
         if self.reference_structure:
-            self.reference_structure_embeddings = self.get_structure_embeddings(self.reference_structure)
-            relaxed_slab, _ = optimize_slab(self.slab, folder_name=self.run_folder, **self.kwargs)
+            self.reference_structure_embeddings = self.get_structure_embeddings(
+                self.reference_structure
+            )
+            relaxed_slab, _ = optimize_slab(
+                self.slab, folder_name=self.run_folder, **self.kwargs
+            )
             self.curr_similarity = self.get_cosine_similarity(relaxed_slab)
 
         self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
@@ -1111,7 +1107,9 @@ class MCMC:
         elif perform_annealing:
             temp_list = self.create_anneal_schedule()
         else:
-            temp_list = np.repeat(self.start_temp, self.total_sweeps) # constant temperature
+            temp_list = np.repeat(
+                self.start_temp, self.total_sweeps
+            )  # constant temperature
         logger.info(f"starting with iteration {starting_iteration}")
         print(f"temp list is:")
         print(temp_list)
@@ -1164,6 +1162,7 @@ class MCMC:
         with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
             f.write(",".join([str(temp) for temp in temp_list]))
         return temp_list
+
 
 if __name__ == "__main__":
     pass
