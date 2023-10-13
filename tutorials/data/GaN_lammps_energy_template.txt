@@ -1,3 +1,4 @@
+#performing single energy calculation
 clear
 atom_style atomic
 units metal
@@ -8,7 +9,7 @@ atom_modify sort 0 0.0
 read_data {}
 
 ### set bulk
-group bulk id <= 36
+group bulk id <= {}
 
 ### interactions
 pair_style tersoff
@@ -25,7 +26,7 @@ thermo 10 # output thermodynamic variables every N timesteps
 thermo_style custom step temp press ke pe xy xz yz
 thermo_modify flush yes format float %23.16g
 min_style cg
-minimize 1e-5 1e-5 500 10000
+minimize 1e-5 1e-5 {} 10000
 
 # write_data /path/to/data.out
 write_data {}

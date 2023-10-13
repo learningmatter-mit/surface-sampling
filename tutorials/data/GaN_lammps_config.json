@@ -1,0 +1,12 @@
+{
+    "potential_file": "GaN.tersoff",
+    "atoms": [
+        "Ga",
+        "N"
+    ],
+    "atomic_numbers_dict": {
+        "1": 31,
+        "2": 7
+    },
+    "bulk_index": 36
+}
