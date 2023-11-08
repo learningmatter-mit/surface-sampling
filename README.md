@@ -9,9 +9,9 @@
 
 # Overview
 
-This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through ASE) or a classical potential (through ASE or LAMMPS). It is a key component of the Heuristic-Free Surface Reconstruction (HFSurfRecon) pipeline described in the following work:
+This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through ASE) or a classical potential (through ASE or LAMMPS). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work:
 
-"Machine learning-accelerated simulations enable heuristic-free surface reconstruction", by X. Du, J.K. Damewood, J.R. Lunger, R. Millan, B. Yildiz, L. Li, and R. Gómez-Bombarelli. https://doi.org/10.48550/arXiv.2305.07251
+"Machine learning-accelerated simulations enable automatic surface reconstruction", by X. Du, J.K. Damewood, J.R. Lunger, R. Millan, B. Yildiz, L. Li, and R. Gómez-Bombarelli. https://doi.org/10.48550/arXiv.2305.07251
 
 Please cite us if you find this work useful. Let us know in `issues` if you encounter any problems or have any questions.
 
