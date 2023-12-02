@@ -435,14 +435,20 @@ class MCMC:
             the energy of the optimized structure.
 
         """
-        energy, energy_std, _, force_std, _ = slab_energy(
-            self.slab,
-            relax=self.relax,
-            folder_name=self.run_folder,
-            iter=i + 1,
-            save=True,
-            **self.kwargs,
-        )
+        testing = kwargs.get("testing", False)
+        if testing:
+            energy = 0
+            energy_std = 0
+            force_std = 0
+        else:
+            energy, energy_std, _, force_std, _ = slab_energy(
+                self.slab,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                iter=i + 1,
+                save=True,
+                **self.kwargs,
+            )
         if type(self.slab) is AtomsBatch:
             logger.info(
                 f"current energy is {self.curr_energy}, calculated energy is {energy}"
@@ -979,7 +985,7 @@ class MCMC:
         self.history.append(history_slab)
         # TODO can save some compute here
 
-        final_energy = self.save_structures(i=i, **self.kwargs)
+        final_energy = self.save_structures(i=i, testing=self.testing, **self.kwargs)
 
         # append values
         self.energy_hist[i] = final_energy
