@@ -17,7 +17,7 @@ dependencies:
   - ipykernel
   - notebook
   - ase
-  - pymatgen
+  - pymatgen=2023.5.10
   - rdkit
   - e3fp
   - scikit-learn
