@@ -239,7 +239,7 @@ def slab_energy(slab, relax=False, update_neighbors=True, **kwargs):
                 energy = ENERGY_THRESHOLD
                 # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
 
-                return energy, energy_std, max_force, force_std
+                return energy, energy_std, max_force, force_std, 0.0
 
         logger.debug(f"performing relaxation")
         slab, energy = optimize_slab(slab, **kwargs)

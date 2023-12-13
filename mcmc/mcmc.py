@@ -441,7 +441,7 @@ class MCMC:
             energy_std = 0
             force_std = 0
         else:
-            energy, energy_std, _, force_std, _ = slab_energy(
+            results = slab_energy(
                 self.slab,
                 relax=self.relax,
                 folder_name=self.run_folder,
@@ -449,6 +449,10 @@ class MCMC:
                 save=True,
                 **self.kwargs,
             )
+            energy = results[0]
+            energy_std = results[1]
+            force_std = results[3]
+
         if type(self.slab) is AtomsBatch:
             logger.info(
                 f"current energy is {self.curr_energy}, calculated energy is {energy}"
