@@ -26,11 +26,11 @@ from .plot import plot_summary_stats
 from .slab import (
     change_site,
     count_adsorption_sites,
-    get_adsorption_coords,
     get_complementary_idx,
     get_random_idx,
     initialize_slab,
 )
+from .system import SurfaceSystem
 from .utils import (
     compute_distance_weight_matrix,
     filter_distances,
@@ -52,12 +52,12 @@ class MCMC:
 
     def __init__(
         self,
+        surface_name,
         calc=EAM(
             potential=os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
             )
         ),
-        surface_name=None,
         element="Cu",
         canonical=False,
         num_ads_atoms=0,
@@ -68,12 +68,16 @@ class MCMC:
         distance_weight_matrix=None,
         **kwargs,
     ) -> None:
+
+        # https://github.com/HojeChun/EpiKmc/blob/main/epikmc/system.py#L54
+        # TODO create class SurfaceSystem to contain both surface slab, state, params, and calculator
+
         self.calc = calc
         self.surface_name = surface_name
-        self.element = element  # review this, might not be useful
+        # self.element = element  # review this, might not be useful
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms
-        self.ads_coords = np.array(ads_coords)
+        # self.ads_coords = np.array(ads_coords)
         self.distance_weight_matrix = distance_weight_matrix
         self.testing = testing
         self.adsorbates = adsorbates
@@ -90,14 +94,14 @@ class MCMC:
         self.temp = 1.0
         self.pot = 1.0
         self.alpha = 1.0
-        self.slab = None
+        self.surface: SurfaceSystem = None
 
         self.num_pristine_atoms = 0
         self.run_folder = ""
         self.curr_energy = 0
         self.curr_similarity = 0
         self.sweep_size = 100
-        self.state = None
+        # self.state = None
         self.connectivity = None
         self.history = None
         self.energy_hist = None
@@ -118,9 +122,9 @@ class MCMC:
                 self.num_ads_atoms > 0
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
-    def run(self):
+    def run(self, surface: SurfaceSystem):
         """The function "run" calls the function "mcmc_run"."""
-        self.mcmc_run()
+        self.mcmc_run(surface)
 
     def get_structure_embeddings(self, slab: AtomsBatch):
         """This function calculates the structure embeddings for a given slab."""
@@ -147,26 +151,26 @@ class MCMC:
 
         """
         # get absolute adsorption coords
-        elem = catkit.gratoms.Gratoms(self.element)
+        # elem = catkit.gratoms.Gratoms(self.element)
 
-        if not (
-            (
-                isinstance(self.ads_coords, list)
-                or isinstance(self.ads_coords, np.ndarray)
-            )
-            and (len(self.ads_coords) > 0)
-        ):
-            # get ALL the adsorption sites
-            # top should have connectivity 1, bridge should be 2 and hollow more like 4
-            _, self.connectivity, _ = get_adsorption_sites(
-                self.slab, symmetry_reduced=False
-            )
-            self.ads_coords = get_adsorption_coords(
-                self.slab, elem, self.connectivity, debug=True
-            )
-        else:
-            # fake connectivity for user defined adsorption sites
-            self.connectivity = np.ones(len(self.ads_coords), dtype=int)
+        # if not (
+        #     (
+        #         isinstance(self.ads_coords, list)
+        #         or isinstance(self.ads_coords, np.ndarray)
+        #     )
+        #     and (len(self.ads_coords) > 0)
+        # ):
+        #     # get ALL the adsorption sites
+        #     # top should have connectivity 1, bridge should be 2 and hollow more like 4
+        #     _, self.connectivity, _ = get_adsorption_sites(
+        #         self.surface.real_atoms, symmetry_reduced=False
+        #     )
+        #     self.ads_coords = get_adsorption_coords(
+        #         self.surface.real_atoms, elem, self.connectivity, debug=True
+        #     )
+        # else:
+        # fake connectivity for user defined adsorption sites
+        self.connectivity = np.ones(len(self.surface.ads_coords), dtype=int)
 
         # if require distance decay
         distance_decay_factor = self.kwargs.get("distance_decay_factor", 1.0)
@@ -174,7 +178,7 @@ class MCMC:
             if self.distance_weight_matrix is None:
                 logger.info("computing distance weight matrix")
                 self.distance_weight_matrix = compute_distance_weight_matrix(
-                    self.ads_coords, distance_decay_factor
+                    self.surface.ads_coords, distance_decay_factor
                 )
             else:
                 logger.info("using provided distance weight matrix")
@@ -186,79 +190,79 @@ class MCMC:
         self.site_types = set(self.connectivity)
 
         logger.info(
-            f"In pristine slab, there are a total of {len(self.ads_coords)} sites"
+            f"In pristine slab, there are a total of {len(self.surface.ads_coords)} sites"
         )
 
-    def initialize_state(self):
-        # state of each adsorption site in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
-        if not (
-            (isinstance(self.state, list) and (len(self.state) > 0))
-            or isinstance(self.state, np.ndarray)
-        ):
-            self.state = np.zeros(len(self.ads_coords), dtype=int)
-        logger.info(f"initial state is {self.state}")
+    # def initialize_state(self):
+    #     # state of each adsorption site in slab. for state > 0, it's filled, and that's the index of the adsorbate atom in slab
+    #     if not (
+    #         (isinstance(self.state, list) and (len(self.state) > 0))
+    #         or isinstance(self.state, np.ndarray)
+    #     ):
+    #         self.state = np.zeros(len(self.ads_coords), dtype=int)
+    #     logger.info(f"initial state is {self.state}")
 
-    def set_constraints(self):
-        """This function sets constraints on the atoms in a slab object, fixing the positions of bulk atoms
-        and allowing surface atoms to move.
+    # def set_constraints(self):
+    #     """This function sets constraints on the atoms in a slab object, fixing the positions of bulk atoms
+    #     and allowing surface atoms to move.
 
-        """
-        num_bulk_atoms = len(self.slab)
-        # constraint all the bulk atoms
-        bulk_indices = list(range(num_bulk_atoms))
-        # constraint only the surface elements
+    #     """
+    #     num_bulk_atoms = len(self.slab)
+    #     # constraint all the bulk atoms
+    #     bulk_indices = list(range(num_bulk_atoms))
+    #     # constraint only the surface elements
 
-        c = FixAtoms(indices=bulk_indices)
-        self.slab.set_constraint(c)
+    #     c = FixAtoms(indices=bulk_indices)
+    #     self.slab.set_constraint(c)
 
-    def set_adsorbates(self):
-        """This function sets the adsorbates if not defined and converts the potential and adsorbate to a list if they are
-        not already in list format.
+    # def set_adsorbates(self):
+    #     """This function sets the adsorbates if not defined and converts the potential and adsorbate to a list if they are
+    #     not already in list format.
 
-        """
-        # set adsorbate
-        if not self.adsorbates:
-            self.adsorbates = self.element
-        logger.info(f"adsorbate(s) is(are) {self.adsorbates}")
+    #     """
+    #     # set adsorbate
+    #     if not self.adsorbates:
+    #         self.adsorbates = self.element
+    #     logger.info(f"adsorbate(s) is(are) {self.adsorbates}")
 
-        # change int pot and adsorbate to list
-        if type(self.pot) == int:
-            self.pot = list([self.pot])
-        if isinstance(self.adsorbates, str):
-            self.adsorbates = list([self.adsorbates])
+    #     # change int pot and adsorbate to list
+    #     if type(self.pot) == int:
+    #         self.pot = list([self.pot])
+    #     if isinstance(self.adsorbates, str):
+    #         self.adsorbates = list([self.adsorbates])
 
-    def initialize_tags(self):
-        """This function initializes tags for surface and bulk atoms in a slab object."""
-        # initialize tags
-        # set tags; 1 for surface atoms and 0 for bulk
-        if type(self.slab) is catkit.gratoms.Gratoms:
-            surface_atoms = self.slab.get_surface_atoms()
-            atoms_arr = np.arange(0, len(self.slab))
-            base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
-            self.slab.set_tags(list(base_tags))
+    # def initialize_tags(self):
+    #     """This function initializes tags for surface and bulk atoms in a slab object."""
+    #     # initialize tags
+    #     # set tags; 1 for surface atoms and 0 for bulk
+    #     if type(self.slab) is catkit.gratoms.Gratoms:
+    #         surface_atoms = self.slab.get_surface_atoms()
+    #         atoms_arr = np.arange(0, len(self.slab))
+    #         base_tags = np.int8(np.isin(atoms_arr, surface_atoms)).tolist()
+    #         self.slab.set_tags(list(base_tags))
 
-    def prepare_slab(self):
-        """Initializes a default slab if not supplied by user. Attaches the calculator and sets the number of pristine atoms."""
-        # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
-        if (
-            (type(self.slab) is not catkit.gratoms.Gratoms)
-            and (type(self.slab) is not ase.atoms.Atoms)
-            and (type(self.slab) is not AtomsBatch)
-        ):
-            # initialize slab
-            logger.info("initializing slab")
-            # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
-            Cu_alat = 3.6147
-            self.slab = initialize_slab(Cu_alat)
+    # def prepare_slab(self):
+    #     """Initializes a default slab if not supplied by user. Attaches the calculator and sets the number of pristine atoms."""
+    #     # Cu lattice at 293 K, 3.6147 Å, potential ranges from 0 - 2
+    #     if (
+    #         (type(self.slab) is not catkit.gratoms.Gratoms)
+    #         and (type(self.slab) is not ase.atoms.Atoms)
+    #         and (type(self.slab) is not AtomsBatch)
+    #     ):
+    #         # initialize slab
+    #         logger.info("initializing slab")
+    #         # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
+    #         Cu_alat = 3.6147
+    #         self.slab = initialize_slab(Cu_alat)
 
-        # attach slab calculator
-        self.slab.calc = self.calc
-        logger.info(f"using slab calc {self.slab.calc}")
+    #     # attach slab calculator
+    #     self.slab.calc = self.calc
+    #     logger.info(f"using slab calc {self.slab.calc}")
 
-        self.slab.write(os.path.join(self.run_folder, "starting_slab.cif"))
-        # with open(os.path.join(self.run_folder, "starting_slab.pkl")) as f:
-        #     pkl.dump(self.slab, f)
-        self.initialize_tags()
+    #     self.slab.write(os.path.join(self.run_folder, "starting_slab.cif"))
+    # with open(os.path.join(self.run_folder, "starting_slab.pkl")) as f:
+    #     pkl.dump(self.slab, f)
+    # self.initialize_tags()
 
     def setup_folders(self):
         """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
@@ -311,9 +315,12 @@ class MCMC:
 
         """
         # sometimes slab.calc does not exist
-        if self.slab.calc:
+        if self.surface.calc:
             results = slab_energy(
-                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                **self.kwargs,
             )
             energy = results[0]
             self.per_atom_energies = results[-1]
@@ -323,6 +330,7 @@ class MCMC:
         return energy
 
     def prepare_canonical(self, even_adsorption_sites: bool = False):
+        # TODO can move to System initialization
         """This function prepares a canonical slab by performing semi-grand canonical adsorption runs until the
         desired number of adsorbed atoms are obtained.
 
@@ -390,13 +398,13 @@ class MCMC:
                 # Method 3
                 # do clustering
                 centers, labels = get_cluster_centers(
-                    self.ads_coords[:, :2], self.num_ads_atoms
+                    self.surface.ads_coords[:, :2], self.num_ads_atoms
                 )
                 sites_idx = find_closest_points_indices(
-                    self.ads_coords[:, :2], centers, labels
+                    self.surface.ads_coords[:, :2], centers, labels
                 )
                 plot_clustering_results(
-                    self.ads_coords,
+                    self.surface.ads_coords,
                     self.num_ads_atoms,
                     labels,
                     sites_idx,
@@ -410,14 +418,14 @@ class MCMC:
             else:
                 logger.info("randomly adsorbing sites")
                 # perform semi-grand canonical until num_ads_atoms are obtained
-                while len(self.slab) < self.num_pristine_atoms + self.num_ads_atoms:
+                while len(self.surface) < self.num_pristine_atoms + self.num_ads_atoms:
                     self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
                     # site_idx = next(site_iterator)
                     # self.curr_energy, _ = self.change_site(
                     #     prev_energy=self.curr_energy, site_idx=site_idx
                     # )
 
-            self.slab.write(
+            self.surface.real_atoms.write(
                 os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
             )
 
@@ -442,18 +450,19 @@ class MCMC:
             force_std = 0
         else:
             results = slab_energy(
-                self.slab,
+                self.surface.real_atoms,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 iter=i + 1,
                 save=True,
                 **self.kwargs,
             )
+            # TODO move the energy call to SurfaceSystem
             energy = results[0]
             energy_std = results[1]
             force_std = results[3]
 
-        if type(self.slab) is AtomsBatch:
+        if type(self.surface.real_atoms) is AtomsBatch:
             logger.info(
                 f"current energy is {self.curr_energy}, calculated energy is {energy}"
             )
@@ -464,7 +473,7 @@ class MCMC:
 
             if kwargs.get("offset_data", None):
                 ads_pot_dict = dict(zip(self.adsorbates, self.pot))
-                ads_count = Counter(self.slab.get_chemical_symbols())
+                ads_count = Counter(self.surface.real_atoms.get_chemical_symbols())
 
                 with open(kwargs["offset_data"]) as f:
                     offset_data = json.load(f)
@@ -494,13 +503,13 @@ class MCMC:
 
             # save cif and pkl file
             write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.slab.get_chemical_formula()}.cif",
-                self.slab,
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
+                self.surface.real_atoms,
             )
-            save_slab = self.slab.copy()
+            save_slab = self.surface.real_atoms.copy()
             save_slab.calc = None
             with open(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.slab.get_chemical_formula()}.pkl",
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.real_atoms.get_chemical_formula()}.pkl",
                 "wb",
             ) as f:
                 pkl.dump(save_slab, f)
@@ -511,13 +520,13 @@ class MCMC:
 
             # save cif file
             write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.slab.get_chemical_formula()}.cif",
-                self.slab,
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
+                self.surface.real_atoms,
             )
-            save_slab = self.slab.copy()
+            save_slab = self.surface.real_atoms.copy()
             save_slab.calc = None
             with open(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.slab.get_chemical_formula()}.pkl",
+                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.pkl",
                 "wb",
             ) as f:
                 pkl.dump(save_slab, f)
@@ -525,6 +534,7 @@ class MCMC:
         return energy
 
     def change_site_canonical(self, prev_energy: float = 0, iter: int = 1):
+        # TODO require new Event (with action) and AcceptanceCriterion classes
         """This function performs a canonical sampling step. It switches the adsorption sites of two
         adsorbates and checks if the change is energetically favorable.
 
@@ -551,15 +561,17 @@ class MCMC:
         if not prev_energy and not self.testing:
             # calculate energy of current state
             results = slab_energy(
-                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                **self.kwargs,
             )
             prev_energy = results[0]
             self.per_atom_energies = results[-1]
 
         # choose 2 sites of different ads (empty counts too) to switch
         site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
-            self.state,
-            slab=self.slab,
+            self.surface,
             require_per_atom_energies=self.kwargs.get(
                 "require_per_atom_energies", False
             ),
@@ -567,14 +579,14 @@ class MCMC:
             per_atom_energies=self.per_atom_energies,
             distance_weight_matrix=self.distance_weight_matrix,
             temp=self.temp,
-            ads_coords=self.ads_coords,
+            ads_coords=self.surface.ads_coords,
             run_folder=self.run_folder,
             plot_weights=plot_specific_distance_weights,
             run_iter=iter,
         )
 
-        site1_coords = self.ads_coords[site1_idx]
-        site2_coords = self.ads_coords[site2_idx]
+        site1_coords = self.surface.ads_coords[site1_idx]
+        site2_coords = self.surface.ads_coords[site2_idx]
 
         logger.debug(f"\n we are at iter {iter}")
         logger.debug(
@@ -585,28 +597,24 @@ class MCMC:
         )
 
         logger.debug(f"before proposed state is")
-        logger.debug(self.state)
+        logger.debug(self.surface.occ)
 
-        logger.debug(f"current slab has {len(self.slab)} atoms")
+        logger.debug(f"current slab has {len(self.surface)} atoms")
 
         # effectively switch ads at both sites
-        self.slab, self.state, _, _, _ = change_site(
-            self.slab,
-            self.state,
+        self.surface, _, _, _ = change_site(
+            self.surface,
             self.pot,
             self.adsorbates,
-            self.ads_coords,
             site1_idx,
             start_ads=site1_ads,
             end_ads=site2_ads,
             **self.kwargs,
         )
-        self.slab, self.state, _, _, _ = change_site(
-            self.slab,
-            self.state,
+        self.surface, _, _, _ = change_site(
+            self.surface,
             self.pot,
             self.adsorbates,
-            self.ads_coords,
             site2_idx,
             start_ads=site2_ads,
             end_ads=site1_ads,
@@ -614,15 +622,18 @@ class MCMC:
         )
 
         # make sure num atoms is conserved
-        logger.debug(f"proposed slab has {len(self.slab)} atoms")
+        logger.debug(f"proposed surface has {len(self.surface)} atoms")
 
         logger.debug(f"after proposed state is")
-        logger.debug(self.state)
+        logger.debug(self.surface.occ)
 
         if self.kwargs.get("save_cif", False):
             if not os.path.exists(self.run_folder):
                 os.makedirs(self.run_folder)
-            write(f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif", self.slab)
+            write(
+                f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif",
+                self.surface.real_atoms,
+            )
 
         # to test, always accept
         accept = False
@@ -632,30 +643,28 @@ class MCMC:
             energy = 0
 
             if filter_distances(
-                self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
+                self.surface.real_atoms,
+                ads=self.adsorbates,
+                cutoff_distance=filter_distance,
             ):
                 # succeeds! keep already changed slab
                 logger.debug("state changed with filtering!")
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site1_idx,
                     start_ads=site2_ads,
                     end_ads=site1_ads,
                     **self.kwargs,
                 )
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site2_idx,
                     start_ads=site1_ads,
                     end_ads=site2_ads,
@@ -668,7 +677,7 @@ class MCMC:
             prev_similarity = self.curr_similarity
             # relax structure
             relaxed_slab, _ = optimize_slab(
-                self.slab, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
             )
             # get the current cosine similarity
             curr_similarity = self.get_cosine_similarity(relaxed_slab)
@@ -688,7 +697,7 @@ class MCMC:
                 logger.debug("state changed!")
                 # still give the relaxed energy
                 results = slab_energy(
-                    self.slab,
+                    self.surface.real_atoms,
                     relax=self.relax,
                     folder_name=self.run_folder,
                     **self.kwargs,
@@ -699,23 +708,19 @@ class MCMC:
                 self.curr_similarity = curr_similarity  # update current similarity
             else:
                 # failed, keep current state and revert slab back to original
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site1_idx,
                     start_ads=site2_ads,
                     end_ads=site1_ads,
                     **self.kwargs,
                 )
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site2_idx,
                     start_ads=site1_ads,
                     end_ads=site2_ads,
@@ -730,7 +735,10 @@ class MCMC:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
             results = slab_energy(
-                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                **self.kwargs,
             )
             curr_energy = results[0]
             self.per_atom_energies = results[-1]
@@ -758,23 +766,19 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site1_idx,
                     start_ads=site2_ads,
                     end_ads=site1_ads,
                     **self.kwargs,
                 )
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site2_idx,
                     start_ads=site1_ads,
                     end_ads=site2_ads,
@@ -812,7 +816,7 @@ class MCMC:
         """
         if not site_idx:
             site_idx = get_random_idx(self.connectivity)
-        rand_site = self.ads_coords[site_idx]
+        rand_site = self.surface.ads_coords[site_idx]
 
         logger.debug(f"\n we are at iter {iter}")
         logger.debug(
@@ -820,23 +824,25 @@ class MCMC:
         )
 
         logger.debug("before proposed state is")
-        logger.debug(self.state)
+        logger.debug(self.surface.occ)
 
         # change in number of adsorbates (atoms)
         delta_N = 0
 
         if not prev_energy and not self.testing:
             results = slab_energy(
-                self.slab, relax=self.relax, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms,
+                relax=self.relax,
+                folder_name=self.run_folder,
+                **self.kwargs,
             )
             prev_energy = results[0]
             self.per_atom_energies = results[-1]
-        self.slab, self.state, delta_pot, start_ads, end_ads = change_site(
-            self.slab,
-            self.state,
+        # TODO, can move to Event
+        self.surface, delta_pot, start_ads, end_ads = change_site(
+            self.surface,
             self.pot,
             self.adsorbates,
-            self.ads_coords,
             site_idx,
             start_ads=None,
             end_ads=None,
@@ -844,12 +850,15 @@ class MCMC:
         )
 
         logger.debug("after proposed state is")
-        logger.debug(self.state)
+        logger.debug(self.surface.occ)
 
         if self.kwargs.get("save_cif", False):
             if not os.path.exists(self.run_folder):
                 os.makedirs(self.run_folder)
-            write(f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif", self.slab)
+            write(
+                f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif",
+                self.surface.real_atoms,
+            )
 
         # to test, always accept
         accept = False
@@ -858,19 +867,20 @@ class MCMC:
             energy = 0
 
             if filter_distances(
-                self.slab, ads=self.adsorbates, cutoff_distance=filter_distance
+                self.surface.real_atoms,
+                ads=self.adsorbates,
+                cutoff_distance=filter_distance,
             ):
                 # succeeds! keep already changed slab
                 logger.debug("state changed with filtering!")
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site_idx,
                     start_ads=end_ads,
                     end_ads=start_ads,
@@ -886,7 +896,7 @@ class MCMC:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
             results = slab_energy(
-                self.slab,
+                self.surface.real_atoms,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 iter=iter,
@@ -906,7 +916,7 @@ class MCMC:
             logger.debug(f"energy diff is {energy_diff}")
             logger.debug(f"chem pot(s) is(are) {self.pot}")
             logger.debug(f"delta_N {delta_N}")
-            logger.debug(f"delta_pot_{delta_pot}")
+            logger.debug(f"delta_pot {delta_pot}")
             logger.debug(f"k_b T {self.temp}")
 
             if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
@@ -923,12 +933,10 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.slab, self.state, _, _, _ = change_site(
-                    self.slab,
-                    self.state,
+                self.surface, _, _, _ = change_site(
+                    self.surface,
                     self.pot,
                     self.adsorbates,
-                    self.ads_coords,
                     site_idx,
                     start_ads=end_ads,
                     end_ads=start_ads,
@@ -958,6 +966,7 @@ class MCMC:
         logger.info(f"In sweep {i+1} out of {self.total_sweeps}")
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
+            # TODO change to self.step()
             if self.canonical:
                 self.curr_energy, accept = self.change_site_canonical(
                     prev_energy=self.curr_energy, iter=run_idx
@@ -970,8 +979,9 @@ class MCMC:
 
         # end of sweep, append to history
         if self.relax:
+            # TODO save the relaxed slab directly from object
             history_slab, _ = optimize_slab(
-                self.slab,
+                self.surface.real_atoms,
                 kim_potential=self.kwargs.get("kim_potential", None),
                 relax_steps=self.kwargs.get("relax_steps", 20),
                 optimizer=self.kwargs.get("optimizer", None),
@@ -979,11 +989,11 @@ class MCMC:
             )
             history_slab.calc = None
             history_slab = history_slab.copy()
-        # elif type(self.slab) is AtomsBatch:
-        #     history_slab = copy.deepcopy(self.slab)
+        # elif type(self.surface.real_atoms) is AtomsBatch:
+        #     history_slab = copy.deepcopy(self.surface.real_atoms)
         #     history_slab.calc = None
         else:
-            history_slab = self.slab.copy()
+            history_slab = self.surface.real_atoms.copy()
         # breakpoint()
         # save space, don't copy neighbor li
         self.history.append(history_slab)
@@ -994,7 +1004,9 @@ class MCMC:
         # append values
         self.energy_hist[i] = final_energy
 
-        ads_counts = count_adsorption_sites(self.slab, self.state, self.connectivity)
+        ads_counts = count_adsorption_sites(
+            self.surface.real_atoms, self.surface.occ, self.connectivity
+        )
         for key in set(self.site_types):
             if ads_counts[key]:
                 self.adsorption_count_hist[key].append(ads_counts[key])
@@ -1006,6 +1018,7 @@ class MCMC:
 
     def mcmc_run(
         self,
+        surface: SurfaceSystem,
         peak_scale: float = 1 / 2,
         ramp_up_sweeps: int = 10,
         ramp_down_sweeps: int = 200,
@@ -1013,9 +1026,6 @@ class MCMC:
         start_temp: float = 1.0,
         pot: float or list = 1.0,
         alpha: float = 0.9,
-        slab: ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch = None,
-        state: list or np.ndarray = None,
-        num_pristine_atoms: int = 0,
         perform_annealing=False,
         anneal_schedule: list = None,
         run_folder: str = None,
@@ -1023,6 +1033,7 @@ class MCMC:
         sweep_size: int = 300,
         even_adsorption_sites: bool = False,
     ):
+        # TODO separate out annealing schedule
         """This function runs an MC simulation for a given number of sweeps and temperature, and
         returns the history of the simulation along with summary statistics.
 
@@ -1041,8 +1052,8 @@ class MCMC:
         alpha : float, optional
             The alpha parameter is a value between 0 and 1 that determines the annealing rate. A higher
             alpha results in a slower annealing rate, while a lower alpha results in a faster annealing rate.
-        slab : ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch, optional
-            The `slab` is the starting surface structure on which the MC simulation is
+        surface : SurfaceSystem
+            The `surface` is the starting surface structure on which the MC simulation is
             being performed.
 
         Returns
@@ -1061,13 +1072,14 @@ class MCMC:
         self.ramp_down_sweeps = ramp_down_sweeps
         self.pot = pot
         self.alpha = alpha
-        self.slab = slab
-        self.state = state
+        self.surface = surface
+        # self.state = state
 
-        if num_pristine_atoms == 0:
-            self.num_pristine_atoms = len(self.slab)
-        else:
-            self.num_pristine_atoms = num_pristine_atoms
+        # if num_pristine_atoms == 0:
+        #     self.num_pristine_atoms = len(self.slab)
+        # else:
+        #     self.num_pristine_atoms = num_pristine_atoms
+        self.num_pristine_atoms = self.surface.num_pristine_atoms
         logger.info("there are %d atoms in pristine slab", self.num_pristine_atoms)
 
         # initialize history
@@ -1078,13 +1090,13 @@ class MCMC:
 
         self.setup_folders()
 
-        self.prepare_slab()
+        # self.prepare_slab()
 
-        self.set_adsorbates()
+        # self.set_adsorbates()
 
         self.get_adsorption_coords()
 
-        self.initialize_state()
+        # self.initialize_state()
 
         self.curr_energy = self.get_initial_energy()
 
@@ -1093,7 +1105,7 @@ class MCMC:
                 self.reference_structure
             )
             relaxed_slab, _ = optimize_slab(
-                self.slab, folder_name=self.run_folder, **self.kwargs
+                self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
             )
             self.curr_similarity = self.get_cosine_similarity(relaxed_slab)
 
@@ -1125,7 +1137,7 @@ class MCMC:
         print(temp_list)
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
-            self.mcmc_sweep(i=i)
+            self.mcmc_sweep(i=i)  # TODO change to .step
 
         # plot and save the results
         plot_summary_stats(
@@ -1144,6 +1156,7 @@ class MCMC:
             self.run_folder,
         )
 
+    # TODO move to utils.py
     def create_anneal_schedule(self):
         temp_list = [self.start_temp]
 

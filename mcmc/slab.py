@@ -11,6 +11,7 @@ from ase.io import write
 from scipy.special import softmax
 
 from mcmc.energy import run_lammps_energy
+from mcmc.system import SurfaceSystem
 from mcmc.utils import plot_specific_weights
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,6 @@ def initialize_slab(
     alat : float
         Lattice parameter in angstroms
     """
-    # slab = fcc100(elem, size=(4,4,4), a=alat, vacuum=vacuum)
-
-    # TODO: adjust size of surface if necessary
     a1 = bulk(elem, "fcc", a=alat)
     write(f"{elem}_a1_bulk.cif", a1)
     catkit_slab = catkit.build.surface(
@@ -70,10 +68,13 @@ def get_random_idx(connectivity, type=None):
 
 
 def get_complementary_idx(
-    state, slab, require_per_atom_energies=False, require_distance_decay=False, **kwargs
+    surface: SurfaceSystem,
+    require_per_atom_energies=False,
+    require_distance_decay=False,
+    **kwargs,
 ):
     """Get two indices, site1 and site2 of different elemental identities."""
-    adsorbed_idx = np.argwhere(state != 0).flatten()
+    adsorbed_idx = np.argwhere(surface.occ != 0).flatten()
 
     # TODO use per_site energies
     # optimized_slab, _ = optimize_slab(
@@ -91,10 +92,12 @@ def get_complementary_idx(
     # select adsorbates present in slab
     curr_ads = {
         k: list(g)
-        for k, g in itertools.groupby(adsorbed_idx, key=lambda x: slab[state[x]].symbol)
+        for k, g in itertools.groupby(
+            adsorbed_idx, key=lambda x: surface.real_atoms[surface.occ[x]].symbol
+        )
     }
     # add empty sites
-    empty_idx = np.argwhere(state == 0).flatten().tolist()
+    empty_idx = np.argwhere(surface.occ == 0).flatten().tolist()
     curr_ads["None"] = empty_idx
     logger.debug(f"current ads {curr_ads}")
 
@@ -113,7 +116,7 @@ def get_complementary_idx(
         logger.debug("boltzmann weights are %s", boltzmann_weights)
         # creat weights for each adsorbate except empty sites
         weights = {
-            k: boltzmann_weights[state[v]] if k != "None" else np.ones_like(v)
+            k: boltzmann_weights[surface.occ[v]] if k != "None" else np.ones_like(v)
             for k, v in curr_ads.items()
         }
     else:
@@ -172,22 +175,21 @@ def get_complementary_idx(
             random.choices(curr_ads[x], weights=w, k=1)[0]
             for x, w in zip([type1, type2], [weights1, weights2])
         ]
-    slab_idx_1, slab_idx_2 = state[site1_idx], state[site2_idx]
+    slab_idx_1, slab_idx_2 = surface.occ[site1_idx], surface.occ[site2_idx]
     logger.debug("type1 %s, type2 %s", type1, type2)
     logger.debug("site1_idx %s, site2_idx %s", slab_idx_1, slab_idx_2)
     logger.debug(
-        "coordinates are %s", slab.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]]
+        "coordinates are %s",
+        surface.real_atoms.get_positions(wrap=True)[[slab_idx_1, slab_idx_2]],
     )
 
     return site1_idx, site2_idx, type1, type2
 
 
 def change_site(
-    slab,
-    state,
+    surface: SurfaceSystem,
     pots,
     adsorbates,
-    coords,
     site_idx,
     start_ads=None,
     end_ads=None,
@@ -210,10 +212,6 @@ def change_site(
     list. It is used to assign a potential to each adsorbate when adsorbing it onto the slab.
     adsorbates
         A list of adsorbate species that can be adsorbed onto the slab surface.
-    coords
-        The `coords` parameter is a list of coordinates representing the positions of the adsorbates on the
-    slab. Each coordinate is a tuple of three values (x, y, z) representing the position in
-    three-dimensional space.
     site_idx
         The `site_idx` parameter represents the index of the site on the slab where the adsorption or
     desorption will take place.
@@ -233,9 +231,9 @@ def change_site(
     ads_pot_dict = dict(zip(adsorbates, pots))
     chosen_ads = None
 
-    old_ads_count = Counter(slab.get_chemical_symbols())
+    old_ads_count = Counter(surface.real_atoms.get_chemical_symbols())
 
-    if state[site_idx] == 0:  # empty list, no ads
+    if surface.occ[site_idx] == 0:  # empty list, no ads
         logger.debug(f"chosen site is empty")
         start_ads = "None"
 
@@ -252,16 +250,16 @@ def change_site(
         delta_pot = chosen_pot
 
         # modularize
-        logger.debug(f"current slab has {len(slab)} atoms")
+        logger.debug(f"current slab has {len(surface)} atoms")
 
-        state, slab = add_to_slab(slab, state, chosen_ads, coords, site_idx)
+        surface = add_to_slab(surface, chosen_ads, site_idx)
 
-        logger.debug(f"proposed slab has {len(slab)} atoms")
+        logger.debug(f"proposed slab has {len(surface)} atoms")
 
     else:
         logger.debug(f"chosen site already adsorbed")
         if not start_ads:
-            start_ads = slab[state[site_idx]].symbol
+            start_ads = surface.real_atoms[surface.occ[site_idx]].symbol
 
         ads_choices = adsorbates.copy()
         ads_choices.remove(start_ads)
@@ -277,10 +275,10 @@ def change_site(
 
         logger.debug(f"chosen ads is {chosen_ads}")
 
-        logger.debug(f"current slab has {len(slab)} atoms")
+        logger.debug(f"current slab has {len(surface)} atoms")
 
         # desorb first, regardless of next chosen state
-        state, slab = remove_from_slab(slab, state, site_idx)
+        surface = remove_from_slab(surface, site_idx)
 
         # adsorb
         if "None" not in chosen_ads:
@@ -288,18 +286,18 @@ def change_site(
 
             logger.debug(f"replacing {start_ads} with {chosen_ads}")
 
-            state, slab = add_to_slab(slab, state, chosen_ads, coords, site_idx)
+            surface = add_to_slab(surface, chosen_ads, site_idx)
 
             delta_pot = chosen_pot - prev_pot
         else:
             logger.debug(f"desorbing {start_ads}")
             delta_pot = -prev_pot  # vacant site has pot = 0
 
-        logger.debug(f"proposed slab has {len(slab)} atoms")
+        logger.debug(f"proposed slab has {len(surface)} atoms")
 
     end_ads = chosen_ads
 
-    new_ads_count = Counter(slab.get_chemical_symbols())
+    new_ads_count = Counter(surface.real_atoms.get_chemical_symbols())
 
     if kwargs.get("offset_data", None):
         with open(kwargs["offset_data"]) as f:
@@ -322,23 +320,19 @@ def change_site(
 
         delta_pot = new_pot - old_pot
 
-    return slab, state, delta_pot, start_ads, end_ads
+    return surface, delta_pot, start_ads, end_ads
 
 
-def add_to_slab(slab, state, adsorbate, coords, site_idx):
-    """It adds an adsorbate to a slab, and updates the state to reflect the new adsorbate
+def add_to_slab(surface, adsorbate, site_idx):
+    """It adds an adsorbate to a surface, and updates the state to reflect the new adsorbate
 
     Parameters
     ----------
-    slab : ase.Atoms
-        the slab we're adding adsorbates to
-    state : list
-        a dict of integers, where each integer represents the slab index of the adsorbate on that site. If the
+    surface : SurfaceSystem
+        the surface system
     site is empty, the integer is 0.
     adsorbate : ase.Atoms
         the adsorbate molecule
-    coords : list
-        the coordinates of the sites on the surface
     site_idx : int
         the index of the site on the slab where the adsorbate will be placed
 
@@ -347,44 +341,43 @@ def add_to_slab(slab, state, adsorbate, coords, site_idx):
         The state and slab are being returned.
     """
 
-    adsorbate_idx = len(slab)
-    state[site_idx] = adsorbate_idx
-    slab.append(adsorbate)
-    slab.positions[-1] = coords[site_idx]
-    return state, slab
+    adsorbate_idx = len(surface)
+    surface.occ[site_idx] = adsorbate_idx
+    surface.real_atoms.append(adsorbate)
+    surface.real_atoms.positions[-1] = surface.ads_coords[site_idx]
+    return surface
 
 
-def remove_from_slab(slab, state, site_idx):
+def remove_from_slab(surface, site_idx):
     """Remove the adsorbate from the slab and update the state
 
     Parameters
     ----------
-    slab : ase.Atoms
-        the slab object
-    state : list
-        a list of integers, where each integer represents the slab index of the adsorbate on that site. If the
-    site is empty, the integer is 0.
+    surface : SurfaceSystem
+        the surface system
     site_idx : int
         the index of the site to remove the adsorbate from
 
     Returns
     -------
-        The state and slab are being returned.
+        The surface being returned.
     """
-    adsorbate_idx = state[site_idx]
-    assert len(np.argwhere(state == adsorbate_idx)) <= 1, "more than 1 site found"
-    assert len(np.argwhere(state == adsorbate_idx)) == 1, "no sites found"
+    adsorbate_idx = surface.occ[site_idx]
+    assert len(np.argwhere(surface.occ == adsorbate_idx)) <= 1, "more than 1 site found"
+    assert len(np.argwhere(surface.occ == adsorbate_idx)) == 1, "no sites found"
 
-    del slab[int(adsorbate_idx)]
+    del surface.real_atoms[int(adsorbate_idx)]
 
     # lower the index for higher index items
-    state = np.where(state >= int(adsorbate_idx), state - 1, state)
+    surface.occ = np.where(
+        surface.occ >= int(adsorbate_idx), surface.occ - 1, surface.occ
+    )
     # remove negatives
-    state = np.where(state < 0, 0, state)
+    surface.occ = np.where(surface.occ < 0, 0, surface.occ)
 
     # remove the adsorbate from tracking
-    state[site_idx] = 0
-    return state, slab
+    surface.occ[site_idx] = 0
+    return surface
 
 
 def get_adsorption_coords(slab, atom, connectivity, debug=False):
