@@ -8,8 +8,6 @@ import numpy as np
 from ase.calculators.calculator import Calculator
 from ase.constraints import FixAtoms
 
-from .energy import optimize_slab
-
 # refer to https://github.com/HojeChun/EpiKmc/blob/main/epikmc/system.py#L54
 
 logger = logging.getLogger(__name__)
@@ -57,7 +55,9 @@ class SurfaceSystem:
         self.calc = calc
         self.relax_traj = []
         self.relaxed_atoms = None
-        self.relax_atoms = self.system_info.get("relax_atoms", False)
+        self.relax_atoms = self.system_info.get(
+            "relax_atoms", False
+        )  # whether to relax surface
         self._states = {}
         self.constraints = []  # TODO
         self.surface_area = 0.0  # TODO
@@ -152,19 +152,21 @@ class SurfaceSystem:
         return self.ads_idx
 
     def relax_structure(self, optimizer: str = "FIRE", **kwargs):
+        from .energy import optimize_slab
+
         relaxed_slab, energy = optimize_slab(self.real_atoms, optimizer, **kwargs)
         self.relaxed_atoms = relaxed_slab
         # self.relax_traj.append(relaxed_structure) TODO
         return relaxed_slab, energy
 
-    def get_relaxed_energy(self, **kwargs):
-        # check if already relaxed
-        if self.relaxed_atoms is None:
+    def get_relaxed_energy(self, recalculate=False, **kwargs):
+        # TODO check if already relaxed
+        if self.relaxed_atoms is None or recalculate:
             _, energy = self.relax_structure(
                 optimizer=self.system_info.get("optimizer", "FIRE"), **kwargs
             )
         else:
-            self.relaxed_atoms.get_potential_energy()
+            energy = self.relaxed_atoms.get_potential_energy()
         return energy
 
     def get_unrelaxed_energy(self, **kwargs):
@@ -178,10 +180,36 @@ class SurfaceSystem:
         else:
             return self.get_unrelaxed_energy(**kwargs)
 
-    def get_surface_energy(self, **kwargs):
-        # return self.get_potential_energy(**kwargs) / self.surface_area
-        # TODO
-        pass
+    def get_surface_energy(self, recalculate=False, **kwargs):
+        """Calculate the surface energy of the system.
+
+        Parameters
+        ----------
+        recalculate : bool
+            If True, do relaxation again.
+        kwargs : dict
+            Additional keyword arguments to pass to the calculator.
+
+        Returns
+        -------
+        float
+            The surface energy of the system.
+        """
+
+        if self.calc is None:
+            raise RuntimeError("SurfaceSystem object has no calculator.")
+
+        if not hasattr(self.calc, "get_surface_energy"):
+            raise AttributeError("Calculator object has no get_surface_energy method.")
+
+        if self.relax_atoms:
+            if self.relaxed_atoms is None or recalculate:
+                _, raw_energy = self.relax_structure(
+                    optimizer=self.system_info.get("optimizer", "FIRE"), **kwargs
+                )
+            return self.calc.get_surface_energy(atoms=self.relaxed_atoms, **kwargs)
+
+        return self.calc.get_surface_energy(atoms=self.real_atoms, **kwargs)
 
     def get_forces(self, **kwargs):
         if self.relax_atoms:

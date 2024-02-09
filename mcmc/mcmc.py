@@ -317,7 +317,7 @@ class MCMC:
         # sometimes slab.calc does not exist
         if self.surface.calc:
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 **self.kwargs,
@@ -450,7 +450,7 @@ class MCMC:
             force_std = 0
         else:
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 iter=i + 1,
@@ -471,33 +471,34 @@ class MCMC:
             #     energy, self.curr_energy, atol=1.0
             # ), "self.curr_energy doesn't match calculated energy of current slab"
 
-            if kwargs.get("offset_data", None):
-                ads_pot_dict = dict(zip(self.adsorbates, self.pot))
-                ads_count = Counter(self.surface.real_atoms.get_chemical_symbols())
+            # if kwargs.get("offset_data", None):
+            #     ads_pot_dict = dict(zip(self.adsorbates, self.pot))
+            #     ads_count = Counter(self.surface.real_atoms.get_chemical_symbols())
 
-                with open(kwargs["offset_data"]) as f:
-                    offset_data = json.load(f)
-                stoics = offset_data["stoics"]
-                ref_element = offset_data["ref_element"]
+            #     with open(kwargs["offset_data"]) as f:
+            #         offset_data = json.load(f)
+            #     stoics = offset_data["stoics"]
+            #     ref_element = offset_data["ref_element"]
 
-                pot = 0
-                for ele, _ in ads_count.items():
-                    if ele != ref_element:
-                        pot += (
-                            ads_count[ele]
-                            - stoics[ele] / stoics[ref_element] * ads_count[ref_element]
-                        ) * ads_pot_dict[ele]
+            #     pot = 0
+            #     for ele, _ in ads_count.items():
+            #         if ele != ref_element:
+            #             pot += (
+            #                 ads_count[ele]
+            #                 - stoics[ele] / stoics[ref_element] * ads_count[ref_element]
+            #             ) * ads_pot_dict[ele]
 
-                energy -= pot
-                logger.info(
-                    "optim structure has Free Energy = {:.3f}+/-{:.3f}".format(
-                        energy, energy_std
-                    )
-                )
-            else:
-                logger.info(
-                    f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}"
-                )
+            #     energy -= pot
+            #     logger.info(
+            #         "optim structure has Free Energy = {:.3f}+/-{:.3f}".format(
+            #             energy, energy_std
+            #         )
+            #     )
+            # else:
+            #     logger.info(
+            #         f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}"
+            #     )
+            logger.info(f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}")
 
             logger.info(f"average force error = {force_std:.3f}")
 
@@ -561,7 +562,7 @@ class MCMC:
         if not prev_energy and not self.testing:
             # calculate energy of current state
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 **self.kwargs,
@@ -697,7 +698,7 @@ class MCMC:
                 logger.debug("state changed!")
                 # still give the relaxed energy
                 results = slab_energy(
-                    self.surface.real_atoms,
+                    self.surface,
                     relax=self.relax,
                     folder_name=self.run_folder,
                     **self.kwargs,
@@ -735,7 +736,7 @@ class MCMC:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 **self.kwargs,
@@ -831,7 +832,7 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 **self.kwargs,
@@ -896,7 +897,7 @@ class MCMC:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
             results = slab_energy(
-                self.surface.real_atoms,
+                self.surface,
                 relax=self.relax,
                 folder_name=self.run_folder,
                 iter=iter,
@@ -947,7 +948,7 @@ class MCMC:
                 energy = prev_energy
                 accept = False
 
-            # logger.debug(f"energy after accept/reject {slab_energy(slab, relax=relax, folder_name=folder_name, iter=iter, **kwargs)}")
+            # logger.debug(f"energy after accept/reject {slab_energy(self.surface, relax=relax, folder_name=folder_name, iter=iter, **kwargs)}")
         return energy, accept
 
     def mcmc_sweep(self, i: int = 0):
