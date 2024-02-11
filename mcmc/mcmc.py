@@ -677,7 +677,7 @@ class MCMC:
             # use cosine distance from ideal structure
             prev_similarity = self.curr_similarity
             # relax structure
-            relaxed_slab, _ = optimize_slab(
+            relaxed_slab, _, _ = optimize_slab(
                 self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
             )
             # get the current cosine similarity
@@ -981,7 +981,7 @@ class MCMC:
         # end of sweep, append to history
         if self.relax:
             # TODO save the relaxed slab directly from object
-            history_slab, _ = optimize_slab(
+            history_slab, _, _ = optimize_slab(
                 self.surface.real_atoms,
                 kim_potential=self.kwargs.get("kim_potential", None),
                 relax_steps=self.kwargs.get("relax_steps", 20),
@@ -1105,7 +1105,7 @@ class MCMC:
             self.reference_structure_embeddings = self.get_structure_embeddings(
                 self.reference_structure
             )
-            relaxed_slab, _ = optimize_slab(
+            relaxed_slab, _, _ = optimize_slab(
                 self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
             )
             self.curr_similarity = self.get_cosine_similarity(relaxed_slab)
