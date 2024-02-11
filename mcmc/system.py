@@ -111,7 +111,9 @@ class SurfaceSystem:
         self.all_atoms = copy.deepcopy(self.real_atoms)
         self.initialize_virtual_atoms()
         if self.relax_atoms:
-            self.relaxed_atoms, _ = self.relax_structure(self.real_atoms)
+            self.relaxed_atoms, _ = self.relax_structure(
+                optimizer=self.system_info.get("optimizer", "FIRE")
+            )
 
         if not (
             (isinstance(occ, list) and (len(self.occ) > 0))
@@ -154,7 +156,7 @@ class SurfaceSystem:
     def relax_structure(self, optimizer: str = "FIRE", **kwargs):
         from .energy import optimize_slab
 
-        relaxed_slab, energy = optimize_slab(self.real_atoms, optimizer, **kwargs)
+        relaxed_slab, energy, traj = optimize_slab(self.real_atoms, optimizer, **kwargs)
         self.relaxed_atoms = relaxed_slab
         # self.relax_traj.append(relaxed_structure) TODO
         return relaxed_slab, energy

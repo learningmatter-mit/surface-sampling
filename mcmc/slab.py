@@ -10,7 +10,6 @@ from ase.build import bulk
 from ase.io import write
 from scipy.special import softmax
 
-from mcmc.energy import run_lammps_energy
 from mcmc.system import SurfaceSystem
 from mcmc.utils import plot_specific_weights
 
