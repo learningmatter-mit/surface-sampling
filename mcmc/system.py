@@ -111,9 +111,7 @@ class SurfaceSystem:
         self.all_atoms = copy.deepcopy(self.real_atoms)
         self.initialize_virtual_atoms()
         if self.relax_atoms:
-            self.relaxed_atoms, _ = self.relax_structure(
-                optimizer=self.system_info.get("optimizer", "FIRE")
-            )
+            self.relaxed_atoms, _ = self.relax_structure()
 
         if not (
             (isinstance(occ, list) and (len(self.occ) > 0))
@@ -153,10 +151,12 @@ class SurfaceSystem:
         self.ads_idx = self.occ[self.occ.nonzero()[0]]
         return self.ads_idx
 
-    def relax_structure(self, optimizer: str = "FIRE", **kwargs):
+    def relax_structure(self, **kwargs):
         from .energy import optimize_slab
 
-        relaxed_slab, energy, traj = optimize_slab(self.real_atoms, optimizer, **kwargs)
+        relaxed_slab, energy, traj = optimize_slab(
+            self.real_atoms, **self.system_info, **kwargs
+        )
         self.relaxed_atoms = relaxed_slab
         # self.relax_traj.append(relaxed_structure) TODO
         return relaxed_slab, energy
@@ -164,9 +164,7 @@ class SurfaceSystem:
     def get_relaxed_energy(self, recalculate=False, **kwargs):
         # TODO check if already relaxed
         if self.relaxed_atoms is None or recalculate:
-            _, energy = self.relax_structure(
-                optimizer=self.system_info.get("optimizer", "FIRE"), **kwargs
-            )
+            _, energy = self.relax_structure(**kwargs)
         else:
             energy = self.relaxed_atoms.get_potential_energy()
         return energy
@@ -206,9 +204,7 @@ class SurfaceSystem:
 
         if self.relax_atoms:
             if self.relaxed_atoms is None or recalculate:
-                _, raw_energy = self.relax_structure(
-                    optimizer=self.system_info.get("optimizer", "FIRE"), **kwargs
-                )
+                _, raw_energy = self.relax_structure(**kwargs)
             return self.calc.get_surface_energy(atoms=self.relaxed_atoms, **kwargs)
 
         return self.calc.get_surface_energy(atoms=self.real_atoms, **kwargs)

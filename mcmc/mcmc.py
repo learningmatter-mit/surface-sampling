@@ -502,6 +502,12 @@ class MCMC:
 
             logger.info(f"average force error = {force_std:.3f}")
 
+            if self.relax:
+                write(
+                    f"{self.run_folder}/optim_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.relaxed_atoms.get_chemical_formula()}.cif",
+                    self.surface.relaxed_atoms,
+                )
+
             # save cif and pkl file
             write(
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
@@ -840,6 +846,7 @@ class MCMC:
             prev_energy = results[0]
             self.per_atom_energies = results[-1]
         # TODO, can move to Event
+        # import pdb; pdb.set_trace()
         self.surface, delta_pot, start_ads, end_ads = change_site(
             self.surface,
             self.pot,
@@ -903,6 +910,7 @@ class MCMC:
                 iter=iter,
                 **self.kwargs,
             )
+            # import pdb; pdb.set_trace()
             curr_energy = results[0]
             self.per_atom_energies = results[-1]
 
@@ -917,13 +925,15 @@ class MCMC:
             logger.debug(f"energy diff is {energy_diff}")
             logger.debug(f"chem pot(s) is(are) {self.pot}")
             logger.debug(f"delta_N {delta_N}")
-            logger.debug(f"delta_pot {delta_pot}")
+            # logger.debug(f"delta_pot {delta_pot}")
             logger.debug(f"k_b T {self.temp}")
 
             if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
                 base_prob = 0.0
             else:
-                base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+                # base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+                # pot should be accounted for in the energy_diff
+                base_prob = np.exp(-energy_diff / self.temp)
 
             logger.debug(f"base probability is {base_prob}")
             if np.random.rand() < base_prob:
@@ -981,15 +991,16 @@ class MCMC:
         # end of sweep, append to history
         if self.relax:
             # TODO save the relaxed slab directly from object
-            history_slab, _, _ = optimize_slab(
-                self.surface.real_atoms,
-                kim_potential=self.kwargs.get("kim_potential", None),
-                relax_steps=self.kwargs.get("relax_steps", 20),
-                optimizer=self.kwargs.get("optimizer", None),
-                folder_name=self.run_folder,
-            )
-            history_slab.calc = None
-            history_slab = history_slab.copy()
+            # history_slab, _, _ = optimize_slab(
+            #     self.surface.real_atoms,
+            #     kim_potential=self.kwargs.get("kim_potential", None),
+            #     relax_steps=self.kwargs.get("relax_steps", 20),
+            #     optimizer=self.kwargs.get("optimizer", None),
+            #     folder_name=self.run_folder,
+            # )
+            # history_slab.calc = None
+            # history_slab = history_slab.copy()
+            history_slab = self.surface.relaxed_atoms.copy()
         # elif type(self.surface.real_atoms) is AtomsBatch:
         #     history_slab = copy.deepcopy(self.surface.real_atoms)
         #     history_slab.calc = None
