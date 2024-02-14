@@ -276,6 +276,8 @@ def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kw
     ):
         # if update_neighbors:
         #     slab.update_nbr_list(update_atoms=True)
+        # TODO think about how to make this efficient
+        # only relax if the real atoms are changed
         surface_energy = surface.get_surface_energy(recalculate=True)
         # slab.calc.calculate(slab)
         # import pdb; pdb.set_trace()

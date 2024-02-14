@@ -41,21 +41,23 @@ class SurfaceSystem:
         ads_coords: List,
         calc: Calculator = None,
         occ: List = None,
-        system_info: Dict = None,
+        system_settings: Dict = None,
+        calc_settings: Dict = None,
     ):
         # TODO the procedure is to go from all_atoms to real_atoms and relaxed_atoms
         # but for now, we only have the real_atoms and relaxed_atoms to maintain compatibility
         # with ASE
         self.all_atoms = None
         # self.real_atoms = self.all_atoms.copy()
-        self.system_info = system_info or DEFAULT_SETTINGS
+        self.system_settings = system_settings or DEFAULT_SETTINGS
+        self.calc_settings = calc_settings or calc.parameters.copy()
 
         self.real_atoms = None
         self.num_pristine_atoms = 0
         self.calc = calc
         self.relax_traj = []
         self.relaxed_atoms = None
-        self.relax_atoms = self.system_info.get(
+        self.relax_atoms = self.calc_settings.get(
             "relax_atoms", False
         )  # whether to relax surface
         self._states = {}
@@ -155,7 +157,7 @@ class SurfaceSystem:
         from .energy import optimize_slab
 
         relaxed_slab, energy, traj = optimize_slab(
-            self.real_atoms, **self.system_info, **kwargs
+            self.real_atoms, **self.calc_settings, **kwargs
         )
         self.relaxed_atoms = relaxed_slab
         # self.relax_traj.append(relaxed_structure) TODO
@@ -205,9 +207,10 @@ class SurfaceSystem:
         if self.relax_atoms:
             if self.relaxed_atoms is None or recalculate:
                 _, raw_energy = self.relax_structure(**kwargs)
-            return self.calc.get_surface_energy(atoms=self.relaxed_atoms, **kwargs)
-
-        return self.calc.get_surface_energy(atoms=self.real_atoms, **kwargs)
+            return self.calc.get_property(
+                "surface_energy", atoms=self.relaxed_atoms, **kwargs
+            )
+        return self.calc.get_property("surface_energy", atoms=self.real_atoms, **kwargs)
 
     def get_forces(self, **kwargs):
         if self.relax_atoms:

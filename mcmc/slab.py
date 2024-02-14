@@ -296,28 +296,28 @@ def change_site(
 
     end_ads = chosen_ads
 
-    new_ads_count = Counter(surface.real_atoms.get_chemical_symbols())
+    # new_ads_count = Counter(surface.real_atoms.get_chemical_symbols())
 
-    if kwargs.get("offset_data", None):
-        with open(kwargs["offset_data"]) as f:
-            offset_data = json.load(f)
-        stoics = offset_data["stoics"]
-        ref_element = offset_data["ref_element"]
+    # if kwargs.get("offset_data", None):
+    #     with open(kwargs["offset_data"]) as f:
+    #         offset_data = json.load(f)
+    # stoics = offset_data["stoics"]
+    # ref_element = offset_data["ref_element"]
 
-        old_pot = 0
-        new_pot = 0
-        for ele, _ in old_ads_count.items():
-            if ele != ref_element:
-                old_pot += (
-                    old_ads_count[ele]
-                    - stoics[ele] / stoics[ref_element] * old_ads_count[ref_element]
-                ) * ads_pot_dict[ele]
-                new_pot += (
-                    new_ads_count[ele]
-                    - stoics[ele] / stoics[ref_element] * new_ads_count[ref_element]
-                ) * ads_pot_dict[ele]
+    # old_pot = 0
+    # new_pot = 0
+    # for ele, _ in old_ads_count.items():
+    #     if ele != ref_element:
+    #         old_pot += (
+    #             old_ads_count[ele]
+    #             - stoics[ele] / stoics[ref_element] * old_ads_count[ref_element]
+    #         ) * ads_pot_dict[ele]
+    #         new_pot += (
+    #             new_ads_count[ele]
+    #             - stoics[ele] / stoics[ref_element] * new_ads_count[ref_element]
+    #         ) * ads_pot_dict[ele]
 
-        delta_pot = new_pot - old_pot
+    # delta_pot = new_pot - old_pot
 
     return surface, delta_pot, start_ads, end_ads
 

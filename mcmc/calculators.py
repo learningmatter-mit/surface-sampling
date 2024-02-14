@@ -22,6 +22,8 @@ HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 logger = logging.getLogger(__name__)
 
 
+# TODO define abstract base class for surface energy calcs
+
 # use EnsembleNFF, NeuralFF classes for NFF
 class EnsembleNFFSurface(EnsembleNFF):
     implemented_properties = EnsembleNFF.implemented_properties + ["surface_energy"]
@@ -118,6 +120,23 @@ class EnsembleNFFSurface(EnsembleNFF):
             self.offset_data = self.parameters["offset_data"]
             print(f"offset data: {self.offset_data} is set from parameters")
 
+    def calculate(
+        self,
+        atoms: ase.Atoms = None,
+        properties=implemented_properties,
+        system_changes=all_changes,
+    ):
+
+        if atoms is None:
+            atoms = self.atoms
+
+        EnsembleNFF.calculate(self, atoms, properties, system_changes)
+
+        if "surface_energy" in properties:
+            self.results["surface_energy"] = self.get_surface_energy(atoms=atoms)
+
+        atoms.results.update(self.results)
+
 
 class NeuralFFSurface(NeuralFF):
     pass
@@ -126,10 +145,6 @@ class NeuralFFSurface(NeuralFF):
 # use OpenKIM calc
 
 # use ASE calc
-
-
-class LAMMPSSurfCalc(Calculator):
-    pass
 
 
 class LAMMMPSCalc(Calculator):
@@ -141,6 +156,8 @@ class LAMMMPSCalc(Calculator):
         super().__init__(*args, **kwargs)
         self.implemented_properties = LAMMMPSCalc.implemented_properties
         self.run_dir = os.getcwd()
+        self.relax_steps = 100
+        self.kim_potential = False
 
     def run_lammps_calc(
         self,
@@ -196,8 +213,8 @@ class LAMMMPSCalc(Calculator):
                 )
 
         # run LAMMPS without too much output
-        # lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
-        lmp = lammps()
+        lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
+        # lmp = lammps()
         logger.debug(lmp.file(lammps_in_file))
 
         energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
@@ -261,6 +278,12 @@ class LAMMMPSCalc(Calculator):
         if "run_dir" in self.parameters.keys():
             self.run_dir = self.parameters["run_dir"]
             print(f"run directory: {self.run_dir} is set from parameters")
+        if "relax_steps" in self.parameters.keys():
+            self.relax_steps = self.parameters["relax_steps"]
+            print(f"relaxation steps: {self.relax_steps} is set from parameters")
+        if "kim_potential" in self.parameters.keys():
+            self.kim_potential = self.parameters["kim_potential"]
+            print(f"kim potential: {self.kim_potential} is set from parameters")
 
     def calculate(
         self,
@@ -283,3 +306,57 @@ class LAMMMPSCalc(Calculator):
             relaxed_results = self.run_lammps_opt(atoms, run_dir=self.run_dir)
             self.results["relaxed_energy"] = relaxed_results[1]
             self.results["per_atom_energies"] = relaxed_results[2]
+
+
+class LAMMPSSurfCalc(LAMMMPSCalc):
+    implemented_properties = LAMMMPSCalc.implemented_properties + ["surface_energy"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # TODO add stuff here
+
+    def get_surface_energy(self, atoms: ase.Atoms = None):
+        """Get the surface energy of the system. Currently the same as the potential energy.
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the surface energy for.
+
+        Returns
+        -------
+        float
+            The surface energy of the system.
+
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        surface_energy = self.get_potential_energy(atoms=atoms)
+
+        return surface_energy
+
+    def set(self, **kwargs):
+        """Set parameters like set(key1=value1, key2=value2, ...).
+
+        A dictionary containing the parameters that have been changed
+        is returned.
+
+        The special keyword 'parameters' can be used to read
+        parameters from a file."""
+        LAMMMPSCalc.set(self, **kwargs)
+
+    def calculate(
+        self,
+        atoms: ase.Atoms = None,
+        properties=implemented_properties,
+        system_changes=all_changes,
+    ):
+
+        if atoms is None:
+            atoms = self.atoms
+
+        LAMMMPSCalc.calculate(self, atoms, properties, system_changes)
+
+        if "surface_energy" in properties:
+            self.results["surface_energy"] = self.get_surface_energy(atoms=atoms)
