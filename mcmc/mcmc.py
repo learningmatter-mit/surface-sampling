@@ -14,8 +14,10 @@ import numpy as np
 from ase.calculators.eam import EAM
 from ase.constraints import FixAtoms
 from ase.io import write
+from ase.io.trajectory import TrajectoryWriter
 from catkit.gen.adsorption import get_adsorption_sites
-from nff.io.ase import AtomsBatch, EnsembleNFF, NeuralFF
+from nff.io.ase import AtomsBatch
+from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.cuda import batch_to
 from scipy.spatial import distance
 from scipy.spatial.distance import cdist
@@ -58,10 +60,8 @@ class MCMC:
                 os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
             )
         ),
-        element="Cu",
         canonical=False,
         num_ads_atoms=0,
-        ads_coords=[],
         testing=False,
         adsorbates=None,
         relax=False,
@@ -525,6 +525,12 @@ class MCMC:
             energy = self.curr_energy
             logger.info(f"optim structure has Energy = {energy}")
 
+            if self.relax:
+                write(
+                    f"{self.run_folder}/optim_slab_run_{i+1:03}_{energy:.3f}_{self.surface.relaxed_atoms.get_chemical_formula()}.cif",
+                    self.surface.relaxed_atoms,
+                )
+
             # save cif file
             write(
                 f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
@@ -537,6 +543,17 @@ class MCMC:
                 "wb",
             ) as f:
                 pkl.dump(save_slab, f)
+
+        # save trajectories
+        if self.surface.relax_traj:
+            # use TrajectoryWriter
+            atoms_list = self.surface.relax_traj["atoms"]
+            writer = TrajectoryWriter(
+                f"{self.run_folder}/traj_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.traj",
+                mode="a",
+            )
+            for atoms in atoms_list:
+                writer.write(atoms)
 
         return energy
 
@@ -1006,11 +1023,11 @@ class MCMC:
         #     history_slab.calc = None
         else:
             history_slab = self.surface.real_atoms.copy()
-        # breakpoint()
-        # save space, don't copy neighbor li
-        self.history.append(history_slab)
-        # TODO can save some compute here
 
+        # save space, don't copy neighbor
+        self.history.append(history_slab)
+        self.trajectories.append(self.surface.relax_traj)
+        # TODO can save some compute here
         final_energy = self.save_structures(i=i, testing=self.testing, **self.kwargs)
 
         # append values
@@ -1096,6 +1113,7 @@ class MCMC:
 
         # initialize history
         self.history = []
+        self.trajectories = []
         self.energy_hist = np.random.rand(self.total_sweeps)
         self.adsorption_count_hist = defaultdict(list)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
@@ -1116,10 +1134,9 @@ class MCMC:
             self.reference_structure_embeddings = self.get_structure_embeddings(
                 self.reference_structure
             )
-            relaxed_slab, _, _ = optimize_slab(
-                self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
+            self.curr_similarity = self.get_cosine_similarity(
+                self.surface.relaxed_atoms
             )
-            self.curr_similarity = self.get_cosine_similarity(relaxed_slab)
 
         self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
 

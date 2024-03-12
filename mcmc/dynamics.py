@@ -35,7 +35,7 @@ class TrajectoryObserver:
 
         self.atoms.calc = None
         self.atoms_history.append(
-            copy.deepcopy(self.atoms)
+            Atoms(self.atoms)
         )  # don't want to save the calculator
         self.atoms.calc = self.calc
         # self.cells.append(self.atoms.get_cell()[:])

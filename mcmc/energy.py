@@ -126,7 +126,7 @@ logger = logging.getLogger(__name__)
 
 
 # This can be a separate function
-def optimize_slab(slab, optimizer="BFGS", **kwargs):
+def optimize_slab(slab, optimizer="BFGS", save_traj=True, **kwargs):
     """Run relaxation for slab
 
     Parameters
@@ -195,24 +195,29 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
         else:
             dyn = Optimizer(calc_slab)
 
-        # add in hook to save the trajectory
-        obs = TrajectoryObserver(calc_slab)
-
         relax_steps = kwargs.get("relax_steps", 20)
-        record_interval = int(relax_steps / 4)
 
-        dyn.attach(obs, interval=record_interval)
-        # self.relaxed_atoms = relax_atoms(self.relaxed_atoms, **kwargs)
+        if save_traj:
+            # add in hook to save the trajectory
+            obs = TrajectoryObserver(calc_slab)
+            # record_interval = int(relax_steps / 4)
+            record_interval = 5
+            dyn.attach(obs, interval=record_interval)
+            # self.relaxed_atoms = relax_atoms(self.relaxed_atoms, **kwargs)
 
         # default steps is 20 and max forces are 0.01
         # TODO set up a config file to change this
         dyn.run(steps=relax_steps, fmax=0.01)
 
-        traj = {
-            "atoms": obs.atoms_history,
-            "energies": obs.energies,
-            "forces": obs.forces,
-        }
+        if save_traj:
+            traj = {
+                "atoms": obs.atoms_history,
+                "energies": obs.energies,
+                "forces": obs.forces,
+            }
+
+        else:
+            traj = None
 
     if (
         kwargs.get("folder_name", None)
@@ -228,6 +233,7 @@ def optimize_slab(slab, optimizer="BFGS", **kwargs):
     return calc_slab, energy, traj
 
 
+# TODO this should be eventually moved to the NFF energy calculator
 def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kwargs):
     """Calculate slab energy."""
     energy = 0.0
@@ -355,7 +361,7 @@ def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kw
     #     force_std = 0.0
 
     else:
-        energy = float(surface.calc.real_atoms.get_potential_energy())
+        energy = surface.get_surface_energy(recalculate=True)
         energy_std = 0.0
         max_force = 0.0
         force_std = 0.0
