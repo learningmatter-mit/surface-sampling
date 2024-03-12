@@ -114,15 +114,13 @@ class SurfaceSystem:
         self.initialize_virtual_atoms()
         if self.relax_atoms:
             self.relaxed_atoms, _ = self.relax_structure()
-
         if not (
-            (isinstance(occ, list) and (len(self.occ) > 0))
-            or isinstance(occ, np.ndarray)
+            (isinstance(occ, list) and (len(occ) > 0)) or isinstance(occ, np.ndarray)
         ):
             self.occ = np.zeros(len(self.ads_coords), dtype=int)
         else:
             assert len(occ) == len(self.ads_coords)
-            self.occ = occ
+            self.occ = np.array(occ)
         logger.info(f"initial state is {self.occ}")
 
         # calculate from real_atoms and occ
@@ -160,7 +158,7 @@ class SurfaceSystem:
             self.real_atoms, **self.calc_settings, **kwargs
         )
         self.relaxed_atoms = relaxed_slab
-        # self.relax_traj.append(relaxed_structure) TODO
+        self.relax_traj = traj
         return relaxed_slab, energy
 
     def get_relaxed_energy(self, recalculate=False, **kwargs):
