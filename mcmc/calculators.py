@@ -14,7 +14,7 @@ from lammps import (
     LMP_TYPE_VECTOR,
     lammps,
 )
-from nff.io.ase import EnsembleNFF, NeuralFF
+from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
@@ -23,15 +23,17 @@ logger = logging.getLogger(__name__)
 
 
 # TODO define abstract base class for surface energy calcs
-
 # use EnsembleNFF, NeuralFF classes for NFF
 class EnsembleNFFSurface(EnsembleNFF):
+    """Based on Ensemble Neural Force Field to calculate surface energy"""
+
     implemented_properties = EnsembleNFF.implemented_properties + ["surface_energy"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.chem_pots = {}
         self.offset_data = {}
+        self.offset_units = kwargs.get("offset_units", "atomic")
 
     def get_surface_energy(
         self, atoms: ase.Atoms = None, chem_pots: Dict = None, offset_data: Dict = None
@@ -41,7 +43,7 @@ class EnsembleNFFSurface(EnsembleNFF):
         Parameters
         ----------
         atoms : ase.Atoms
-            The atoms object to calculate the surface energy for.
+            The atoms object to calculate the surface energy for
         chem_pots : Dict
             The chemical potentials of the atoms in the system.
         offset_data : Dict
@@ -77,7 +79,6 @@ class EnsembleNFFSurface(EnsembleNFF):
         ref_element = offset_data["ref_element"]
 
         # subtract the bulk energies
-        # TODO: move to surface energy calc
         bulk_ref_en = ads_count[ref_element] * bulk_energies[ref_formula]
         for ele, _ in ads_count.items():
             if ele != ref_element:
@@ -86,7 +87,10 @@ class EnsembleNFFSurface(EnsembleNFF):
                     - stoics[ele] / stoics[ref_element] * ads_count[ref_element]
                 ) * bulk_energies[ele]
 
-        surface_energy -= bulk_ref_en * HARTREE_TO_EV
+        if self.offset_units == "atomic":
+            surface_energy -= bulk_ref_en * HARTREE_TO_EV
+        else:
+            surface_energy -= bulk_ref_en
 
         # TODO make this a separate function
         # subtract chemical potential deviation from bulk formula
@@ -126,6 +130,17 @@ class EnsembleNFFSurface(EnsembleNFF):
         properties=implemented_properties,
         system_changes=all_changes,
     ):
+        """Caculate based on EnsembleNFF before add in surface energy calcs to results
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the properties for.
+        properties : List
+            The properties to calculate.
+        system_changes : List
+            The system changes to calculate.
+        """
 
         if atoms is None:
             atoms = self.atoms
@@ -148,13 +163,14 @@ class NeuralFFSurface(NeuralFF):
 
 
 class LAMMMPSCalc(Calculator):
+    """Custom LAMMPSCalc class to calculate energies and forces to inteface with ASE"""
+
     name = "lammpscalc"
     implemented_properties = ["energy", "relaxed_energy", "forces", "per_atom_energies"]
     # NOTE "energy" is the unrelaxed energy
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.implemented_properties = LAMMMPSCalc.implemented_properties
         self.run_dir = os.getcwd()
         self.relax_steps = 100
         self.kim_potential = False
@@ -167,6 +183,25 @@ class LAMMMPSCalc(Calculator):
         lammps_config=f"{os.getcwd()}/lammps_config.json",
         **kwargs,
     ):
+        """Main function to run LAMMPS calculation. Can be used for both relaxation and static energy calculations.
+
+        Parameters
+        ----------
+        slab : ase.Atoms
+            The slab to calculate the energy for.
+        run_dir : str
+            The directory to run LAMMPS in.
+        template_path : str
+            The path to the LAMMPS input template file.
+        lammps_config : str or dict
+            The path to the LAMMPS config file or the config dictionary.
+        **kwargs : dict
+
+        Returns
+        -------
+        Tuple
+            The energy, per atom energies, and the slab with the new atomic positions.
+        """
         lammps_template = open(template_path, "r").read()
 
         # config file is assumed to be stored in the folder you run lammps
@@ -243,6 +278,21 @@ class LAMMMPSCalc(Calculator):
         return energy, pe_per_atom, new_slab
 
     def run_lammps_opt(self, slab, run_dir=os.getcwd(), **kwargs):
+        """Run LAMMPS relaxation calculation
+
+        Parameters
+        ----------
+        slab : ase.Atoms
+            The slab to calculate the energy for.
+        run_dir : str
+            The directory to run LAMMPS in.
+        **kwargs : dict
+
+        Returns
+        -------
+        Tuple
+            The slab with the new atomic positions, the energy, and the per atom energies.
+        """
         energy, pe_per_atom, opt_slab = self.run_lammps_calc(
             slab,
             run_dir=run_dir,
@@ -254,7 +304,21 @@ class LAMMMPSCalc(Calculator):
         return opt_slab, energy, pe_per_atom
 
     def run_lammps_energy(self, slab, run_dir=os.getcwd(), **kwargs):
-        # import pdb; pdb.set_trace()
+        """Run LAMMPS static energy calculation
+
+        Parameters
+        ----------
+        slab : ase.Atoms
+            The slab to calculate the energy for.
+        run_dir : str
+            The directory to run LAMMPS in.
+        **kwargs : dict
+
+        Returns
+        -------
+        Tuple
+            The slab with the new atomic positions, the energy, and the per atom energies.
+        """
         energy, pe_per_atom, _ = self.run_lammps_calc(
             slab,
             run_dir=run_dir,
@@ -272,7 +336,8 @@ class LAMMMPSCalc(Calculator):
         is returned.
 
         The special keyword 'parameters' can be used to read
-        parameters from a file."""
+        parameters from a file.
+        """
         Calculator.set(self, **kwargs)
 
         if "run_dir" in self.parameters.keys():
@@ -291,6 +356,17 @@ class LAMMMPSCalc(Calculator):
         properties=implemented_properties,
         system_changes=all_changes,
     ):
+        """Calculate the properties of the system including static and relaxed energies.
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the properties for.
+        properties : List
+            The properties to calculate.
+        system_changes : List
+            The system changes to calculate.
+        """
 
         if atoms is None:
             atoms = self.atoms
@@ -313,7 +389,6 @@ class LAMMPSSurfCalc(LAMMMPSCalc):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO add stuff here
 
     def get_surface_energy(self, atoms: ase.Atoms = None):
         """Get the surface energy of the system. Currently the same as the potential energy.
@@ -352,6 +427,17 @@ class LAMMPSSurfCalc(LAMMMPSCalc):
         properties=implemented_properties,
         system_changes=all_changes,
     ):
+        """Caculate based on LAMMMPSCalc before add in surface energy calcs to results
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the properties for.
+        properties : List
+            The properties to calculate.
+        system_changes : List
+            The system changes to calculate.
+        """
 
         if atoms is None:
             atoms = self.atoms
