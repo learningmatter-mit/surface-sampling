@@ -35,7 +35,7 @@ class TrajectoryObserver:
 
         self.atoms.calc = None
         self.atoms_history.append(
-            Atoms(self.atoms)
+            self.atoms.copy()
         )  # don't want to save the calculator
         self.atoms.calc = self.calc
         # self.cells.append(self.atoms.get_cell()[:])
@@ -64,14 +64,6 @@ class TrajectoryObserver:
             "atom_positions": self.atoms_history,
             "formula": self.atoms.get_chemical_formula(),
         }
-        # out_pkl = {
-        #     "energy": self.energies,
-        #     "forces": self.forces,
-        #     "stresses": self.stresses,
-        #     "magmoms": self.magmoms,
-        #     "atom_positions": self.atom_positions,
-        #     "cell": self.cells,
-        #     "atomic_number": self.atoms.get_atomic_numbers(),
-        # }
+
         with open(filename, "wb") as file:
             pickle.dump(out_pkl, file)

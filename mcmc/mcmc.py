@@ -429,6 +429,7 @@ class MCMC:
                 os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
             )
 
+    # TODO change to save per iter and save per entry
     def save_structures(self, i: int = 0, **kwargs):
         """This function saves the optimized structure of a slab and calculates its energy and force error.
 

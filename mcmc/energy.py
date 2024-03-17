@@ -126,7 +126,7 @@ logger = logging.getLogger(__name__)
 
 
 # This can be a separate function
-def optimize_slab(slab, optimizer="BFGS", save_traj=True, **kwargs):
+def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
     """Run relaxation for slab
 
     Parameters
@@ -134,7 +134,7 @@ def optimize_slab(slab, optimizer="BFGS", save_traj=True, **kwargs):
     slab : ase.Atoms
         Surface slab
     optimizer : str, optional
-        Either  BFGS or LAMMPS, by default 'BFGS'
+        Optimizer to use, by default "FIRE"
 
     Returns
     -------
@@ -163,12 +163,12 @@ def optimize_slab(slab, optimizer="BFGS", save_traj=True, **kwargs):
         energy = None
         if "BFGSLineSearch" in optimizer:
             Optimizer = BFGSLineSearch
-        elif "FIRE" in optimizer:
-            Optimizer = FIRE
+        elif "BFGS" in optimizer:
+            Optimizer = BFGS
         elif "CG" in optimizer:
             Optimizer = SciPyFminCG
         else:
-            Optimizer = BFGS
+            Optimizer = FIRE
         if type(slab) is AtomsBatch:
             slab.update_nbr_list(update_atoms=True)
             calc_slab = copy.deepcopy(slab)
@@ -201,7 +201,7 @@ def optimize_slab(slab, optimizer="BFGS", save_traj=True, **kwargs):
             # add in hook to save the trajectory
             obs = TrajectoryObserver(calc_slab)
             # record_interval = int(relax_steps / 4)
-            record_interval = 5
+            record_interval = kwargs.get("record_interval", 5)
             dyn.attach(obs, interval=record_interval)
             # self.relaxed_atoms = relax_atoms(self.relaxed_atoms, **kwargs)
 
