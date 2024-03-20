@@ -1,21 +1,25 @@
 import argparse
+import datetime
 import os
 import pickle as pkl
 from pathlib import Path
-from typing import List, Union
+from typing import List, Literal, Union
 
 import ase
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from ase import Atoms
 from ase.calculators.calculator import Calculator
 from nff.data import Dataset
+from nff.data.dataset import concatenate_dict
 from nff.io.ase import AtomsBatch
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
 from scipy.cluster.hierarchy import dendrogram, fcluster, linkage
 from sklearn.decomposition import PCA
+from tqdm import tqdm
 
 
 def parse_args():
@@ -32,6 +36,13 @@ def parse_args():
     parser.add_argument("--save_folder", help="Save folder path", type=str, default="")
     # parser.add_argument("--painn_params_file", help="PaiNN parameter file", type=str, default="painn_params.json")
     parser.add_argument(
+        "--nff_model_type",
+        choices=("CHGNetNFF", "DirectNffScaleMACEWrapper"),
+        help="NFF model type",
+        type=str,
+        default="CHGNetNFF",
+    )
+    parser.add_argument(
         "--nff_paths", nargs="+", help="Full path to NFF model", type=str, default=""
     )
     parser.add_argument(
@@ -39,6 +50,12 @@ def parse_args():
         help="NFF cutoff, should be consistent with NFF training cutoff",
         type=float,
         default=5.0,
+    )
+    parser.add_argument(
+        "--nff_device",
+        help="NFF device, either cpu or cuda",
+        type=str,
+        default="cpu",
     )
     parser.add_argument(
         "--max_input_len",
@@ -68,12 +85,59 @@ def parse_args():
     return parser.parse_args()
 
 
+def get_atoms_batch(
+    data: Union[dict, ase.Atoms],
+    nff_cutoff: float,
+    device: str = "cpu",
+    **kwargs,
+) -> AtomsBatch:
+    """Generate AtomsBatch
+
+    Parameters
+    ----------
+    data : Union[dict, ase.Atoms]
+        Dictionary containing the properties of the atoms
+    nff_cutoff : float
+        Neighbor cutoff for the NFF model
+    model : Calculator
+        NFF Calculator
+    device : str, optional
+        cpu or cuda device, by default 'cpu'
+
+    Returns
+    -------
+    AtomsBatch
+    """
+    if isinstance(data, ase.Atoms):
+        atoms_batch = AtomsBatch.from_atoms(
+            data,
+            cutoff=nff_cutoff,
+            requires_large_offsets=False,
+            directed=True,
+            device=device,
+            **kwargs,
+        )
+    else:
+        pass
+        # atoms_batch = AtomsBatch.from_dict(
+        #     data,
+        #     cutoff=nff_cutoff,
+        #     requires_large_offsets=False,
+        #     directed=True,
+        #     device=device,
+        #     **kwargs,
+        # )
+
+    return atoms_batch
+
+
 def get_atoms_batches(
     data: Union[Dataset, List[ase.Atoms]],
     nff_cutoff: float,
     device: str = "cpu",
+    structures_per_batch: int = 32,
     **kwargs,
-):
+) -> List[AtomsBatch]:
     """Generate AtomsBatch
 
     Parameters
@@ -96,24 +160,26 @@ def get_atoms_batches(
 
     if isinstance(data, Dataset):
         atoms_batches = data.as_atoms_batches()
-
+    # elif len(data) > 0 and isinstance(data[0], AtomsBatch):
+    #     atoms_batches = data
     else:
-        atoms_batches = [
-            AtomsBatch.from_atoms(
-                x,
+        atoms_batches = []
+        # TODO: select structures_per_batch structures at a time
+        for atoms in tqdm(data):
+            atoms_batch = AtomsBatch.from_atoms(
+                atoms,
                 cutoff=nff_cutoff,
-                requires_large_offsets=True,
+                requires_large_offsets=False,
                 directed=True,
                 device=device,
                 **kwargs,
             )
-            for x in data
-        ]
+            atoms_batches.append(atoms_batch)
 
     return atoms_batches
 
 
-def get_embeddings(atoms_batches: List[AtomsBatch], calc: Calculator):
+def get_embeddings(atoms_batches: List[AtomsBatch], calc: Calculator) -> np.ndarray:
     """Calculate the embeddings for a list of AtomsBatch objects
 
     Parameters
@@ -131,18 +197,37 @@ def get_embeddings(atoms_batches: List[AtomsBatch], calc: Calculator):
 
     print(f"Calculating embeddings for {len(atoms_batches)} structures")
     embeddings = []
-    for atoms_batch in atoms_batches:
-        atoms_batch.calc = calc
-        calc.calculate(atoms_batch)
-        breakpoint()
-
-        embeddings.append(calc.results["embedding"].sum(axis=0).detach().cpu().numpy())
+    for atoms_batch in tqdm(atoms_batches):
+        embedding = get_embeddings_single(atoms_batch, calc)
+        embeddings.append(embedding)
 
     embeddings = np.stack(embeddings)
     return embeddings
 
 
-def get_std_devs(atoms_batches: List[AtomsBatch], calc: Calculator):
+def get_embeddings_single(atoms_batch: AtomsBatch, calc: Calculator) -> np.ndarray:
+    """Calculate the embeddings for a single AtomsBatch object
+
+    Parameters
+    ----------
+    atoms_batch : AtomsBatch
+        AtomsBatch object
+    calc : Calculator
+        NFF Calculator
+
+    Returns
+    -------
+    np.ndarray
+        Latent space embeddings
+    """
+
+    atoms_batch.calc = calc
+    calc.calculate(atoms_batch)
+
+    return calc.results["embedding"].squeeze()
+
+
+def get_std_devs(atoms_batches: List[AtomsBatch], calc: Calculator) -> np.ndarray:
     """Calculate the force standard deviations for a list of AtomsBatch objects
 
     Parameters
@@ -159,30 +244,51 @@ def get_std_devs(atoms_batches: List[AtomsBatch], calc: Calculator):
     """
 
     print(f"Calculating force standard deviations for {len(atoms_batches)} structures")
-    force_std = []
-    for atoms_batch in atoms_batches:
+    force_stds = []
+    for atoms_batch in tqdm(atoms_batches):
+        force_std = get_std_devs_single(atoms_batch, calc)
+        force_stds.append(force_std)
+
+    force_stds = np.stack(force_stds)
+    return force_stds
+
+
+def get_std_devs_single(atoms_batch: AtomsBatch, calc: Calculator) -> np.ndarray:
+    """Calculate the force standard deviation for a single AtomsBatch object
+
+    Parameters
+    ----------
+    atoms_batch : AtomsBatch
+        AtomsBatch object
+    calc : Calculator
+        NFF Calculator
+
+    Returns
+    -------
+    np.ndarray
+        Force standard deviation
+    """
+
+    if len(calc.models) > 1:
         atoms_batch.calc = calc
         calc.calculate(atoms_batch)
-        breakpoint()
+        force_std = calc.results.get("forces_std", np.array([0.0])).mean()
+    else:
+        force_std = 0.0
 
-        if "forces_std" in calc.results:
-            force_std.append(calc.results["forces_std"].mean())
-        else:
-            force_std.append(0.0)
-
-    force_std = np.stack(force_std)
     return force_std
 
 
 def perform_clustering(
     embeddings: np.ndarray,
     clustering_cutoff: Union[int, float],
-    cutoff_criterion: str = "distance",
+    cutoff_criterion: Literal["distance", "maxclust"] = "distance",
     save_folder: str = "./",
     save_prepend: str = "",
     **kwargs,
-):
-    """Perform clustering on the embeddings using PCA and hierarchical clustering. Either distance or maxclust can be used as the cutoff criterion.
+) -> np.ndarray:
+    """Perform clustering on the embeddings using PCA and hierarchical clustering.
+    Either distance or maxclust can be used as the cutoff criterion.
 
     Parameters
     ----------
@@ -190,8 +296,8 @@ def perform_clustering(
         Latent space embeddings with each row corresponding to a structure
     clustering_cutoff : Union[int, float]
         Either the distance or the maximum number of clusters
-    cutoff_criterion : str, optional
-        'distance' or 'maxclust', by default 'distance'
+    cutoff_criterion : Literal['distance', 'maxclust'], optional
+        Either distance or maxclust, by default 'distance'
     save_folder : str, optional
         Folder to save the plots, by default "./"
     save_prepend : str, optional
@@ -233,7 +339,6 @@ def perform_clustering(
         y = fcluster(Z, t=clustering_cutoff, criterion="distance", depth=2)
     else:
         y = fcluster(Z, t=clustering_cutoff, criterion="maxclust", depth=2)
-    # breakpoint()
 
     clusters = np.unique(y)
     max_index = np.max(clusters)
@@ -260,19 +365,19 @@ def perform_clustering(
 
 
 def select_data_and_save(
-    atoms_batches: List[AtomsBatch],
+    atoms_batches: List[Atoms],
     y: np.ndarray,
     force_std: np.ndarray,
     use_force_std: bool = True,
     save_folder: str = "./",
     save_prepend: str = "",
-):
-    """Select the highest variance structure from each cluster and save the corresponding AtomsBatch objects
+) -> None:
+    """Select the highest variance structure from each cluster and save the corresponding Atoms objects
 
     Parameters
     ----------
-    atoms_batches : List[AtomsBatch]
-        List of AtomsBatch objects
+    atoms_batches : List[Atoms]
+        List of Atoms objects
     y : np.ndarray
         Each element corresponds to the cluster number of the corresponding structure
     force_std : np.ndarray
@@ -294,7 +399,7 @@ def select_data_and_save(
 
     df = pd.DataFrame(data).reset_index()
 
-    print("before selection")
+    print("Before selection")
     print(df.head())
     if use_force_std:
         # Select the highest variance structure from each cluster
@@ -311,28 +416,30 @@ def select_data_and_save(
             .apply(lambda x: x.sample(1))
         )
 
-    print("after selection")
+    print("After selection")
     print(sorted_std_df.head())
 
     print(
-        f"cluster: {y[sorted_std_df['index'].iloc[0]]} force std: {force_std[sorted_std_df['index'].iloc[0]]}"
+        f"Cluster: {y[sorted_std_df['index'].iloc[0]]} force std: {force_std[sorted_std_df['index'].iloc[0]]}"
     )
 
     selected_indices = sorted_std_df["index"].to_numpy()
 
+    # save original atoms instead of atoms_batch
     selected_atoms = [atoms_batches[x] for x in selected_indices.tolist()]
 
-    print(f"saving {len(selected_atoms)} AtomsBatch objects")
-
-    if len(selected_atoms) >= 1:
+    print(f"Saving {len(selected_atoms)} Atoms objects")
+    if len(selected_atoms) >= 1 and isinstance(selected_atoms[0], Atoms):
         clustered_atom_files = os.path.join(save_folder, save_prepend + "clustered.pkl")
         with open(clustered_atom_files, "wb") as f:
             pkl.dump(selected_atoms.copy(), f)
-    # else:
-    #     clustered_atom_files = os.path.join(save_folder, save_prepend +  'clustered.pth.tar')
-    #     Dataset(concatenate_dict(*selected_atoms)).save(clustered_atom_files)
+    else:
+        clustered_atom_files = os.path.join(
+            save_folder, save_prepend + "clustered.pth.tar"
+        )
+        Dataset(concatenate_dict(*selected_atoms)).save(clustered_atom_files)
 
-    print(f"saved to {clustered_atom_files}")
+    print(f"Saved to {clustered_atom_files}")
 
 
 def main(
@@ -340,12 +447,13 @@ def main(
     save_folder: Union[Path, str],
     nff_cutoff: float = 5.0,
     device: str = "cuda:0",
+    model_type: str = "CHGNetNFF",
     clustering_cutoff: Union[int, float] = 0.2,
     max_input_len: int = 1000,
     use_force_std: bool = True,
-    nff_paths: List[Path, str] = None,
-    cutoff_criterion: str = "distance",
-):
+    nff_paths: List[Union[Path, str]] = None,
+    cutoff_criterion: Literal["distance", "maxclust"] = "distance",
+) -> None:
     """Main function to perform clustering on a list of structures
 
     Parameters
@@ -358,6 +466,8 @@ def main(
         Neighbor cutoff for the NFF model, by default 5.0
     device : str, optional
         cpu or cuda device, by default 'cuda:0'
+    model_type : str, optional
+        NFF model type, by default 'CHGNetNFF'
     clustering_cutoff : Union[int, float], optional
         Either the distance or the maximum number of clusters, by default 0.2
     max_input_len : int, optional
@@ -366,7 +476,8 @@ def main(
         Use force standard deviation to select structures, by default True
     nff_paths : List[Path, str], optional
         Full path to NFF model, by default None
-    cutoff_criterion : str, optional
+    cutoff_criterion : Literal['distance', 'maxclust'], optional
+        Either distance or maxclust, by default 'distance'
 
     Returns
     -------
@@ -378,7 +489,8 @@ def main(
 
     file_paths = [Path(file_name) for file_name in file_names]
     print(f"There are a total of {len(file_paths)} input files")
-    file_base = file_paths[0].resolve().stem
+    # file_base = file_paths[0].resolve().stem
+    file_base = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     dset = []
     for x in file_paths:
@@ -389,12 +501,16 @@ def main(
             data = Dataset.from_file(x)
             dset.extend(data)
 
+    print(f"Loaded {len(dset)} structures")
+
     if nff_paths:
         # Load existing models
         print(f"Loading existing models from {nff_paths}")
         models = []
         for nff_path in nff_paths:
-            m = NeuralFF.from_file(nff_path, device=device).model
+            m = NeuralFF.from_file(
+                nff_path, device=device, model_type=model_type, requires_embedding=True
+            ).model
             models.append(m)
     else:
         # raise error if no models are provided
@@ -406,15 +522,26 @@ def main(
 
     # EnsembleNFF for force standard deviation prediction
     ensemble_calc = EnsembleNFF(
-        models, device=device, model_units="eV/atom", prediction_units="eV"
+        models,
+        device=device,
+        model_units="eV/atom",
+        prediction_units="eV",
     )
     # NeuralFF for latent space embedding calculation
     single_calc = NeuralFF(
-        models[0], device=device, model_units="eV/atom", prediction_units="eV"
+        models[0],
+        device=device,
+        model_units="eV/atom",
+        prediction_units="eV",
+        properties=["energy", "forces", "embedding"],
     )
 
     # Perform clustering in batches
-    num_batches = len(dset) // max_input_len + 1  # +1 to account for the remainder
+    num_batches = len(dset) // max_input_len + bool(
+        len(dset) % max_input_len
+    )  # additional batch for the remainder
+
+    print(f"Performing clustering in {num_batches} batches")
     for i in range(num_batches):
 
         dset_batch = (
@@ -423,39 +550,61 @@ def main(
             else dset[i * max_input_len :]
         )
         batch_number = i + 1
-        print(f"starting clustering for batch # {batch_number}")
+        print(f"Starting clustering for batch # {batch_number}")
 
         cluster_selection_metric = "force_std" if use_force_std else "random"
         save_prepend = (
             file_base
-            + f"_{len(data)}_input_structures"
+            + f"_{len(dset_batch)}_input_structures"
             + f"_batch_{batch_number}".zfill(3)
             + f"_cutoff_{clustering_cutoff}_"
             + f"{cluster_selection_metric}_"
         )
-        atoms_batches = get_atoms_batches(dset_batch, nff_cutoff)
-        embeddings = get_embeddings(atoms_batches, ensemble_calc)
-        force_std_devs = get_std_devs(atoms_batches, single_calc)
+
+        # doing it singly to save memory and is faster
+        embeddings = []
+        force_std_devs = []
+        for single_dset in tqdm(dset_batch):
+            atoms_batch = get_atoms_batch(single_dset, nff_cutoff, device=device)
+            embedding = get_embeddings_single(atoms_batch, single_calc)
+            force_std = get_std_devs_single(atoms_batch, ensemble_calc)
+            embeddings.append(embedding)
+            force_std_devs.append(force_std)
+        embeddings = np.stack(embeddings)
+        force_std_devs = np.stack(force_std_devs)
+
+        # atoms_batches = get_atoms_batches(dset_batch, nff_cutoff, device=device)
+        # embeddings = get_embeddings(atoms_batches, single_calc)
+        # force_std_devs = get_std_devs(atoms_batches, ensemble_calc)
+
+        # # delete the AtomsBatch to free up memory
+        # del atoms_batches
+
         y = perform_clustering(
             embeddings, clustering_cutoff, cutoff_criterion, save_folder, save_prepend
         )
         select_data_and_save(
-            atoms_batches, y, force_std_devs, use_force_std, save_folder, save_prepend
+            dset_batch, y, force_std_devs, use_force_std, save_folder, save_prepend
         )
+
+    print("Clustering complete!")
 
 
 if __name__ == "__main__":
     args = parse_args()
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and "cpu" not in args.nff_device:
         nff_device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"  # take the device with the most free memory
     else:
         nff_device = "cpu"
+
+    print(f"Using {nff_device} device for NFF calculations")
 
     main(
         args.file_paths,
         args.save_folder,
         nff_cutoff=args.nff_cutoff,
         device=nff_device,
+        model_type=args.nff_model_type,
         clustering_cutoff=args.clustering_cutoff,
         max_input_len=args.max_input_len,
         use_force_std=args.use_force_std,

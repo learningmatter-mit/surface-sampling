@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import pickle as pkl
@@ -9,10 +10,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def argparser():
-    import argparse
-
-    parser = argparse.ArgumentParser()
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Filter structures to select only those with certain range for each type of atom."
+    )
     parser.add_argument("--file_paths", nargs="+", type=Path)
     parser.add_argument("--atom_types", nargs="+", type=str, default=["Sr", "Ir", "O"])
     parser.add_argument(
@@ -20,6 +22,7 @@ def argparser():
         type=json.loads,
         default={"Sr": [6, 10], "Ir": [6, 10], "O": [18, 30]},
     )
+
     return parser.parse_args()
 
 
@@ -54,8 +57,7 @@ def plot_histograms(
     ax[0].legend()
     ax[1].legend()
 
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    plt.savefig(f"{current_time}_{fig_name}.png")
+    plt.savefig(f"{fig_name}.png")
 
 
 def main(
@@ -74,6 +76,7 @@ def main(
     atom_ranges : Dict[str, Tuple[int, int]]
         dictionary with the range for each type of atom allowed.
     """
+    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     all_structures = []
     for full_path in file_paths:
@@ -92,7 +95,9 @@ def main(
     ]
 
     # before filtering
-    plot_histograms(all_stoic_dicts, atom_types)
+    plot_histograms(
+        all_stoic_dicts, atom_types, fig_name=f"{start_time}_starting_stoic_hist"
+    )
 
     # select only structures with certain range for each type of atom
     filtered_structures = [
@@ -108,7 +113,14 @@ def main(
 
     print(f"Number of structures after filtering: {len(filtered_structures)}")
 
+    # save filtered structures
+    with open(
+        f"{start_time}_total_{len(filtered_structures)}_{','.join(atom_types)}_filtered_structures.pkl",
+        "wb",
+    ) as f:
+        pkl.dump(filtered_structures, f)
+
 
 if __name__ == "__main__":
-    args = argparser()
+    args = parse_args()
     main(args.file_paths, args.atom_types, args.atom_ranges)
