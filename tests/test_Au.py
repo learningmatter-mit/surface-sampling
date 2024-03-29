@@ -11,18 +11,19 @@ current_dir = os.path.dirname(__file__)
 
 print(f"current folder is {current_dir}")
 
+
 # some regression testing first
 def test_Au_energy():
     required_energy = -79.03490823689619
 
     # create slab and get proper ads sites
     slab_pkl = open(
-        os.path.join(current_dir, "resources/Au_110_2x2_pristine_slab.pkl"), "rb"
+        os.path.join(current_dir, "data/Au_110_2x2_pristine_slab.pkl"), "rb"
     )
     slab = pickle.load(slab_pkl)
 
     proper_adsorbed = read(
-        os.path.join(current_dir, "resources/Au_110_2x2_proper_adsorbed_slab.cif")
+        os.path.join(current_dir, "data/Au_110_2x2_proper_adsorbed_slab.cif")
     )
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
     sweep_size = len(ads_positions)

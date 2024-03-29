@@ -20,7 +20,7 @@ ase_top2 = [1.96777, 4.13332, 19.49200]
 # test_fixtures
 @pytest.fixture
 def pristine_slab():
-    slab_file = open(os.path.join(current_dir, "resources/SrTiO3_unit_cell.pkl"), "rb")
+    slab_file = open(os.path.join(current_dir, "data/SrTiO3_unit_cell.pkl"), "rb")
     unit_slab = pkl.load(slab_file)
     pristine_slab = unit_slab * (2, 2, 1)
     return pristine_slab
@@ -71,8 +71,6 @@ def test_two_O_pass(pristine_slab):
 
 
 def test_cell_distance_failed():
-    test_slab = read(
-        os.path.join(current_dir, "resources/SrTiO3_001_distance_failed.cif")
-    )
+    test_slab = read(os.path.join(current_dir, "data/SrTiO3_001_distance_failed.cif"))
 
     assert filter_distances(test_slab, ads=[element], cutoff_distance=1.5) == False
