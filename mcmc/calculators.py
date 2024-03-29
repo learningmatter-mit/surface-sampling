@@ -2,11 +2,12 @@ import json
 import logging
 import os
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict
 
 import ase
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
+from ase.calculators.lammpsrun import LAMMPS as LAMMPSRun
 from lammps import (
     LMP_STYLE_ATOM,
     LMP_STYLE_GLOBAL,
@@ -18,7 +19,6 @@ from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
-
 logger = logging.getLogger(__name__)
 
 
@@ -443,6 +443,70 @@ class LAMMPSSurfCalc(LAMMMPSCalc):
             atoms = self.atoms
 
         LAMMMPSCalc.calculate(self, atoms, properties, system_changes)
+
+        if "surface_energy" in properties:
+            self.results["surface_energy"] = self.get_surface_energy(atoms=atoms)
+
+
+class LAMMPSRunSurfCalc(LAMMPSRun):
+    implemented_properties = LAMMPSRun.implemented_properties + ["surface_energy"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get_surface_energy(self, atoms: ase.Atoms = None):
+        """Get the surface energy of the system. Currently the same as the potential energy.
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the surface energy for.
+
+        Returns
+        -------
+        float
+            The surface energy of the system.
+
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        surface_energy = self.get_potential_energy(atoms=atoms)
+
+        return surface_energy
+
+    def set(self, **kwargs):
+        """Set parameters like set(key1=value1, key2=value2, ...).
+
+        A dictionary containing the parameters that have been changed
+        is returned.
+
+        The special keyword 'parameters' can be used to read
+        parameters from a file."""
+        LAMMMPSCalc.set(self, **kwargs)
+
+    def calculate(
+        self,
+        atoms: ase.Atoms = None,
+        properties=implemented_properties,
+        system_changes=all_changes,
+    ):
+        """Caculate based on LAMMPSRun before add in surface energy calcs to results
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object to calculate the properties for.
+        properties : List
+            The properties to calculate.
+        system_changes : List
+            The system changes to calculate.
+        """
+
+        if atoms is None:
+            atoms = self.atoms
+
+        LAMMPSRun.calculate(self, atoms, properties, system_changes)
 
         if "surface_energy" in properties:
             self.results["surface_energy"] = self.get_surface_energy(atoms=atoms)
