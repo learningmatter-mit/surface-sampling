@@ -33,7 +33,7 @@ from .slab import (
     initialize_slab,
 )
 from .system import SurfaceSystem
-from .utils import (
+from .utils.misc import (
     compute_distance_weight_matrix,
     filter_distances,
     find_closest_points_indices,

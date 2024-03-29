@@ -11,7 +11,7 @@ from ase.io import write
 from scipy.special import softmax
 
 from mcmc.system import SurfaceSystem
-from mcmc.utils import plot_specific_weights
+from mcmc.utils.misc import plot_specific_weights
 
 logger = logging.getLogger(__name__)
 

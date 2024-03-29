@@ -21,7 +21,7 @@ from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 from .dynamics import TrajectoryObserver
 from .system import SurfaceSystem
-from .utils import get_atoms_batch
+from .utils.misc import get_atoms_batch
 
 HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
