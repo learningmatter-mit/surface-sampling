@@ -152,8 +152,7 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         if isinstance(slab, AtomsBatch):
             calc_slab = get_atoms_batch(
                 calc_slab,
-                neighbor_cutoff=slab.cutoff,
-                nff_calc=slab.calc,
+                nff_cutoff=slab.cutoff,
                 device=slab.device,
             )
 

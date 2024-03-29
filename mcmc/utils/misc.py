@@ -7,19 +7,50 @@ from scipy.spatial import distance
 from scipy.special import softmax
 
 
-def get_atoms_batch(slab: Atoms, neighbor_cutoff: float, nff_calc, device: str):
-    return AtomsBatch(
-        positions=slab.positions,
-        numbers=slab.numbers,
-        cell=slab.cell,
-        pbc=True,
-        cutoff=neighbor_cutoff,
-        props={"energy": 0, "energy_grad": []},
-        calculator=nff_calc,
-        requires_large_offsets=True,
-        directed=True,
-        device=device,
-    )
+def get_atoms_batch(
+    data: Union[dict, Atoms],
+    nff_cutoff: float,
+    device: str = "cpu",
+    **kwargs,
+) -> AtomsBatch:
+    """Generate AtomsBatch
+
+    Parameters
+    ----------
+    data : Union[dict, ase.Atoms]
+        Dictionary containing the properties of the atoms
+    nff_cutoff : float
+        Neighbor cutoff for the NFF model
+    model : Calculator
+        NFF Calculator
+    device : str, optional
+        cpu or cuda device, by default 'cpu'
+
+    Returns
+    -------
+    AtomsBatch
+    """
+    if isinstance(data, Atoms):
+        atoms_batch = AtomsBatch.from_atoms(
+            data,
+            cutoff=nff_cutoff,
+            requires_large_offsets=False,
+            directed=True,
+            device=device,
+            **kwargs,
+        )
+    else:
+        pass
+        # atoms_batch = AtomsBatch.from_dict(
+        #     data,
+        #     cutoff=nff_cutoff,
+        #     requires_large_offsets=False,
+        #     directed=True,
+        #     device=device,
+        #     **kwargs,
+        # )
+
+    return atoms_batch
 
 
 def filter_distances(slab, ads=["O"], cutoff_distance: float = 1.5):
