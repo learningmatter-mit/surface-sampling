@@ -146,7 +146,8 @@ def main(
     sampled_slabs = np.random.choice(len(all_slabs), 10, replace=False)
     print(f"Sampling surfaces at indices: {sampled_slabs}")
     plot_surfaces(
-        [all_slabs[x] for x in sampled_slabs], fig_name=f"{start_time}_cut_surfaces"
+        [all_slabs[x] for x in sampled_slabs],
+        fig_name=save_path / f"{start_time}_cut_surfaces",
     )
 
     # save cut surfaces
@@ -154,7 +155,7 @@ def main(
         f"{start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl",
         "wb",
     ) as f:
-        pkl.dump(all_slabs, f)
+        pkl.dump(save_path / all_slabs, f)
 
     print(
         f"Surface cuts complete. Saved to {start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl"

@@ -2,7 +2,7 @@ import argparse
 import datetime
 import pickle as pkl
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import ase
 import matplotlib.pyplot as plt
@@ -16,7 +16,18 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Perturb structures and save them to a new file."
     )
-    parser.add_argument("--file_paths", nargs="+", type=Path)
+    parser.add_argument(
+        "--file_paths",
+        nargs="+",
+        help="Full paths to NFF Dataset or ASE Atoms/NFF AtomsBatch",
+        type=Path,
+    )
+    parser.add_argument(
+        "--save_folder",
+        type=Path,
+        default="./",
+        help="Folder to save cut surfaces.",
+    )
     parser.add_argument(
         "--amplitude",
         type=float,
@@ -59,7 +70,12 @@ def plot_structures(
     plt.savefig(f"{fig_name}.png")
 
 
-def main(file_paths: List[str], amplitude: float = 0.3, displace_lattice: bool = True):
+def main(
+    file_paths: List[str],
+    amplitude: float = 0.3,
+    displace_lattice: bool = True,
+    save_folder: Union[Path, str] = "./",
+):
     """Perturb structures and save them to a new file.
 
     Parameters
@@ -70,9 +86,14 @@ def main(file_paths: List[str], amplitude: float = 0.3, displace_lattice: bool =
         Max value of amplitude displacement in Angstroms, by default 0.3
     displace_lattice : bool, optional
         Whether to displace the lattice, by default True
+    save_folder : Union[Path, str], optional
+        Folder to save cut surfaces, by default "./"
     """
 
     start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    save_path = Path(save_folder)
+    save_path.mkdir(parents=True, exist_ok=True)
 
     all_structures = []
     for full_path in file_paths:
@@ -98,7 +119,7 @@ def main(file_paths: List[str], amplitude: float = 0.3, displace_lattice: bool =
     plot_structures(
         [all_structures[x] for x in sampled_idx],
         [perturbed_structures[x] for x in sampled_idx],
-        fig_name=f"{start_time}_structures",
+        fig_name=save_path / f"{start_time}_structures",
     )
 
     # save perturbed structures
@@ -106,7 +127,7 @@ def main(file_paths: List[str], amplitude: float = 0.3, displace_lattice: bool =
         f"{start_time}_total_{len(perturbed_structures)}_perturbed_amp_{amplitude}_structures.pkl",
         "wb",
     ) as f:
-        pkl.dump(perturbed_structures, f)
+        pkl.dump(save_path / perturbed_structures, f)
 
     print(
         f"Structure perturbation complete. Saved to {start_time}_perturbed_structures.pkl"
@@ -115,4 +136,9 @@ def main(file_paths: List[str], amplitude: float = 0.3, displace_lattice: bool =
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args.file_paths, args.amplitude, args.displace_lattice)
+    main(
+        args.file_paths,
+        args.amplitude,
+        args.displace_lattice,
+        save_folder=args.save_folder,
+    )

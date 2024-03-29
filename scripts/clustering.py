@@ -21,6 +21,8 @@ from scipy.cluster.hierarchy import dendrogram, fcluster, linkage
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
+from mcmc.utils.misc import get_atoms_batch
+
 
 def parse_args():
     """Parse command line arguments."""
@@ -33,7 +35,12 @@ def parse_args():
         help="Full paths to NFF Dataset or ASE Atoms/NFF AtomsBatch",
         type=Path,
     )
-    parser.add_argument("--save_folder", help="Save folder path", type=str, default="")
+    parser.add_argument(
+        "--save_folder",
+        type=Path,
+        default="./",
+        help="Folder to save cut surfaces.",
+    )
     # parser.add_argument("--painn_params_file", help="PaiNN parameter file", type=str, default="painn_params.json")
     parser.add_argument(
         "--nff_model_type",
@@ -85,50 +92,37 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_atoms_batch(
-    data: Union[dict, ase.Atoms],
-    nff_cutoff: float,
-    device: str = "cpu",
-    **kwargs,
-) -> AtomsBatch:
-    """Generate AtomsBatch
+def plot_dendrogram(save_folder, save_prepend, Z):
+    fig = plt.figure(figsize=(25, 10), dpi=200)
+    dn = dendrogram(Z, no_labels=True)
+    plt.savefig(os.path.join(save_folder, save_prepend + "dendrogram_Z.png"))
+    plt.show()
 
-    Parameters
-    ----------
-    data : Union[dict, ase.Atoms]
-        Dictionary containing the properties of the atoms
-    nff_cutoff : float
-        Neighbor cutoff for the NFF model
-    model : Calculator
-        NFF Calculator
-    device : str, optional
-        cpu or cuda device, by default 'cpu'
 
-    Returns
-    -------
-    AtomsBatch
-    """
-    if isinstance(data, ase.Atoms):
-        atoms_batch = AtomsBatch.from_atoms(
-            data,
-            cutoff=nff_cutoff,
-            requires_large_offsets=False,
-            directed=True,
-            device=device,
-            **kwargs,
+def plot_pca_clusters(save_folder, save_prepend, X_r, y, clusters, max_index):
+    fig = plt.figure(figsize=(10, 10), dpi=200)
+    for cluster in clusters:
+        plt.scatter(
+            X_r[y == cluster, 0],
+            X_r[y == cluster, 1],
+            s=5,
+            alpha=0.8,
+            color=plt.cm.inferno(cluster / max_index),
         )
-    else:
-        pass
-        # atoms_batch = AtomsBatch.from_dict(
-        #     data,
-        #     cutoff=nff_cutoff,
-        #     requires_large_offsets=False,
-        #     directed=True,
-        #     device=device,
-        #     **kwargs,
-        # )
+    plt.title("Clustering based on PaiNN embeddings")
+    plt.colorbar()
+    plt.savefig(
+        os.path.join(save_folder, save_prepend + "clustered_painn_embeddings_pca.png")
+    )
+    plt.show()
 
-    return atoms_batch
+
+def plot_pca(save_folder, save_prepend, X_r):
+    plt.figure()
+    plt.scatter(X_r[:, 0], X_r[:, 1], s=2, alpha=0.8, color=plt.cm.inferno(0.5))
+    plt.title("PCA of PaiNN embeddings")
+    plt.savefig(os.path.join(save_folder, save_prepend + "painn_embeddings_pca.png"))
+    plt.show()
 
 
 def get_atoms_batches(
@@ -283,7 +277,7 @@ def perform_clustering(
     embeddings: np.ndarray,
     clustering_cutoff: Union[int, float],
     cutoff_criterion: Literal["distance", "maxclust"] = "distance",
-    save_folder: str = "./",
+    save_folder: Union[Path, str] = "./",
     save_prepend: str = "",
     **kwargs,
 ) -> np.ndarray:
@@ -298,7 +292,7 @@ def perform_clustering(
         Either the distance or the maximum number of clusters
     cutoff_criterion : Literal['distance', 'maxclust'], optional
         Either distance or maxclust, by default 'distance'
-    save_folder : str, optional
+    save_folder : Union[Path, str], optional
         Folder to save the plots, by default "./"
     save_prepend : str, optional
         Save directory prefix, by default ""
@@ -314,11 +308,7 @@ def perform_clustering(
     pca = PCA(n_components=32, whiten=True).fit(X)
     X_r = pca.transform(X)
 
-    plt.figure()
-    plt.scatter(X_r[:, 0], X_r[:, 1], s=2, alpha=0.8, color=plt.cm.inferno(0.5))
-    plt.title("PCA of PaiNN embeddings")
-    plt.savefig(os.path.join(save_folder, save_prepend + "painn_embeddings_pca.png"))
-    plt.show()
+    plot_pca(save_folder, save_prepend, X_r)
 
     print(f"X_r has shape {X_r.shape}")
     print(f"X has shape {X.shape}")
@@ -329,10 +319,7 @@ def perform_clustering(
     Z = linkage(X_r[:, :3], method="ward", metric="euclidean", optimal_ordering=True)
 
     # plot dendrogram
-    fig = plt.figure(figsize=(25, 10), dpi=200)
-    dn = dendrogram(Z, no_labels=True)
-    plt.savefig(os.path.join(save_folder, save_prepend + "dendrogram_Z.png"))
-    plt.show()
+    plot_dendrogram(save_folder, save_prepend, Z)
 
     # t sets the distance
     if cutoff_criterion == "distance":
@@ -345,21 +332,7 @@ def perform_clustering(
 
     print(f"There are {len(clusters)} clusters")
 
-    fig = plt.figure(figsize=(10, 10), dpi=200)
-    for cluster in clusters:
-        plt.scatter(
-            X_r[y == cluster, 0],
-            X_r[y == cluster, 1],
-            s=5,
-            alpha=0.8,
-            color=plt.cm.inferno(cluster / max_index),
-        )
-    plt.title("Clustering based on PaiNN embeddings")
-    plt.colorbar()
-    plt.savefig(
-        os.path.join(save_folder, save_prepend + "clustered_painn_embeddings_pca.png")
-    )
-    plt.show()
+    plot_pca_clusters(save_folder, save_prepend, X_r, y, clusters, max_index)
 
     return y
 
@@ -369,7 +342,7 @@ def select_data_and_save(
     y: np.ndarray,
     force_std: np.ndarray,
     use_force_std: bool = True,
-    save_folder: str = "./",
+    save_folder: Union[Path, str] = "./",
     save_prepend: str = "",
 ) -> None:
     """Select the highest variance structure from each cluster and save the corresponding Atoms objects
@@ -384,7 +357,7 @@ def select_data_and_save(
         Force standard deviations with each element corresponding to a structure
     use_force_std : bool, optional
         Use force standard deviation to select structures, by default True
-    save_folder : str, optional
+    save_folder : Union[Path, str], optional
         Folder to save the plots, by default "./"
     save_prepend : str, optional
         Save directory prefix, by default ""
@@ -444,7 +417,6 @@ def select_data_and_save(
 
 def main(
     file_names: List[str],
-    save_folder: Union[Path, str],
     nff_cutoff: float = 5.0,
     device: str = "cuda:0",
     model_type: str = "CHGNetNFF",
@@ -453,6 +425,7 @@ def main(
     use_force_std: bool = True,
     nff_paths: List[Union[Path, str]] = None,
     cutoff_criterion: Literal["distance", "maxclust"] = "distance",
+    save_folder: Union[Path, str] = "./",
 ) -> None:
     """Main function to perform clustering on a list of structures
 
@@ -460,8 +433,6 @@ def main(
     ----------
     file_names : List[str]
         List of file paths to load structures from
-    save_folder : Union[Path, str]
-        Folder to save the plots
     nff_cutoff : float, optional
         Neighbor cutoff for the NFF model, by default 5.0
     device : str, optional
@@ -478,6 +449,8 @@ def main(
         Full path to NFF model, by default None
     cutoff_criterion : Literal['distance', 'maxclust'], optional
         Either distance or maxclust, by default 'distance'
+    save_folder : Union[Path, str], optional
+        Folder to save the plots, by default "./"
 
     Returns
     -------
@@ -601,7 +574,6 @@ if __name__ == "__main__":
 
     main(
         args.file_paths,
-        args.save_folder,
         nff_cutoff=args.nff_cutoff,
         device=nff_device,
         model_type=args.nff_model_type,
@@ -610,4 +582,5 @@ if __name__ == "__main__":
         use_force_std=args.use_force_std,
         nff_paths=args.nff_paths,
         cutoff_criterion=args.cutoff_criterion,
+        save_folder=args.save_folder,
     )

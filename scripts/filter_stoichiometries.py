@@ -3,7 +3,7 @@ import datetime
 import json
 import pickle as pkl
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import ase
 import matplotlib.pyplot as plt
@@ -15,7 +15,18 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Filter structures to select only those with certain range for each type of atom."
     )
-    parser.add_argument("--file_paths", nargs="+", type=Path)
+    parser.add_argument(
+        "--file_paths",
+        nargs="+",
+        help="Full paths to NFF Dataset or ASE Atoms/NFF AtomsBatch",
+        type=Path,
+    )
+    parser.add_argument(
+        "--save_folder",
+        type=Path,
+        default="./",
+        help="Folder to save cut surfaces.",
+    )
     parser.add_argument("--atom_types", nargs="+", type=str, default=["Sr", "Ir", "O"])
     parser.add_argument(
         "--atom_ranges",
@@ -64,6 +75,7 @@ def main(
     file_paths: List[str],
     atom_types: List[str],
     atom_ranges: Dict[str, Tuple[int, int]],
+    save_folder: Union[Path, str] = "./",
 ):
     """Filter structures to select only those with certain range for each type of atom.
 
@@ -75,8 +87,13 @@ def main(
         atom types to consider.
     atom_ranges : Dict[str, Tuple[int, int]]
         dictionary with the range for each type of atom allowed.
+    save_folder : Union[Path, str], optional
+        folder to save filtered structures, by default "./"
     """
     start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    save_path = Path(save_folder)
+    save_path.mkdir(parents=True, exist_ok=True)
 
     all_structures = []
     for full_path in file_paths:
@@ -96,7 +113,9 @@ def main(
 
     # before filtering
     plot_histograms(
-        all_stoic_dicts, atom_types, fig_name=f"{start_time}_starting_stoic_hist"
+        all_stoic_dicts,
+        atom_types,
+        fig_name=save_path / f"{start_time}_starting_stoic_hist",
     )
 
     # select only structures with certain range for each type of atom
@@ -118,9 +137,11 @@ def main(
         f"{start_time}_total_{len(filtered_structures)}_{','.join(atom_types)}_filtered_structures.pkl",
         "wb",
     ) as f:
-        pkl.dump(filtered_structures, f)
+        pkl.dump(save_path / filtered_structures, f)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args.file_paths, args.atom_types, args.atom_ranges)
+    main(
+        args.file_paths, args.atom_types, args.atom_ranges, save_folder=args.save_folder
+    )
