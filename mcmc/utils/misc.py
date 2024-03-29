@@ -1,6 +1,7 @@
 from typing import Union
 
 import matplotlib.pyplot as plt
+import numpy as np
 from ase.atoms import Atoms
 from nff.io.ase import AtomsBatch
 from scipy.cluster.hierarchy import fcluster, linkage
