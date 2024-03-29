@@ -19,11 +19,8 @@ DEFAULT_SETTINGS = {
     "optimizer": "FIRE",
     "cutoff": 5.0,
     "calc_name": "kim",
-    # "lattice_param": {"Ga": 5.653, "As": 5.653},
     "temperature": 1.0,  # in units of eV
     "chem_pots": {"Ga": 0.0, "As": 0.0},
-    # "atomic_energy": {"Ga": -1.61455, "As": -1.98000},
-    # "mass": {"Ga": 69.723, "As": 74.9216},
     "near_reduce": 0.01,
     "no_obtuse_hollow": True,
 }
