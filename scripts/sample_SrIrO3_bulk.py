@@ -3,7 +3,9 @@ import json
 import logging
 import pickle
 from copy import deepcopy
+from pathlib import Path
 from time import perf_counter
+from typing import List, Union
 
 from nff.io.ase_calcs import NeuralFF
 from nff.nn.models.chgnet import CHGNetNFF
@@ -26,6 +28,12 @@ def parse_args():
         type=str,
         default="data/SrIrO3_2x2x2_bulk.pkl",
         help="path to the starting structure",
+    )
+    parser.add_argument(
+        "--save_folder",
+        type=Path,
+        default="./",
+        help="Folder to save cut surfaces.",
     )
     parser.add_argument(
         "--nnids",
@@ -72,16 +80,31 @@ def parse_args():
     return args
 
 
-def main(args: argparse.Namespace):
+def main(
+    starting_structure: Union[Path, str],
+    save_folder: Path,
+    nnids: List[int],
+    chem_pot: List[float],
+    sweeps: int,
+    sweep_size: int,
+    temp: float,
+    relax: bool,
+    offset_data_path: str,
+    relax_steps: int = 20,
+    record_interval: int = False,
+    offset: bool = False,
+    device: str = "cuda",
+):
     """Perform VSSR-MC sampling for SrIrO3 bulk system.
 
     Args:
         args (argparse.Namespace): command line arguments
     """
 
-    offset_data_path = args.offset_data
+    save_path = Path(save_folder)
+    save_path.mkdir(parents=True, exist_ok=True)
 
-    if args.device == "cuda":
+    if device == "cuda":
         DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
     else:
         DEVICE = "cpu"
@@ -97,28 +120,28 @@ def main(args: argparse.Namespace):
 
     sampling_settings = {
         "alpha": 1.0,  # no annealing
-        "temperature": args.temp,  # in terms of kbT, 1000 K
-        "num_sweeps": args.sweeps,
-        "sweep_size": args.sweep_size,
+        "temperature": temp,  # in terms of kbT, 1000 K
+        "num_sweeps": sweeps,
+        "sweep_size": sweep_size,
     }
 
     calc_settings = {
         "calc_name": "NFF",
         "chem_pots": {
-            "Sr": args.chem_pot[0],
-            "Ir": args.chem_pot[1],
-            "O": args.chem_pot[2],
+            "Sr": chem_pot[0],
+            "Ir": chem_pot[1],
+            "O": chem_pot[2],
         },
         "offset_data": json.load(open(offset_data_path, "r")),
         "optimizer": "BFGS",
-        "relax_atoms": args.relax,
-        "relax_steps": args.relax_steps,
-        "record_interval": args.record_interval,  # record structure every n steps
-        "offset": args.offset,
+        "relax_atoms": relax,
+        "relax_steps": relax_steps,
+        "record_interval": record_interval,  # record structure every n steps
+        "offset": offset,
     }
 
     # open 2x2x2 cubic from file
-    with open("data/SrIrO3_2x2x2_bulk.pkl", "rb") as f:
+    with open(starting_structure, "rb") as f:
         cubic_cell_2x2x2 = pickle.load(f)
 
     chem_symbols = cubic_cell_2x2x2.get_chemical_symbols()
@@ -181,7 +204,7 @@ def main(args: argparse.Namespace):
         occ=ads_idx,
         system_settings=system_settings,
     )
-    bulk.all_atoms.write("data/SrTiO3_2x2_bulk_starting.cif")
+    bulk.all_atoms.write(save_path / "SrTiO3_2x2_bulk_starting.cif")
 
     print(f"Starting chemical formula {slab_batch.get_chemical_formula()}")
 
@@ -217,6 +240,7 @@ def main(args: argparse.Namespace):
         pot=list(calc_settings["chem_pots"].values()),
         alpha=sampling_settings["alpha"],
         surface=starting_bulk,
+        run_folder=save_path,
     )
     stop = perf_counter()
     print(f"Time taken = {stop - start} seconds")
@@ -243,4 +267,18 @@ def main(args: argparse.Namespace):
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args)
+    main(
+        args.starting_structure,
+        args.save_folder,
+        args.nnids,
+        args.chem_pot,
+        args.sweeps,
+        args.sweep_size,
+        args.temp,
+        args.relax,
+        args.offset_data,
+        args.relax_steps,
+        args.record_interval,
+        args.offset,
+        args.device,
+    )

@@ -2,18 +2,31 @@ import argparse
 import datetime
 import pickle as pkl
 from pathlib import Path
-from typing import List, Union
+from typing import Iterable, List, Union
 
 import ase
 import matplotlib.pyplot as plt
 import numpy as np
-from pgmols.utils import surfaces
+from ase.visualize.plot import plot_atoms
+from catkit.gen.surface import SlabGenerator
 from tqdm import tqdm
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Cut surfaces from structures.")
+    parser.add_argument(
+        "--file_paths",
+        nargs="+",
+        help="Full paths to NFF Dataset or ASE Atoms/NFF AtomsBatch",
+        type=Path,
+    )
+    parser.add_argument(
+        "--save_folder",
+        type=Path,
+        default="./",
+        help="Folder to save cut surfaces.",
+    )
     parser.add_argument(
         "--hkl",
         nargs="+",
@@ -46,14 +59,6 @@ def parse_args():
         default=10,
         help="Vacuum space in Angstroms (in each direction).",
     )
-    parser.add_argument(
-        "--save_folder",
-        type=Path,
-        default="./",
-        help="Folder to save cut surfaces.",
-    )
-
-    parser.add_argument("--file_paths", nargs="+", type=Path)
 
     return parser.parse_args()
 
@@ -78,9 +83,73 @@ def plot_surfaces(
         ax.axis("off")
         composition = atoms.get_chemical_formula()
         ax.set_title(composition)
-        ase.visualize.plot.plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
+        plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
     plt.tight_layout()
     plt.savefig(f"{fig_name}.png")
+
+
+def surface_from_bulk(
+    bulk: ase.Atoms,
+    miller_index: Iterable[int],
+    layers: int = 5,
+    fixed: int = 6,
+    size: Iterable = [1, 1],
+    vacuum: float = 7.5,
+    iterm: int = 0,
+):
+    """Cut a surface from a bulk structure.
+
+    Parameters:
+    ----------
+    bulk : ase.Atoms
+        Bulk structure to cut surface from.
+    miller_index : Iterable[int]
+        Miller indices for the surface, length 3.
+    layers : int, optional
+        Number of layers in the slab, by default 5
+    fixed : int, optional
+        Number of fixed layers, by default 6
+    size : Iterable, optional
+        Size of the slab with respect to provided bulk, by default [1, 1]
+    vacuum : float, optional
+        Vacuum space in Angstroms (in each direction), by default 7.5
+    iterm : int, optional
+        Index of the slab termination, by default 0
+
+    Returns:
+    ----------
+    slab : ase.Atoms
+        Surface cut from the crystal.
+    surface_atoms : List[bool]
+        List of surface atoms.
+    """
+
+    # bulk.set_initial_magnetic_moments(bulk.get_initial_magnetic_moments())
+    # layers = 5
+    gen = SlabGenerator(
+        bulk,
+        miller_index=miller_index,
+        layers=layers,
+        layer_type="angs",
+        fixed=fixed,
+        vacuum=vacuum,
+        standardize_bulk=True,
+        primitive=True,
+        tol=0.2,
+    )
+
+    slab = gen.get_slab(iterm=iterm)
+    slab = gen.set_size(slab, size)
+
+    slab.center(vacuum=vacuum, axis=2)
+
+    surface_atom_index = slab.get_surface_atoms().tolist()  # includes top surface atoms
+    atom_list = np.arange(len(slab.numbers))
+    z_values = slab.positions[:, 2]
+    highest_z = np.max(z_values)
+    surface_atoms = [highest_z - z_values[atom] < 1.2 for atom in atom_list]
+
+    return slab, surface_atoms
 
 
 def main(
@@ -137,7 +206,7 @@ def main(
     all_slabs = []
     # use Jackie's command for now
     for bulk in tqdm(all_structures):
-        slab, _ = surfaces.surface_from_bulk(
+        slab, _ = surface_from_bulk(
             bulk, hkl, layers=layers, fixed=fixed, size=size, vacuum=vacuum
         )
         all_slabs.append(slab)
@@ -152,10 +221,11 @@ def main(
 
     # save cut surfaces
     with open(
-        f"{start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl",
+        save_path
+        / f"{start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl",
         "wb",
     ) as f:
-        pkl.dump(save_path / all_slabs, f)
+        pkl.dump(all_slabs, f)
 
     print(
         f"Surface cuts complete. Saved to {start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl"

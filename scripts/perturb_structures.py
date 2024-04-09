@@ -7,6 +7,7 @@ from typing import List, Union
 import ase
 import matplotlib.pyplot as plt
 import numpy as np
+from ase.visualize.plot import plot_atoms
 from pgmols.utils.atoms import randomize_structure
 from tqdm import tqdm
 
@@ -65,7 +66,7 @@ def plot_structures(
         ax.axis("off")
         composition = atoms.get_chemical_formula()
         ax.set_title(composition)
-        ase.visualize.plot.plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
+        plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
     plt.tight_layout()
     plt.savefig(f"{fig_name}.png")
 
@@ -124,10 +125,11 @@ def main(
 
     # save perturbed structures
     with open(
-        f"{start_time}_total_{len(perturbed_structures)}_perturbed_amp_{amplitude}_structures.pkl",
+        save_path
+        / f"{start_time}_total_{len(perturbed_structures)}_perturbed_amp_{amplitude}_structures.pkl",
         "wb",
     ) as f:
-        pkl.dump(save_path / perturbed_structures, f)
+        pkl.dump(perturbed_structures, f)
 
     print(
         f"Structure perturbation complete. Saved to {start_time}_perturbed_structures.pkl"

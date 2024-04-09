@@ -134,10 +134,11 @@ def main(
 
     # save filtered structures
     with open(
-        f"{start_time}_total_{len(filtered_structures)}_{','.join(atom_types)}_filtered_structures.pkl",
+        save_path
+        / f"{start_time}_total_{len(filtered_structures)}_{','.join(atom_types)}_filtered_structures.pkl",
         "wb",
     ) as f:
-        pkl.dump(save_path / filtered_structures, f)
+        pkl.dump(filtered_structures, f)
 
 
 if __name__ == "__main__":
