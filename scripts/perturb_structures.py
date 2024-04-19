@@ -7,8 +7,8 @@ from typing import List, Union
 import ase
 import matplotlib.pyplot as plt
 import numpy as np
+from ase import Atoms
 from ase.visualize.plot import plot_atoms
-from pgmols.utils.atoms import randomize_structure
 from tqdm import tqdm
 
 
@@ -69,6 +69,44 @@ def plot_structures(
         plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
     plt.tight_layout()
     plt.savefig(f"{fig_name}.png")
+
+
+def randomize_structure(atoms, amplitude, displace_lattice=True):
+    """Randomly displaces the atomic coordinates (and lattice parameters)
+        by a certain amplitude. Useful to generate slightly off-equilibrium
+        configurations and starting points for MD simulations. The random
+        amplitude is sampled from a uniform distribution.
+
+        Same function as in pymatgen, but for ase.Atoms objects.
+
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The input structure.
+    amplitude : float
+        Max value of amplitude displacement in Angstroms.
+    displace_lattice : bool
+        Whether to displace the lattice.
+
+    Returns
+    -------
+    ase.Atoms
+        The perturbed structure.
+    """
+    newcoords = atoms.get_positions() + np.random.uniform(
+        -amplitude, amplitude, size=atoms.positions.shape
+    )
+
+    newlattice = np.array(atoms.get_cell())
+    if displace_lattice:
+        newlattice += np.random.uniform(-amplitude, amplitude, size=newlattice.shape)
+
+    return Atoms(
+        positions=newcoords,
+        numbers=atoms.numbers,
+        cell=newlattice,
+        pbc=atoms.pbc,
+    )
 
 
 def main(
