@@ -162,9 +162,14 @@ def main(
     )
 
     # save perturbed structures
-    with open(
+    perturbed_structures_save_path = (
         save_path
-        / f"{start_time}_total_{len(perturbed_structures)}_perturbed_amp_{amplitude}_structures.pkl",
+        / f"{start_time}_total_{len(perturbed_structures)}_perturbed_amp_{amplitude}_structures.pkl"
+    )
+    print(f"Saving perturbed structures to {perturbed_structures_save_path}")
+
+    with open(
+        perturbed_structures_save_path,
         "wb",
     ) as f:
         pkl.dump(perturbed_structures, f)
