@@ -8,8 +8,6 @@ import numpy as np
 from ase.calculators.calculator import Calculator
 from ase.constraints import FixAtoms
 
-# refer to https://github.com/HojeChun/EpiKmc/blob/main/epikmc/system.py#L54
-
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
@@ -41,6 +39,23 @@ class SurfaceSystem:
         system_settings: Dict = None,
         calc_settings: Dict = None,
     ):
+        """Initialize the SurfaceSystem object that encompasses a material surface and adsorption sites.
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object representing the surface.
+        ads_coords : List
+            The coordinates of the virtual adsorption sites.
+        calc : Calculator, optional
+            ASE Calculator, by default None
+        occ : List, optional
+            The index of the adsorbed atom at each adsorption site, by default None
+        system_settings : Dict, optional
+            Settings for surface system, by default None
+        calc_settings : Dict, optional
+            Settings for calculator, by default None
+        """
         # TODO the procedure is to go from all_atoms to real_atoms and relaxed_atoms
         # but for now, we only have the real_atoms and relaxed_atoms to maintain compatibility
         # with ASE
@@ -72,6 +87,13 @@ class SurfaceSystem:
         self.initialize(atoms, ads_coords, calc, occ)
 
     def save_state(self, key: str):
+        """Save the state of the SurfaceSystem object.
+
+        Parameters
+        ----------
+        key : str
+            The key to save the state as.
+        """
         self.real_atoms.calc = None
         if self.relax_atoms:
             self.relaxed_atoms.calc = None
@@ -86,6 +108,18 @@ class SurfaceSystem:
             self.relaxed_atoms.calc = self.calc
 
     def restore_state(self, key: str):
+        """Restore the state of the SurfaceSystem object.
+
+        Parameters
+        ----------
+        key : str
+            The key to restore the state from.
+
+        Raises
+        ------
+        ValueError
+            If no state is available for the given key.
+        """
         state = self._states.get(key, None)
         if state is None:
             raise ValueError(f"Cannot restore: No state available for key '{key}'.")
@@ -103,6 +137,23 @@ class SurfaceSystem:
         calc: Calculator = None,
         occ: List = None,
     ):
+        """Initialize the SurfaceSystem object.
+
+        Parameters
+        ----------
+        atoms : ase.Atoms
+            The atoms object representing the surface.
+        ads_coords : List
+            The coordinates of the virtual adsorption sites.
+        calc : Calculator, optional
+            The calculator object to use, by default None.
+        occ : List, optional
+            The index of the adsorbed atom at each adsorption site, by default None
+
+        Returns
+        -------
+        None
+        """
         self.real_atoms = copy.deepcopy(atoms)
         self.ads_coords = ads_coords
         self.calc = calc
@@ -118,15 +169,15 @@ class SurfaceSystem:
         else:
             assert len(occ) == len(self.ads_coords)
             self.occ = np.array(occ)
-        logger.info(f"initial state is {self.occ}")
+        logger.info("initial state is %s", self.occ)
 
         # calculate from real_atoms and occ
         self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
-        logger.info(f"number of pristine atoms is {self.num_pristine_atoms}")
+        logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
         self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
         self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
-        logger.info(f"bulk indices are {self.bulk_idx}")
-        logger.info(f"surface indices are {self.surface_idx}")
+        logger.info("bulk indices are %s", self.bulk_idx)
+        logger.info("surface indices are %s", self.surface_idx)
 
         # set constraints
         constraints = FixAtoms(indices=self.bulk_idx)
@@ -135,9 +186,20 @@ class SurfaceSystem:
             self.relaxed_atoms.set_constraint(constraints)
 
     def initialize_virtual_atoms(self, virtual_atom_str: str = "X"):
+        """Initialize virtual atoms on the surface.
+
+        Parameters
+        ----------
+        virtual_atom_str : str
+            The string representation of the virtual atom.
+
+        Returns
+        -------
+        None
+        """
+        logger.info("initializing %s virtual atoms", len(self.ads_coords))
         self.all_atoms = copy.deepcopy(self.real_atoms)
         for site_idx in range(len(self.ads_coords)):
-            print(f"ads coords is {self.ads_coords[site_idx]}")
             virtual_adsorbate = ase.Atoms(
                 virtual_atom_str, positions=[self.ads_coords[site_idx]]
             )
@@ -145,11 +207,26 @@ class SurfaceSystem:
 
     @property
     def adsorbate_idx(self):
+        """Get the indices of the adsorbate atoms.
+
+        Returns
+        -------
+        np.ndarray
+            The indices of the adsorbate atoms.
+        """
         self.ads_idx = self.occ[self.occ.nonzero()[0]]
         return self.ads_idx
 
     def relax_structure(self, **kwargs):
-        from .energy import optimize_slab
+        """Relax the surface structure.
+
+        Returns
+        -------
+        Tuple[ase.Atoms, Union[float, List[float]]]
+            The relaxed surface structure and the potential energy of the system.
+        """
+        # have to import here to avoid circular imports
+        from .mcmc import optimize_slab
 
         relaxed_slab, energy, traj = optimize_slab(
             self.real_atoms, **self.calc_settings, **kwargs
@@ -159,6 +236,18 @@ class SurfaceSystem:
         return relaxed_slab, energy
 
     def get_relaxed_energy(self, recalculate=False, **kwargs):
+        """Get the relaxed potential energy of the system.
+
+        Parameters
+        ----------
+        recalculate : bool, optional
+            Re-relax surface, by default False
+
+        Returns
+        -------
+        Union[float, List[float]
+            The relaxed potential energy of the system.
+        """
         # TODO check if already relaxed
         if self.relaxed_atoms is None or recalculate:
             _, energy = self.relax_structure(**kwargs)
@@ -167,17 +256,31 @@ class SurfaceSystem:
         return energy
 
     def get_unrelaxed_energy(self, **kwargs):
+        """Get the unrelaxed potential energy of the system.
+
+        Returns
+        -------
+        Union[float, List[float]]
+            The unrelaxed potential energy of the system.
+        """
         # TODO the energy here should be equal to classical potential or DFT energy
         # write a helper function or method to return the correct energies
         return self.real_atoms.get_potential_energy()
 
     def get_potential_energy(self, **kwargs):
+        """Get the potential energy of the system, relaxed or unrelaxed.
+
+        Returns
+        -------
+        Union[float, List[float]]
+            The relaxed or unrelaxed potential energy of the system.
+        """
         if self.relax_atoms:
             return self.get_relaxed_energy(**kwargs)
         else:
             return self.get_unrelaxed_energy(**kwargs)
 
-    def get_surface_energy(self, recalculate=False, **kwargs):
+    def get_surface_energy(self, recalculate: bool = False, **kwargs):
         """Calculate the surface energy of the system.
 
         Parameters
@@ -208,6 +311,13 @@ class SurfaceSystem:
         return self.calc.get_property("surface_energy", atoms=self.real_atoms, **kwargs)
 
     def get_forces(self, **kwargs):
+        """Get the forces acting on the atoms.
+
+        Returns
+        -------
+        Union[np.ndarray, List]
+            The forces acting on the atoms.
+        """
         if self.relax_atoms:
             return self.relaxed_atoms.get_forces()
         else:
