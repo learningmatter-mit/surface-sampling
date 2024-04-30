@@ -208,6 +208,8 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         # TODO set up a config file to change this
         dyn.run(steps=relax_steps, fmax=0.01)
 
+        energy = calc_slab.get_potential_energy()
+
         if save_traj:
             traj = {
                 "atoms": obs.atoms_history,
