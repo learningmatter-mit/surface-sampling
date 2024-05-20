@@ -69,6 +69,10 @@ class EnsembleNFFSurface(EnsembleNFF):
             raise ValueError("offset data is not set")
 
         surface_energy = self.get_potential_energy(atoms=atoms)
+        if "forces" not in atoms.results:
+            # create placeholder for forces
+            self.results["forces"] = np.zeros((len(atoms), 3))
+            self.results["forces_std"] = np.zeros((len(atoms), 3))
 
         ads_count = Counter(atoms.get_chemical_symbols())
 

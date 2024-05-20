@@ -220,6 +220,27 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         else:
             traj = None
 
+    try:
+        max_force = float(np.abs(calc_slab.calc.results["forces"]).max())
+    except KeyError:
+        max_force = 0.0
+
+    if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+        logger.info("encountered energy or force out of bounds")
+        logger.info(f"energy {energy:.3f}")
+        logger.info(f"max force {max_force:.3f}")
+
+        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+            # save the final frame as cif
+            logger.info("saving this slab")
+            iter = int(kwargs.get("iter"))
+            calc_slab.write(
+                f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
+            )
+
+        # set a high energy for mc acceptance criteria to reject
+        energy = ENERGY_THRESHOLD
+
     if (
         kwargs.get("folder_name", None)
         and kwargs.get("iter", None)
@@ -237,7 +258,7 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
 # TODO this should be eventually moved to the NFF energy calculator
 def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kwargs):
     """Calculate slab energy."""
-    energy = 0.0
+    # energy = 0.0
 
     pe_per_atom = []
 
@@ -289,29 +310,29 @@ def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kw
         # slab.calc.calculate(slab)
         # import pdb; pdb.set_trace()
         # TODO check the energies are the same as surface.relaxed_atoms
-        energy = float(surface.calc.results["energy"])
-        if "forces" in surface.calc.results:
-            max_force = float(np.abs(surface.calc.results["forces"]).max())
-            force_std = float(surface.calc.results["forces_std"].mean())
-        else:
-            max_force = 0.0
-            force_std = 0.0
+        # energy = float(surface.calc.results["energy"])
+        # if "forces" in surface.calc.results:
+        #     max_force = float(np.abs(surface.calc.results["forces"]).max())
+        #     force_std = float(surface.calc.results["forces_std"].mean())
+        # else:
+        #     max_force = 0.0
+        #     force_std = 0.0
         # TODO can be a hook for the calculators
-        if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
-            logger.info("encountered energy or force out of bounds")
-            logger.info(f"energy {energy:.3f}")
-            logger.info(f"max force {max_force:.3f}")
+        # if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+        #     logger.info("encountered energy or force out of bounds")
+        #     logger.info(f"energy {energy:.3f}")
+        #     logger.info(f"max force {max_force:.3f}")
 
-            if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-                # save the final frame as cif
-                logger.info("saving this slab")
-                iter = int(kwargs.get("iter"))
-                surface.real_atoms.write(
-                    f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{surface.real_atoms.get_chemical_formula()}.cif"
-                )
+        #     if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+        #         # save the final frame as cif
+        #         logger.info("saving this slab")
+        #         iter = int(kwargs.get("iter"))
+        #         surface.real_atoms.write(
+        #             f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{surface.real_atoms.get_chemical_formula()}.cif"
+        #         )
 
-            # we set a high energy for mcmc to reject
-            energy = ENERGY_THRESHOLD
+        #     # we set a high energy for mcmc to reject
+        #     energy = ENERGY_THRESHOLD
 
         # if kwargs.get("offset", None):
         #     if not kwargs.get("offset_data", None):
@@ -347,11 +368,12 @@ def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kw
         #         ) * bulk_energies[ele]
 
         # energy -= bulk_ref_en * HARTREE_TO_EV
-        else:
-            energy = surface_energy.item()
+        # else:
+        #     energy = surface_energy.item()
+        energy = surface_energy.item()
         energy_std = float(surface.calc.results["energy_std"])
-        # max_force = float(np.abs(surface.calc.results["forces"]).max())
-        # force_std = float(surface.calc.results["forces_std"].mean())
+        max_force = float(np.abs(surface.calc.results["forces"]).max())
+        force_std = float(surface.calc.results["forces_std"].mean())
 
     # elif kwargs.get("optimizer", None) == "LAMMPS" and relax:
     #     # energy would have already been calculated
