@@ -18,7 +18,6 @@ from lammps import (
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
-HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 logger = logging.getLogger(__name__)
 
 
@@ -69,10 +68,6 @@ class EnsembleNFFSurface(EnsembleNFF):
             raise ValueError("offset data is not set")
 
         surface_energy = self.get_potential_energy(atoms=atoms)
-        if "forces" not in atoms.results:
-            # create placeholder for forces
-            self.results["forces"] = np.zeros((len(atoms), 3))
-            self.results["forces_std"] = np.zeros((len(atoms), 3))
 
         ads_count = Counter(atoms.get_chemical_symbols())
 
