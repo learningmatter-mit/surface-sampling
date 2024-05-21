@@ -23,7 +23,7 @@ from scipy.spatial import distance
 from scipy.spatial.distance import cdist
 from scipy.special import softmax
 
-from .energy import optimize_slab, slab_energy
+from .energy import optimize_slab
 from .plot import plot_summary_stats
 from .slab import (
     change_site,
@@ -74,7 +74,6 @@ class MCMC:
 
         self.calc = calc
         self.surface_name = surface_name
-        # self.element = element  # review this, might not be useful
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms
         # self.ads_coords = np.array(ads_coords)
@@ -266,10 +265,6 @@ class MCMC:
 
     def setup_folders(self):
         """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
-        # set surface_name
-        if not self.surface_name:
-            self.surface_name = self.element
-
         if not self.run_folder:
             start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f.%f")
 
@@ -316,14 +311,10 @@ class MCMC:
         """
         # sometimes slab.calc does not exist
         if self.surface.calc:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+            energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            energy = results[0]
-            self.per_atom_energies = results[-1]
         else:
             energy = 0
 
@@ -450,18 +441,12 @@ class MCMC:
             energy_std = 0
             force_std = 0
         else:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                iter=i + 1,
-                save=True,
-                **self.kwargs,
+            energy = float(self.surface.get_surface_energy(recalculate=True))
+            energy_std = float(self.surface.calc.results.get("energy_std", 0.0))
+            _forces = self.surface.get_forces()
+            force_std = float(
+                self.surface.calc.results.get("forces_std", np.array([0.0])).mean()
             )
-            # TODO move the energy call to SurfaceSystem
-            energy = results[0]
-            energy_std = results[1]
-            force_std = results[3]
 
         if type(self.surface.real_atoms) is AtomsBatch:
             logger.info(
@@ -584,15 +569,10 @@ class MCMC:
             plot_specific_distance_weights = False
 
         if not prev_energy and not self.testing:
-            # calculate energy of current state
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            prev_energy = results[0]
-            self.per_atom_energies = results[-1]
 
         # choose 2 sites of different ads (empty counts too) to switch
         site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
@@ -721,13 +701,7 @@ class MCMC:
                 # state = state.copy()
                 logger.debug("state changed!")
                 # still give the relaxed energy
-                results = slab_energy(
-                    self.surface,
-                    relax=self.relax,
-                    folder_name=self.run_folder,
-                    **self.kwargs,
-                )
-                curr_energy = results[0]
+                curr_energy = float(self.surface.get_surface_energy(recalculate=True))
                 energy = curr_energy
                 accept = True
                 self.curr_similarity = curr_similarity  # update current similarity
@@ -759,14 +733,12 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+
+            curr_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            curr_energy = results[0]
-            self.per_atom_energies = results[-1]
+
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
 
@@ -855,14 +827,12 @@ class MCMC:
         delta_N = 0
 
         if not prev_energy and not self.testing:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+
+            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            prev_energy = results[0]
-            self.per_atom_energies = results[-1]
+
         # TODO, can move to Event
         # import pdb; pdb.set_trace()
         self.surface, delta_pot, start_ads, end_ads = change_site(
@@ -921,16 +891,11 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                iter=iter,
-                **self.kwargs,
+
+            curr_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            # import pdb; pdb.set_trace()
-            curr_energy = results[0]
-            self.per_atom_energies = results[-1]
 
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
@@ -1026,6 +991,7 @@ class MCMC:
             history_slab = self.surface.real_atoms.copy()
 
         # save space, don't copy neighbor
+        # TODO: save whole SurfaceSystem
         self.history.append(history_slab)
         self.trajectories.append(self.surface.relax_traj)
         # TODO can save some compute here
