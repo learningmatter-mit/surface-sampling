@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import ase
 import numpy as np
-from ase.calculators.calculator import Calculator
+from ase.calculators.calculator import Calculator, PropertyNotImplementedError
 from ase.constraints import FixAtoms
 
 logger = logging.getLogger(__name__)
@@ -160,8 +160,7 @@ class SurfaceSystem:
         self.real_atoms.calc = self.calc
         self.all_atoms = copy.deepcopy(self.real_atoms)
         self.initialize_virtual_atoms()
-        if self.relax_atoms:
-            self.relaxed_atoms, _ = self.relax_structure()
+
         if not (
             (isinstance(occ, list) and (len(occ) > 0)) or isinstance(occ, np.ndarray)
         ):
@@ -183,6 +182,7 @@ class SurfaceSystem:
         constraints = FixAtoms(indices=self.bulk_idx)
         self.real_atoms.set_constraint(constraints)
         if self.relax_atoms:
+            self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
 
     def initialize_virtual_atoms(self, virtual_atom_str: str = "X"):
@@ -319,9 +319,13 @@ class SurfaceSystem:
             The forces acting on the atoms.
         """
         if self.relax_atoms:
-            return self.relaxed_atoms.get_forces()
+            atoms = self.relaxed_atoms
         else:
-            return self.real_atoms.get_forces()
+            atoms = self.real_atoms
+        try:
+            return atoms.get_forces()
+        except PropertyNotImplementedError:
+            return np.zeros((len(atoms), 3))
 
     def __len__(self):
         return len(self.real_atoms)
