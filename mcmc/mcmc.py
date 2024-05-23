@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pickle as pkl
+import random
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -593,7 +594,7 @@ class MCMC:
         site1_coords = self.surface.ads_coords[site1_idx]
         site2_coords = self.surface.ads_coords[site2_idx]
 
-        logger.debug(f"\n we are at iter {iter}")
+        logger.debug("\n we are at iter %s", iter)
         logger.debug(
             f"idx is {site1_idx} with connectivity {self.connectivity[site1_idx]} at {site1_coords}"
         )
@@ -607,23 +608,15 @@ class MCMC:
         logger.debug(f"current slab has {len(self.surface)} atoms")
 
         # effectively switch ads at both sites
-        self.surface, _, _, _ = change_site(
+        self.surface = change_site(
             self.surface,
-            self.pot,
-            self.adsorbates,
             site1_idx,
-            start_ads=site1_ads,
-            end_ads=site2_ads,
-            **self.kwargs,
+            site2_ads,
         )
-        self.surface, _, _, _ = change_site(
+        self.surface = change_site(
             self.surface,
-            self.pot,
-            self.adsorbates,
             site2_idx,
-            start_ads=site2_ads,
-            end_ads=site1_ads,
-            **self.kwargs,
+            site1_ads,
         )
 
         # make sure num atoms is conserved
@@ -657,23 +650,15 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
 
                 logger.debug("state kept the same with filtering")
@@ -707,23 +692,15 @@ class MCMC:
                 self.curr_similarity = curr_similarity  # update current similarity
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
                 logger.debug("state kept the same")
                 energy = prev_energy
@@ -763,27 +740,16 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
-
-                # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
-                # state, slab = remove_from_slab(slab, state, site2_idx)
 
                 logger.debug("state kept the same")
                 energy = prev_energy
@@ -835,14 +801,24 @@ class MCMC:
 
         # TODO, can move to Event
         # import pdb; pdb.set_trace()
-        self.surface, delta_pot, start_ads, end_ads = change_site(
+
+        ads_choices = self.adsorbates.copy()
+        ads_choices.append("None")
+
+        if self.surface.occ[site_idx] != 0:
+            # not an empty virtual site, remove the adsorbate
+            start_ads = self.surface.real_atoms[self.surface.occ[site_idx]].symbol
+            ads_choices.remove(start_ads)
+        else:
+            start_ads = "None"
+            ads_choices.remove("None")
+
+        end_ads = random.choice(ads_choices)
+
+        self.surface = change_site(
             self.surface,
-            self.pot,
-            self.adsorbates,
             site_idx,
-            start_ads=None,
-            end_ads=None,
-            **self.kwargs,
+            end_ads,
         )
 
         logger.debug("after proposed state is")
@@ -873,14 +849,10 @@ class MCMC:
             else:
                 # failed, keep current state and revert slab back to original
 
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site_idx,
-                    start_ads=end_ads,
-                    end_ads=start_ads,
-                    **self.kwargs,
+                    start_ads,
                 )
                 logger.debug("state kept the same with filtering")
 
@@ -927,14 +899,10 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site_idx,
-                    start_ads=end_ads,
-                    end_ads=start_ads,
-                    **self.kwargs,
+                    start_ads,
                 )
 
                 logger.debug("state kept the same")
