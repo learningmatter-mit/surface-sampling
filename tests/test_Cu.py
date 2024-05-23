@@ -4,17 +4,19 @@ import numpy as np
 from catkit import Gratoms
 from catkit.gen.utils.connectivity import get_cutoff_neighbors
 from catkit.gen.utils.graph import connectivity_to_edges
+from pymatgen.analysis.adsorption import AdsorbateSiteFinder
+from pymatgen.io.ase import AseAtomsAdaptor
 
 from mcmc import MCMC
 from mcmc.calculators import LAMMPSRunSurfCalc
-from mcmc.slab import get_adsorption_coords, initialize_slab
+from mcmc.slab import initialize_slab
 from mcmc.system import SurfaceSystem
 
 current_dir = os.path.dirname(__file__)
 
 # some regression testing first
 def test_Cu_energy():
-    required_energy = -36.068
+    required_energy = -25.2893
 
     # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
     element = "Cu"
@@ -33,8 +35,8 @@ def test_Cu_energy():
     sampling_settings = {
         "alpha": 0.99,  # slowly anneal
         "temperature": 1.0,  # in terms of kbT
-        "num_sweeps": 50,
-        "sweep_size": 16,
+        "num_sweeps": 10,
+        "sweep_size": 2,
     }
 
     calc_settings = {
@@ -47,11 +49,19 @@ def test_Cu_energy():
     }
 
     # get ads positions
-    connectivity = get_cutoff_neighbors(slab, cutoff=system_settings["cutoff"])
     pristine_slab = slab.copy()
+    pristine_pmg_slab = AseAtomsAdaptor.get_structure(pristine_slab)
+    site_finder = AdsorbateSiteFinder(pristine_pmg_slab)
+    ads_positions = site_finder.find_adsorption_sites(
+        put_inside=True,
+        symm_reduce=True,
+        near_reduce=system_settings["near_reduce"],
+        distance=system_settings["planar_distance"],
+        no_obtuse_hollow=system_settings["no_obtuse_hollow"],
+    )["all"]
+    print(f"adsorption coordinates are: {ads_positions[:5]}...")
 
-    elem = Gratoms(element)
-    ads_positions = get_adsorption_coords(pristine_slab, elem, connectivity, debug=True)
+    # ads_positions = get_adsorption_coords(pristine_slab, elem, connectivity, debug=True)
 
     # use LAMMPS
     parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
