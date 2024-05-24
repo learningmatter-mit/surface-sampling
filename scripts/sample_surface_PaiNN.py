@@ -250,9 +250,7 @@ def main(
 
     print(f"Starting chemical formula: {slab_batch.get_chemical_formula()}")
 
-    print(
-        f"NFF calc starting energy: {nff_surf_calc.get_potential_energy(slab_batch)} eV"
-    )
+    print(f"NFF calc starting energy: {surface.get_potential_energy()} eV")
 
     print(f"Starting surface energy: {surface.get_surface_energy()} eV")
 
