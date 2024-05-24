@@ -1,4 +1,5 @@
 import copy
+import functools
 import logging
 import os
 from typing import Dict, List
@@ -72,6 +73,7 @@ class SurfaceSystem:
         self.relax_atoms = self.calc_settings.get(
             "relax_atoms", False
         )  # whether to relax surface
+        self.results = {}
         self._states = {}
         self.constraints = []  # TODO
         self.surface_area = 0.0  # TODO
@@ -102,6 +104,7 @@ class SurfaceSystem:
             "real_atoms": copy.deepcopy(self.real_atoms),
             "relaxed_atoms": copy.deepcopy(self.relaxed_atoms),
             "occupation": copy.deepcopy(self.occ),
+            "results": copy.deepcopy(self.results),
         }
         self.real_atoms.calc = self.calc
         if self.relax_atoms:
@@ -128,7 +131,9 @@ class SurfaceSystem:
         self.real_atoms.calc = self.calc
         if self.relax_atoms:
             self.relaxed_atoms = state["relaxed_atoms"]
+            self.relaxed_atoms.calc = self.calc
         self.occ = state["occupation"]
+        self.results = state["results"]
 
     def initialize(
         self,
@@ -235,6 +240,25 @@ class SurfaceSystem:
         self.relax_traj = traj
         return relaxed_slab, energy
 
+    @staticmethod
+    def update_results(_func=None, *, prop="surface_energy"):
+        """Decorator to update the results dictionary with the property value."""
+
+        def decorator_update_results(func):
+            @functools.wraps(func)
+            def wrapper_update_results(self, *args, **kwargs):
+                val = func(self, *args, **kwargs)
+                self.results[prop] = val
+                return val
+
+            return wrapper_update_results
+
+        if _func is None:
+            return decorator_update_results
+        else:
+            return decorator_update_results(_func)
+
+    @update_results(prop="energy")
     def get_relaxed_energy(self, recalculate=False, **kwargs):
         """Get the relaxed potential energy of the system.
 
@@ -255,6 +279,7 @@ class SurfaceSystem:
             energy = self.relaxed_atoms.get_potential_energy()
         return energy
 
+    @update_results(prop="energy")
     def get_unrelaxed_energy(self, **kwargs):
         """Get the unrelaxed potential energy of the system.
 
@@ -263,10 +288,9 @@ class SurfaceSystem:
         Union[float, List[float]]
             The unrelaxed potential energy of the system.
         """
-        # TODO the energy here should be equal to classical potential or DFT energy
-        # write a helper function or method to return the correct energies
         return self.real_atoms.get_potential_energy()
 
+    @update_results(prop="energy")
     def get_potential_energy(self, **kwargs):
         """Get the potential energy of the system, relaxed or unrelaxed.
 
@@ -280,6 +304,7 @@ class SurfaceSystem:
         else:
             return self.get_unrelaxed_energy(**kwargs)
 
+    @update_results(prop="surface_energy")
     def get_surface_energy(self, recalculate: bool = False, **kwargs):
         """Calculate the surface energy of the system.
 
@@ -310,6 +335,7 @@ class SurfaceSystem:
             )
         return self.calc.get_property("surface_energy", atoms=self.real_atoms, **kwargs)
 
+    @update_results(prop="forces")
     def get_forces(self, **kwargs):
         """Get the forces acting on the atoms.
 
