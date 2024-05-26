@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from collections import Counter
-from typing import Dict
+from typing import Dict, Union
 
 import ase
 import numpy as np
@@ -18,7 +18,203 @@ from lammps import (
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
+from mcmc.pourbaix.atoms import PourbaixAtom
+
 logger = logging.getLogger(__name__)
+
+HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
+ENERGY_THRESHOLD = 1000  # eV
+MAX_FORCE_THRESHOLD = 1000  # eV/Angstrom
+
+
+class NFFPourbaix(NeuralFF):
+    """Calculate Pourbaix potential for surface or bulk systems using Neural Force Field.
+
+    We calculate the energy difference based on consecutive desorption/adsorption reactions as in Rong and Kolpak, J. Phys. Chem. Lett., 2015.
+
+    Each step consists of the following:
+
+    1. G_ref -> G_new + A
+    2. A + n_H2O H2O -> HxAOy^(z-) + n_H+ H+ + n_e e-
+
+    Delta G_overall = Delta G_1 + Delta G_2
+
+    The free energy change for the first step is given by:
+    Delta G_1 = G_new + mu_A - G_ref
+    where G_new is the energy of the new system, mu_A is the chemical potential of the element A, and G_ref is the energy of the reference system.
+
+    The free energy change for the second step is given by:
+    Delta G_2 = Delta G_SHE - n_e (e*U_SHE) - 2.3 n_H+ k_B T pH + k_B T ln(a_HxAOy^(z-))
+    where Delta G_SHE is the energy change at standard hydrogen electrode potential,
+    e is the electron charge, U_SHE is the standard hydrogen electrode potential,
+    n_H+ is the number of protons, k_B is the Boltzmann constant, T is the temperature,
+    pH is the pH, and a_HxAOy^(z-) is the activity of the species.
+
+    Attributes:
+        implemented_properties (list): List of implemented properties.
+        chem_pots (dict): Dictionary of chemical potentials.
+        reference_slab (dict): Dictionary of reference slabs.
+        temp (float): Temperature in eV.
+        phi (float): Electric potential.
+        pH (float): pH value.
+        pourbaix_atoms (dict): Dictionary of pourbaix atoms.
+
+    Methods:
+        get_delta_G2_individual: Get the standard free energy change for the second step of the Pourbaix reaction for a single atom.
+        get_delta_G2: Get the standard free energy change for the second step of the Pourbaix reaction.
+        get_delta_G1: Get the dissociation energy of all atoms.
+        get_surface_energy: Get the surface energy of the system, which is equivalent to the Pourbaix potential.
+        get_pourbaix_potential: Get the Pourbaix potential of the system.
+        set: Set parameters.
+        calculate: Calculate based on NeuralFF before adding surface energy calculations to results.
+    """
+
+    implemented_properties = NeuralFF.implemented_properties + [
+        "pourbaix_potential",
+        "surface_energy",
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.chem_pots = {}
+        self.reference_slab = {}
+        self.temp = kwargs.get("temp", 0.0257)  # temperature in eV
+        self.phi = kwargs.get("phi", 0)  # electric potential
+        self.pH = kwargs.get("pH", 7)  # pH
+        self.pourbaix_atoms = {}
+
+    def get_delta_G2_individual(self, atom: Union[str, PourbaixAtom]) -> float:
+        """Get the standard free energy change for the second step of the Pourbaix reaction for a single atom.
+
+        Args:
+            atom (Union[str, PourbaixAtom]): The atom to calculate the free energy change for.
+
+        Returns:
+            float: The standard free energy change for the second step for a single atoms.
+        """
+        if isinstance(atom, str):
+            atom = self.pourbaix_atoms[atom]
+        # - n_e (e*U_SHE) - 2.3 n_H+ k_B T pH + k_B T ln(a_HxAOy^(z-))
+        delta_G2_non_std = (
+            -atom.num_e * self.phi
+            - np.log(10) * atom.num_H * self.temp * self.pH
+            + self.temp * np.log(atom.species_conc)
+        )
+        return atom.delta_G2_std + delta_G2_non_std
+
+    def get_delta_G2(self, atoms: ase.Atoms = None) -> float:
+        """Get the total standard free energy change for the second step of the Pourbaix reaction.
+
+        Args:
+            atoms (ase.Atoms, optional): The atoms object to calculate the free energy change for. Defaults to None.
+
+        Returns:
+            float: The total standard free energy change for the second step.
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        delta_G2 = 0
+        for atom in atoms.get_chemical_symbols():
+            delta_G2 += self.get_delta_G2_individual(atom)
+        return delta_G2
+
+    def get_delta_G1(self, atoms: ase.Atoms = None) -> float:
+        """Get the dissociation energy of all atoms
+
+        Args:
+            atoms (ase.Atoms, optional): The atoms object to calculate the dissociation energy for. Defaults to None.
+
+        Returns:
+            float: The dissociation energy of all atoms.
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        atoms_count = Counter(atoms.get_chemical_symbols())
+        sum_chem_pots = 0
+        for atom, count in atoms_count.items():
+            sum_chem_pots += count * self.pourbaix_atoms[atom].atom_std_state_energy
+        return sum_chem_pots - self.get_potential_energy(atoms=atoms)
+
+    def get_surface_energy(self, atoms: ase.Atoms = None) -> float:
+        """Get the surface energy of the system, which is equivalent to the Pourbaix potential. See get_pourbaix_potential for more details.
+
+        Args:
+            atoms (ase.Atoms, optional): The atoms object to calculate the surface energy for. Defaults to None.
+
+        Returns:
+            float: The surface energy of the system.
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        return self.get_pourbaix_potential(atoms=atoms)
+
+    def get_pourbaix_potential(self, atoms: ase.Atoms = None) -> float:
+        """Get the Pourbaix potential of the system, which is the negative of the sum of the free energy changes for the two steps of the Pourbaix dissolution reaction.
+        This is also the "surface free energy" and the "Grand potential" in the Pourbaix diagram.
+
+        Args:
+            atoms (ase.Atoms, optional): The atoms object to calculate the Pourbaix potential for. Defaults to None.
+
+        Returns:
+            float: The Pourbaix potential of the system.
+        """
+        if atoms is None:
+            atoms = self.atoms
+
+        return -(self.get_delta_G1() + self.get_delta_G2())
+
+    def set(self, **kwargs):
+        """Set parameters like set(key1=value1, key2=value2, ...).
+
+        A dictionary containing the parameters that have been changed
+        is returned.
+
+        The special keyword 'parameters' can be used to read
+        parameters from a file.
+        """
+        NeuralFF.set(self, **kwargs)
+        if "system_temp" in self.parameters.keys():
+            self.temp = self.parameters["system_temp"]
+            print(f"temperature: {self.temp} in kBT")
+        if "phi" in self.parameters.keys():
+            self.phi = self.parameters["phi"]
+            print(f"potential: {self.phi} is set from parameters")
+        if "pH" in self.parameters.keys():
+            self.pH = self.parameters["pH"]
+            print(f"pH: {self.pH} is set from parameters")
+        if "pourbaix_atoms" in self.parameters.keys():
+            self.pourbaix_atoms = self.parameters["pourbaix_atoms"]
+            print(f"Pourbaix atoms: {self.pourbaix_atoms} are set from parameters")
+
+    def calculate(
+        self,
+        atoms: ase.Atoms = None,
+        properties=tuple(implemented_properties),
+        system_changes=all_changes,
+    ):
+        """Caculate based on NeuralFF before add in surface energy calcs to results
+
+        args:
+            atoms: ase.Atoms
+                The atoms object to calculate the properties for.
+            properties: List
+                The properties to calculate.
+            system_changes: List
+                The system changes to calculate.
+        """
+
+        if atoms is None:
+            atoms = self.atoms
+
+        NeuralFF.calculate(self, atoms, properties, system_changes)
+
+        if "surface_energy" in properties:
+            self.results["surface_energy"] = self.get_pourbaix_potential(atoms=atoms)
+
+        atoms.results.update(self.results)
 
 
 # TODO define abstract base class for surface energy calcs
