@@ -198,6 +198,9 @@ def change_site(
     """
     logger.debug("current slab has %s atoms", len(surface))
 
+    if site_idx >= len(surface.occ):
+        raise IndexError("site index out of range")
+
     if surface.occ[site_idx] != 0:
         logger.debug("chosen site already adsorbed")
         start_ads = surface.real_atoms[surface.occ[site_idx]].symbol

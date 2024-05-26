@@ -1,7 +1,7 @@
 import logging
 import random
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable
 
 import numpy as np
 
@@ -15,12 +15,15 @@ class Proposal:
 
     Args:
         system (SurfaceSystem): The surface system to propose changes to.
+        adsorbate_list (Iterable[str]): The list of adsorbates that can be proposed.
+
+    Attributes:
         adsorbate_list (List[str]): The list of adsorbates that can be proposed.
     """
 
-    def __init__(self, system: SurfaceSystem, adsorbate_list: List[str]) -> None:
+    def __init__(self, system: SurfaceSystem, adsorbate_list: Iterable[str]) -> None:
         self.system = system
-        self.adsorbate_list = adsorbate_list.copy()
+        self.adsorbate_list = list(adsorbate_list).copy()
 
     def get_action(self) -> Dict[str, Any]:
         """Obtain a dictionary containing the proposed change.
@@ -36,11 +39,14 @@ class ChangeProposal(Proposal):
 
     Args:
         system (SurfaceSystem): The surface system to propose changes to.
+        adsorbate_list (Iterable[str]): The list of adsorbates that can be proposed.
+
+    Attributes:
         adsorbate_list (List[str]): The list of adsorbates that can be proposed.
     """
 
     def __init__(
-        self, system: SurfaceSystem, adsorbate_list: List[str] = ["Sr", "O"]
+        self, system: SurfaceSystem, adsorbate_list: Iterable[str] = ("Sr", "O")
     ) -> None:
         super().__init__(system, adsorbate_list)
         self.adsorbate_list.append("None")

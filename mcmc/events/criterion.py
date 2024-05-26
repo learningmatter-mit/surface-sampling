@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import Iterable
 
 import numpy as np
 
@@ -16,6 +16,15 @@ class AcceptanceCriterion:
         pass
 
     def criterion(self, system: SurfaceSystem, **kwargs):
+        """Check if the criterion is met.
+
+        Args:
+            system (SurfaceSystem): The surface system to check.
+            **kwargs: Additional keyword arguments.
+
+        Raises:
+            NotImplementedError: This method should be implemented in the derived classes.
+        """
         raise NotImplementedError
 
     def __call__(self, system: SurfaceSystem, **kwargs):
@@ -45,7 +54,10 @@ class DistanceCriterion(AcceptanceCriterion):
         self.filter_distance = filter_distance
 
     def criterion(
-        self, system: SurfaceSystem, adsorbate_types: List[str] = ["Sr", "Ti"], **kwargs
+        self,
+        system: SurfaceSystem,
+        adsorbate_types: Iterable[str] = ("Sr", "Ti"),
+        **kwargs,
     ) -> bool:
         """Check if any atoms are too close to each other.
 
