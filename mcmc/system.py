@@ -63,7 +63,7 @@ class SurfaceSystem:
         self.all_atoms = None
         # self.real_atoms = self.all_atoms.copy()
         self.system_settings = system_settings or DEFAULT_SETTINGS
-        self.calc_settings = calc_settings or calc.parameters.copy()
+        self.calc_settings = calc_settings or (calc.parameters.copy() if calc else {})
 
         self.real_atoms = None
         self.num_pristine_atoms = 0
@@ -323,8 +323,7 @@ class SurfaceSystem:
 
         if self.calc is None:
             raise RuntimeError("SurfaceSystem object has no calculator.")
-
-        if not hasattr(self.calc, "get_surface_energy"):
+        if "surface_energy" not in self.calc.implemented_properties:
             raise AttributeError("Calculator object has no get_surface_energy method.")
 
         if self.relax_atoms:
