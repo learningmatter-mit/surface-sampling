@@ -84,7 +84,7 @@ class NFFPourbaix(NeuralFF):
         self.pourbaix_atoms = {}
 
     def get_delta_G2_individual(self, atom: Union[str, PourbaixAtom]) -> float:
-        """Get the standard free energy change for the second step of the Pourbaix reaction for a single atom.
+        """Get the free energy change for the second step of the Pourbaix reaction for a single atom.
 
         Args:
             atom (Union[str, PourbaixAtom]): The atom to calculate the free energy change for.
@@ -103,7 +103,7 @@ class NFFPourbaix(NeuralFF):
         return atom.delta_G2_std + delta_G2_non_std
 
     def get_delta_G2(self, atoms: ase.Atoms = None) -> float:
-        """Get the total standard free energy change for the second step of the Pourbaix reaction.
+        """Get the total free energy change for the second step of the Pourbaix reaction.
 
         Args:
             atoms (ase.Atoms, optional): The atoms object to calculate the free energy change for. Defaults to None.
@@ -164,7 +164,7 @@ class NFFPourbaix(NeuralFF):
         if atoms is None:
             atoms = self.atoms
 
-        return -(self.get_delta_G1() + self.get_delta_G2())
+        return -(self.get_delta_G1(atoms=atoms) + self.get_delta_G2(atoms=atoms))
 
     def set(self, **kwargs):
         """Set parameters like set(key1=value1, key2=value2, ...).
