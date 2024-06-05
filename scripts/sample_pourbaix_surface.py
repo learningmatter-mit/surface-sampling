@@ -171,7 +171,7 @@ def main(
 
     print(f"Elements: {elements}")
 
-    # TODO probably a way to extract from Pymatgen
+    # TODO probably a way to more automatically extract from Pymatgen
     Sr_pourbaix_atom = PourbaixAtom(
         "Sr",
         dominant_species="Sr2+",  # oxidized Sr -> Sr2+ + 2e-
@@ -179,24 +179,24 @@ def main(
         num_e=2,
         num_H=0,
         atom_std_state_energy=-1.664947875,  # from DFT
-        delta_G2_std=-5.798,  # -(-2.899) * -2 = -5.798
+        delta_G2_std=-5.798,  # -(-2.899) * -2 = -5.798 from Bratsch, S. G. (1989)
     )
     Ir_pourbaix_atom = PourbaixAtom(
         "Ir",
         dominant_species="IrO2",  # oxidized Ir + H2O -> IrO2 + 4H+ + 4e-
-        species_conc=1e-6,
+        species_conc=1,
         num_e=4,
         num_H=4,
         atom_std_state_energy=-8.84254924,  # from DFT
-        delta_G2_std=2.92,  # -0.73 * -4 = 2.92
+        delta_G2_std=1.76738,  # from pymatgen pourbaix_diagram, original task mp-1440326 GGA
     )
     O_pourbaix_atom = PourbaixAtom(
         "O",
         dominant_species="H2O",  # reduced 1/2 O2 + 2H+ + 2e- -> H2O
-        species_conc=1e-6,
+        species_conc=1,
         num_e=-2,
         num_H=-2,
-        atom_std_state_energy=-4.6403,  # my calculations
+        atom_std_state_energy=-5.2647,  # from task mp-1933400 GGA
         delta_G2_std=-2.46,  # 1.23 * -2 = -2.46 from Bratsch, S. G. (1989). Standard electrode potentials and temperature coefficients in water at 298.15 K. Journal of Physical and Chemical Reference Data, 18(1), 1-21.
     )
 
