@@ -176,8 +176,8 @@ class NFFPourbaix(NeuralFF):
         parameters from a file.
         """
         NeuralFF.set(self, **kwargs)
-        if "system_temp" in self.parameters.keys():
-            self.temp = self.parameters["system_temp"]
+        if "temperature" in self.parameters.keys():
+            self.temp = self.parameters["temperature"]
             print(f"temperature: {self.temp} in kBT")
         if "phi" in self.parameters.keys():
             self.phi = self.parameters["phi"]

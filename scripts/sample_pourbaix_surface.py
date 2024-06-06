@@ -226,7 +226,7 @@ def main(
         "relax_steps": relax_steps,
         "record_interval": record_interval,  # record structure every n steps
         "offset": offset,
-        "temp": system_temp,
+        "temperature": system_temp,
         "pH": pH,
         "phi": phi,
         "pourbaix_atoms": pourbaix_atoms,
