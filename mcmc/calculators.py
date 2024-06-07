@@ -18,7 +18,6 @@ from lammps import (
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
-HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 logger = logging.getLogger(__name__)
 
 

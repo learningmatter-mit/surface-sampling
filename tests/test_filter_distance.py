@@ -4,7 +4,7 @@ import pickle as pkl
 import pytest
 from ase.io import read
 
-from mcmc.utils import filter_distances
+from mcmc.utils.misc import filter_distances
 
 current_dir = os.path.dirname(__file__)
 
@@ -20,7 +20,9 @@ ase_top2 = [1.96777, 4.13332, 19.49200]
 # test_fixtures
 @pytest.fixture
 def pristine_slab():
-    slab_file = open(os.path.join(current_dir, "data/SrTiO3_unit_cell.pkl"), "rb")
+    slab_file = open(
+        os.path.join(current_dir, "data/SrTiO3_001/SrTiO3_unit_cell.pkl"), "rb"
+    )
     unit_slab = pkl.load(slab_file)
     pristine_slab = unit_slab * (2, 2, 1)
     return pristine_slab

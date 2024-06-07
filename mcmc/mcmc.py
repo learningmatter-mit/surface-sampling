@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pickle as pkl
+import random
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -23,7 +24,15 @@ from scipy.spatial import distance
 from scipy.spatial.distance import cdist
 from scipy.special import softmax
 
-from .energy import optimize_slab, slab_energy
+from mcmc.events.criterion import (
+    DistanceCriterion,
+    MetropolisCriterion,
+    TestingCriterion,
+)
+from mcmc.events.event import Change
+from mcmc.events.proposal import ChangeProposal
+
+from .energy import optimize_slab
 from .plot import plot_summary_stats
 from .slab import (
     change_site,
@@ -47,6 +56,42 @@ logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
 
 ENERGY_DIFF_LIMIT = 1e3  # in eV
+
+# TODO: idea of final code
+# class MCMCSampling:
+#     def __init__(self) -> None:
+#         ...
+#         self.surface = None
+
+#     def run(self, surface=None, nsteps: int = 100):
+#         ...
+#         if surface is None:
+#             surface = self.surface
+#         else:
+#             self.surface = surface
+
+#         if self.surface is None:
+#             raise ValueError("Surface not set")
+
+#         # run the MCMC sampling
+#         for i in range(nsteps):
+#             self.step()
+
+#     def step(self):
+#         event = self.event_generator.get_event(self.surface, **kwargs)
+
+#         accept = self.acceptance_criterion(event)
+
+#         # can do something like this
+#         log_dict = {
+#             "action": action,
+#             "probability": probability,
+#             "yesorno": yesorno,
+#             "Ef": Ef,
+#             "Ei": Ei,
+#             "N": N,
+#         }
+#         return log_dict
 
 
 class MCMC:
@@ -74,7 +119,6 @@ class MCMC:
 
         self.calc = calc
         self.surface_name = surface_name
-        # self.element = element  # review this, might not be useful
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms
         # self.ads_coords = np.array(ads_coords)
@@ -266,10 +310,6 @@ class MCMC:
 
     def setup_folders(self):
         """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
-        # set surface_name
-        if not self.surface_name:
-            self.surface_name = self.element
-
         if not self.run_folder:
             start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f.%f")
 
@@ -316,14 +356,10 @@ class MCMC:
         """
         # sometimes slab.calc does not exist
         if self.surface.calc:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+            energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            energy = results[0]
-            self.per_atom_energies = results[-1]
         else:
             energy = 0
 
@@ -450,18 +486,12 @@ class MCMC:
             energy_std = 0
             force_std = 0
         else:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                iter=i + 1,
-                save=True,
-                **self.kwargs,
+            energy = float(self.surface.get_surface_energy(recalculate=True))
+            energy_std = float(self.surface.calc.results.get("energy_std", 0.0))
+            _forces = self.surface.get_forces()
+            force_std = float(
+                self.surface.calc.results.get("forces_std", np.array([0.0])).mean()
             )
-            # TODO move the energy call to SurfaceSystem
-            energy = results[0]
-            energy_std = results[1]
-            force_std = results[3]
 
         if type(self.surface.real_atoms) is AtomsBatch:
             logger.info(
@@ -584,15 +614,10 @@ class MCMC:
             plot_specific_distance_weights = False
 
         if not prev_energy and not self.testing:
-            # calculate energy of current state
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            prev_energy = results[0]
-            self.per_atom_energies = results[-1]
 
         # choose 2 sites of different ads (empty counts too) to switch
         site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
@@ -613,7 +638,7 @@ class MCMC:
         site1_coords = self.surface.ads_coords[site1_idx]
         site2_coords = self.surface.ads_coords[site2_idx]
 
-        logger.debug(f"\n we are at iter {iter}")
+        logger.debug("\n we are at iter %s", iter)
         logger.debug(
             f"idx is {site1_idx} with connectivity {self.connectivity[site1_idx]} at {site1_coords}"
         )
@@ -627,23 +652,15 @@ class MCMC:
         logger.debug(f"current slab has {len(self.surface)} atoms")
 
         # effectively switch ads at both sites
-        self.surface, _, _, _ = change_site(
+        self.surface = change_site(
             self.surface,
-            self.pot,
-            self.adsorbates,
             site1_idx,
-            start_ads=site1_ads,
-            end_ads=site2_ads,
-            **self.kwargs,
+            site2_ads,
         )
-        self.surface, _, _, _ = change_site(
+        self.surface = change_site(
             self.surface,
-            self.pot,
-            self.adsorbates,
             site2_idx,
-            start_ads=site2_ads,
-            end_ads=site1_ads,
-            **self.kwargs,
+            site1_ads,
         )
 
         # make sure num atoms is conserved
@@ -677,23 +694,15 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
 
                 logger.debug("state kept the same with filtering")
@@ -721,35 +730,21 @@ class MCMC:
                 # state = state.copy()
                 logger.debug("state changed!")
                 # still give the relaxed energy
-                results = slab_energy(
-                    self.surface,
-                    relax=self.relax,
-                    folder_name=self.run_folder,
-                    **self.kwargs,
-                )
-                curr_energy = results[0]
+                curr_energy = float(self.surface.get_surface_energy(recalculate=True))
                 energy = curr_energy
                 accept = True
                 self.curr_similarity = curr_similarity  # update current similarity
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
                 logger.debug("state kept the same")
                 energy = prev_energy
@@ -759,14 +754,12 @@ class MCMC:
         else:
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+
+            curr_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            curr_energy = results[0]
-            self.per_atom_energies = results[-1]
+
             logger.debug(f"prev energy is {prev_energy}")
             logger.debug(f"curr energy is {curr_energy}")
 
@@ -791,27 +784,16 @@ class MCMC:
                 accept = True
             else:
                 # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site1_idx,
-                    start_ads=site2_ads,
-                    end_ads=site1_ads,
-                    **self.kwargs,
+                    site1_ads,
                 )
-                self.surface, _, _, _ = change_site(
+                self.surface = change_site(
                     self.surface,
-                    self.pot,
-                    self.adsorbates,
                     site2_idx,
-                    start_ads=site1_ads,
-                    end_ads=site2_ads,
-                    **self.kwargs,
+                    site2_ads,
                 )
-
-                # state, slab = add_to_slab(slab, state, adsorbate, coords, site1_idx)
-                # state, slab = remove_from_slab(slab, state, site2_idx)
 
                 logger.debug("state kept the same")
                 energy = prev_energy
@@ -820,7 +802,7 @@ class MCMC:
         return energy, accept
 
     def change_site(self, prev_energy: float = 0, iter: int = 1, site_idx: int = None):
-        """This function performs a semi-grand canonical sampling iteration. It randomly chooses a site to change identity in a slab, adds or removes an atom from the site,
+        """Performs a semigrand canonical sampling iteration. It randomly chooses a site to change identity in a slab, adds or removes an atom from the site,
         optionally performs relaxation, calculates the energy of the new slab, and accepts or rejects the change based
         on the Boltzmann-weighted energy difference, chemical potential change, and temperature.
 
@@ -839,144 +821,149 @@ class MCMC:
         accepted or not.
 
         """
-        if not site_idx:
-            site_idx = get_random_idx(self.connectivity)
-        rand_site = self.surface.ads_coords[site_idx]
+        # if not site_idx:
+        #     site_idx = get_random_idx(self.connectivity)
+        # rand_site = self.surface.ads_coords[site_idx]
 
-        logger.debug(f"\n we are at iter {iter}")
-        logger.debug(
-            f"idx is {site_idx} with connectivity {self.connectivity[site_idx]} at {rand_site}"
-        )
+        logger.debug("\n we are at iter %s", iter)
+        # logger.debug(
+        #     f"idx is {site_idx} with connectivity {self.connectivity[site_idx]} at {rand_site}"
+        # )
 
-        logger.debug("before proposed state is")
-        logger.debug(self.surface.occ)
+        # logger.debug("before proposed state is")
+        # logger.debug(self.surface.occ)
 
         # change in number of adsorbates (atoms)
-        delta_N = 0
+        # delta_N = 0
 
         if not prev_energy and not self.testing:
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                **self.kwargs,
+
+            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
+            self.per_atom_energies = self.surface.calc.results.get(
+                "per_atom_energies", []
             )
-            prev_energy = results[0]
-            self.per_atom_energies = results[-1]
+
         # TODO, can move to Event
         # import pdb; pdb.set_trace()
-        self.surface, delta_pot, start_ads, end_ads = change_site(
-            self.surface,
-            self.pot,
-            self.adsorbates,
-            site_idx,
-            start_ads=None,
-            end_ads=None,
-            **self.kwargs,
+
+        proposal = ChangeProposal(
+            system=self.surface, adsorbate_list=self.adsorbates.copy()
         )
 
-        logger.debug("after proposed state is")
-        logger.debug(self.surface.occ)
+        # ads_choices = self.adsorbates.copy()
+        # ads_choices.append("None")
 
-        if self.kwargs.get("save_cif", False):
-            if not os.path.exists(self.run_folder):
-                os.makedirs(self.run_folder)
-            write(
-                f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif",
-                self.surface.real_atoms,
-            )
+        # if self.surface.occ[site_idx] != 0:
+        #     # not an empty virtual site, remove the adsorbate
+        #     start_ads = self.surface.real_atoms[self.surface.occ[site_idx]].symbol
+        #     ads_choices.remove(start_ads)
+        # else:
+        #     start_ads = "None"
+        #     ads_choices.remove("None")
+
+        # end_ads = random.choice(ads_choices)
+
+        # logger.debug("after proposed state is")
+        # logger.debug(self.surface.occ)
+
+        # if self.kwargs.get("save_cif", False):
+        #     if not os.path.exists(self.run_folder):
+        #         os.makedirs(self.run_folder)
+        #     write(
+        #         f"{self.run_folder}/proposed_slab_iter_{iter:03}.cif",
+        #         self.surface.real_atoms,
+        #     )
 
         # to test, always accept
-        accept = False
+        # accept = False
         if self.kwargs.get("filter_distance", None):
-            filter_distance = self.kwargs["filter_distance"]
-            energy = 0
+            criterion = DistanceCriterion(
+                filter_distance=self.kwargs["filter_distance"]
+            )
+            logger.debug("Using distance filter")
+        #     filter_distance = self.kwargs["filter_distance"]
+        #     energy = 0
 
-            if filter_distances(
-                self.surface.real_atoms,
-                ads=self.adsorbates,
-                cutoff_distance=filter_distance,
-            ):
-                # succeeds! keep already changed slab
-                logger.debug("state changed with filtering!")
-                accept = True
-            else:
-                # failed, keep current state and revert slab back to original
+        #     if filter_distances(
+        #         self.surface.real_atoms,
+        #         ads=self.adsorbates,
+        #         cutoff_distance=filter_distance,
+        #     ):
+        #         # succeeds! keep already changed slab
+        #         logger.debug("state changed with filtering!")
+        #         accept = True
+        #     else:
+        #         # failed, keep current state and revert slab back to original
 
-                self.surface, _, _, _ = change_site(
-                    self.surface,
-                    self.pot,
-                    self.adsorbates,
-                    site_idx,
-                    start_ads=end_ads,
-                    end_ads=start_ads,
-                    **self.kwargs,
-                )
-                logger.debug("state kept the same with filtering")
+        #         self.surface = change_site(
+        #             self.surface,
+        #             site_idx,
+        #             start_ads,
+        #         )
+        #         logger.debug("state kept the same with filtering")
 
         elif self.testing:
-            energy = 0
-            accept = True
+            # energy = 0
+            # accept = True
+            criterion = TestingCriterion()
+            logger.debug("Using test criterion, always accept")
 
         else:
+            criterion = MetropolisCriterion(self.temp)
+            logger.debug("Using Metropolis criterion")
             # use relaxation only to get lowest energy
             # but don't update adsorption positions
-            results = slab_energy(
-                self.surface,
-                relax=self.relax,
-                folder_name=self.run_folder,
-                iter=iter,
-                **self.kwargs,
-            )
-            # import pdb; pdb.set_trace()
-            curr_energy = results[0]
-            self.per_atom_energies = results[-1]
 
-            logger.debug(f"prev energy is {prev_energy}")
-            logger.debug(f"curr energy is {curr_energy}")
+            # curr_energy = float(self.surface.get_surface_energy(recalculate=True))
+            # self.per_atom_energies = self.surface.calc.results.get(
+            #     "per_atom_energies", []
+            # )
 
-            # energy change due to site change
-            energy_diff = curr_energy - prev_energy
+            # logger.debug(f"prev energy is {prev_energy}")
+            # logger.debug(f"curr energy is {curr_energy}")
 
-            # check if transition succeeds
-            # min(1, exp(-(\delta_E-(delta_N*pot))))
-            logger.debug(f"energy diff is {energy_diff}")
-            logger.debug(f"chem pot(s) is(are) {self.pot}")
-            logger.debug(f"delta_N {delta_N}")
-            # logger.debug(f"delta_pot {delta_pot}")
-            logger.debug(f"k_b T {self.temp}")
+            # # energy change due to site change
+            # energy_diff = curr_energy - prev_energy
 
-            if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
-                base_prob = 0.0
-            else:
-                # base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
-                # pot should be accounted for in the energy_diff
-                base_prob = np.exp(-energy_diff / self.temp)
+            # # check if transition succeeds
+            # # min(1, exp(-(\delta_E-(delta_N*pot))))
+            # logger.debug(f"energy diff is {energy_diff}")
+            # logger.debug(f"chem pot(s) is(are) {self.pot}")
+            # logger.debug(f"delta_N {delta_N}")
+            # # logger.debug(f"delta_pot {delta_pot}")
+            # logger.debug(f"k_b T {self.temp}")
 
-            logger.debug(f"base probability is {base_prob}")
-            if np.random.rand() < base_prob:
-                # succeeds! keep already changed slab
-                # state = state.copy()
-                logger.debug("state changed!")
-                energy = curr_energy
-                accept = True
-            else:
-                # failed, keep current state and revert slab back to original
-                self.surface, _, _, _ = change_site(
-                    self.surface,
-                    self.pot,
-                    self.adsorbates,
-                    site_idx,
-                    start_ads=end_ads,
-                    end_ads=start_ads,
-                    **self.kwargs,
-                )
+            # if np.abs(energy_diff) > ENERGY_DIFF_LIMIT:
+            #     base_prob = 0.0
+            # else:
+            #     # base_prob = np.exp(-(energy_diff - delta_pot) / self.temp)
+            #     # pot should be accounted for in the energy_diff
+            #     base_prob = np.exp(-energy_diff / self.temp)
 
-                logger.debug("state kept the same")
-                energy = prev_energy
-                accept = False
+            # logger.debug(f"base probability is {base_prob}")
+            # if np.random.rand() < base_prob:
+            #     # succeeds! keep already changed slab
+            #     # state = state.copy()
+            #     logger.debug("state changed!")
+            #     energy = curr_energy
+            #     accept = True
+            # else:
+            #     # failed, keep current state and revert slab back to original
+            #     self.surface = change_site(
+            #         self.surface,
+            #         site_idx,
+            #         start_ads,
+            #     )
+
+            #     logger.debug("state kept the same")
+            #     energy = prev_energy
+            #     accept = False
 
             # logger.debug(f"energy after accept/reject {slab_energy(self.surface, relax=relax, folder_name=folder_name, iter=iter, **kwargs)}")
+        event = Change(self.surface, proposal, criterion)
+
+        accept, self.surface = event.acceptance()
+        energy = self.surface.results["surface_energy"]
         return energy, accept
 
     def mcmc_sweep(self, i: int = 0):
@@ -1006,6 +993,9 @@ class MCMC:
                 )
             num_accept += accept
 
+        # put this here to relax the proper structure first
+        final_energy = self.save_structures(i=i, testing=self.testing, **self.kwargs)
+
         # end of sweep, append to history
         if self.relax:
             # TODO save the relaxed slab directly from object
@@ -1026,10 +1016,10 @@ class MCMC:
             history_slab = self.surface.real_atoms.copy()
 
         # save space, don't copy neighbor
+        # TODO: save whole SurfaceSystem
         self.history.append(history_slab)
         self.trajectories.append(self.surface.relax_traj)
         # TODO can save some compute here
-        final_energy = self.save_structures(i=i, testing=self.testing, **self.kwargs)
 
         # append values
         self.energy_hist[i] = final_energy

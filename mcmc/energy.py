@@ -34,98 +34,6 @@ logger = logging.getLogger(__name__)
 # ENERGY_TEMPLATE = f"{curr_dir}/lammps_energy_template.txt"
 
 
-# def run_lammps_calc(slab, main_dir=os.getcwd(), lammps_template=OPT_TEMPLATE, **kwargs):
-#     lammps_template = open(lammps_template, "r").read()
-
-#     curr_dir = os.getcwd()
-
-#     # config file is assumed to be stored in the folder you run lammps
-#     config = json.load(open(f"{curr_dir}/lammps_config.json"))
-#     potential_file = config["potential_file"]
-#     atoms = config["atoms"]
-#     bulk_index = config["bulk_index"]
-
-#     # define necessary file locations
-#     lammps_data_file = f"{main_dir}/lammps.data"
-#     lammps_in_file = f"{main_dir}/lammps.in"
-#     lammps_out_file = f"{main_dir}/lammps.out"
-#     cif_from_lammps_path = f"{main_dir}/lammps.cif"
-
-#     # write current surface into lammps.data
-#     slab.write(
-#         lammps_data_file, format="lammps-data", units="real", atom_style="atomic"
-#     )
-#     steps = kwargs.get("relax_steps", 100)
-
-#     # write lammps.in file
-#     with open(lammps_in_file, "w") as f:
-#         # if using KIM potential
-#         if kwargs.get("kim_potential", False):
-#             f.writelines(
-#                 lammps_template.format(
-#                     lammps_data_file, bulk_index, steps, lammps_out_file
-#                 )
-#             )
-#         else:
-#             f.writelines(
-#                 lammps_template.format(
-#                     lammps_data_file,
-#                     bulk_index,
-#                     potential_file,
-#                     *atoms,
-#                     steps,
-#                     lammps_out_file,
-#                 )
-#             )
-
-#     # run LAMMPS without too much output
-#     lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
-#     # lmp = lammps()
-#     logger.debug(lmp.file(lammps_in_file))
-
-#     energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
-#     if "opt" in lammps_template:
-#         pe_per_atom = []
-#     else:
-#         pe_per_atom = lmp.extract_compute(
-#             "pe_per_atom", LMP_STYLE_ATOM, LMP_TYPE_VECTOR
-#         )
-#         pe_per_atom = np.ctypeslib.as_array(
-#             pe_per_atom, shape=(len(slab),)
-#         )  # convert to numpy array
-#     lmp.close()
-
-#     # Read from LAMMPS out
-#     new_slab = ase.io.read(lammps_out_file, format="lammps-data", style="atomic")
-
-#     atomic_numbers_dict = config["atomic_numbers_dict"]
-#     actual_atomic_numbers = [
-#         atomic_numbers_dict[str(x)] for x in new_slab.get_atomic_numbers()
-#     ]
-
-#     new_slab.set_atomic_numbers(actual_atomic_numbers)
-#     new_slab.calc = slab.calc
-
-#     return energy, pe_per_atom, new_slab
-
-
-# def run_lammps_opt(slab, main_dir=os.getcwd(), **kwargs):
-#     energy, pe_per_atom, opt_slab = run_lammps_calc(
-#         slab, main_dir=main_dir, lammps_template=OPT_TEMPLATE, **kwargs
-#     )
-#     logger.debug(f"slab energy in relaxation: {energy}")
-#     return opt_slab, energy
-
-
-# def run_lammps_energy(slab, main_dir=os.getcwd(), **kwargs):
-#     energy, pe_per_atom, _ = run_lammps_calc(
-#         slab, main_dir=main_dir, lammps_template=ENERGY_TEMPLATE, **kwargs
-#     )
-#     logger.debug(f"slab energy in engrad: {energy}")
-#     return energy, pe_per_atom
-
-
-# This can be a separate function
 def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
     """Run relaxation for slab
 
@@ -208,6 +116,8 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         # TODO set up a config file to change this
         dyn.run(steps=relax_steps, fmax=0.01)
 
+        energy = float(calc_slab.get_potential_energy())
+
         if save_traj:
             traj = {
                 "atoms": obs.atoms_history,
@@ -217,6 +127,27 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
 
         else:
             traj = None
+
+    try:
+        max_force = float(np.abs(calc_slab.calc.results["forces"]).max())
+    except KeyError:
+        max_force = 0.0
+
+    if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
+        logger.info("encountered energy or force out of bounds")
+        logger.info(f"energy {energy:.3f}")
+        logger.info(f"max force {max_force:.3f}")
+
+        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
+            # save the final frame as cif
+            logger.info("saving this slab")
+            iter = int(kwargs.get("iter"))
+            calc_slab.write(
+                f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
+            )
+
+        # set a high energy for mc acceptance criteria to reject
+        energy = ENERGY_THRESHOLD
 
     if (
         kwargs.get("folder_name", None)
@@ -230,138 +161,3 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         )
 
     return calc_slab, energy, traj
-
-
-# TODO this should be eventually moved to the NFF energy calculator
-def slab_energy(surface: SurfaceSystem, relax=False, update_neighbors=True, **kwargs):
-    """Calculate slab energy."""
-    energy = 0.0
-
-    pe_per_atom = []
-
-    # if relax:
-    # if type(surface.real_atoms) is AtomsBatch:
-    #     # calculate without relax first for NFF energies, which might be too high
-    #     logger.debug(f"\ncalculating energy without relax")
-    #     energy, energy_std, max_force, force_std, _ = slab_energy(
-    #         surface, relax=False, **kwargs
-    #     )
-
-    #     if energy > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
-    #         logger.info("encountered energy or forces out of bounds")
-    #         logger.info(f"max_force {max_force:.3f}, energy {energy:.3f}")
-
-    #         if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-    #             # save the final frame as cif
-    #             logger.info("saving this slab")
-    #             iter = int(kwargs.get("iter"))
-    #             surface.real_atoms.write(
-    #                 f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{surface.real_atoms.get_chemical_formula()}.cif"
-    #             )
-
-    #         # these energies or forces are out of bounds, thus
-    #         # we set a high energy for mcmc to reject
-    #         energy = ENERGY_THRESHOLD
-    #         # energy = np.sign(energy) * UNRELAXED_ENERGY_THRESHOLD
-
-    #         return energy, energy_std, max_force, force_std, 0.0
-
-    # logger.debug(f"performing relaxation")
-    # slab, energy, traj = optimize_slab(surface.real_atoms, **kwargs)
-
-    # if kwargs.get("require_per_atom_energies", False):
-    #     _, pe_per_atom = run_lammps_energy(
-    #         surface.real_atoms, main_dir=kwargs.get("folder_name", None), **kwargs
-    #     )
-
-    if (
-        type(surface.real_atoms)
-        is AtomsBatch
-        # and kwargs.get("optimizer", None) != "LAMMPS"
-    ):
-        # if update_neighbors:
-        #     slab.update_nbr_list(update_atoms=True)
-        # TODO think about how to make this efficient
-        # only relax if the real atoms are changed
-        surface_energy = surface.get_surface_energy(recalculate=True)
-        # slab.calc.calculate(slab)
-        # import pdb; pdb.set_trace()
-        # TODO check the energies are the same as surface.relaxed_atoms
-        energy = float(surface.calc.results["energy"])
-        if "forces" in surface.calc.results:
-            max_force = float(np.abs(surface.calc.results["forces"]).max())
-            force_std = float(surface.calc.results["forces_std"].mean())
-        else:
-            max_force = 0.0
-            force_std = 0.0
-        # TODO can be a hook for the calculators
-        if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
-            logger.info("encountered energy or force out of bounds")
-            logger.info(f"energy {energy:.3f}")
-            logger.info(f"max force {max_force:.3f}")
-
-            if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-                # save the final frame as cif
-                logger.info("saving this slab")
-                iter = int(kwargs.get("iter"))
-                surface.real_atoms.write(
-                    f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{surface.real_atoms.get_chemical_formula()}.cif"
-                )
-
-            # we set a high energy for mcmc to reject
-            energy = ENERGY_THRESHOLD
-
-        # if kwargs.get("offset", None):
-        #     if not kwargs.get("offset_data", None):
-        #         raise Exception(f"No offset_data.json file specified!")
-        #     else:
-        #         with open(kwargs["offset_data"]) as f:
-        #             offset_data = json.load(f)
-        #     bulk_energies = offset_data["bulk_energies"]
-        #     stoidict = offset_data["stoidict"]
-        #     stoics = offset_data["stoics"]
-        #     ref_formula = offset_data["ref_formula"]
-        #     ref_element = offset_data["ref_element"]
-
-        # ad = Counter(surface.real_atoms.get_chemical_symbols())
-
-        # procedure is
-        # 1: to add the linear regression coeffs back in
-        # TODO: move to NFF energy calc and then test using `get_surface_energy`
-        # ref_en = 0
-        # for ele, num in ad.items():
-        #     ref_en += num * stoidict[ele]
-        # ref_en += stoidict["offset"]
-
-        # surface_energy += ref_en * HARTREE_TO_EV
-
-        # 2: subtract the bulk energies
-        # TODO: move to surface energy calc
-        # bulk_ref_en = ad[ref_element] * bulk_energies[ref_formula]
-        # for ele, _ in ad.items():
-        #     if ele != ref_element:
-        #         bulk_ref_en += (
-        #             ad[ele] - stoics[ele] / stoics[ref_element] * ad[ref_element]
-        #         ) * bulk_energies[ele]
-
-        # energy -= bulk_ref_en * HARTREE_TO_EV
-        else:
-            energy = surface_energy.item()
-        energy_std = float(surface.calc.results["energy_std"])
-        # max_force = float(np.abs(surface.calc.results["forces"]).max())
-        # force_std = float(surface.calc.results["forces_std"].mean())
-
-    # elif kwargs.get("optimizer", None) == "LAMMPS" and relax:
-    #     # energy would have already been calculated
-    #     # folder_name = kwargs.get("folder_name", None)
-    #     # energy = run_lammps_energy(slab, main_dir=folder_name, **kwargs)
-    #     energy_std = 0.0
-    #     max_force = 0.0
-    #     force_std = 0.0
-
-    else:
-        energy = surface.get_surface_energy(recalculate=True)
-        energy_std = 0.0
-        max_force = 0.0
-        force_std = 0.0
-    return energy, energy_std, max_force, force_std, pe_per_atom

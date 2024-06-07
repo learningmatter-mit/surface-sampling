@@ -164,6 +164,7 @@ def get_atoms_batches(
                 atoms,
                 cutoff=nff_cutoff,
                 requires_large_offsets=False,
+                dense_nbrs=False,
                 directed=True,
                 device=device,
                 **kwargs,
