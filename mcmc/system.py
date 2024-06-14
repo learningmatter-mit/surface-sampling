@@ -32,8 +32,8 @@ class SurfaceSystem:
         atoms: ase.Atoms,
         ads_coords: List,
         calc: Calculator = None,
-        surface_depth: int = None,
         occ: List = None,
+        surface_depth: int = None,
         system_settings: Dict = None,
         calc_settings: Dict = None,
     ):
@@ -47,12 +47,12 @@ class SurfaceSystem:
             The coordinates of the virtual adsorption sites.
         calc : Calculator, optional
             ASE Calculator, by default None
+        occ : List, optional
+            The index of the adsorbed atom at each adsorption site, by default None
         surface_depth : int, optional
             Number of slab layers to leave unconstrained, starting from 
             highest z coord. A layer is defined as a unique z-coordinate, 
             if left blank will retain constraints from input slab
-        occ : List, optional
-            The index of the adsorbed atom at each adsorption site, by default None
         system_settings : Dict, optional
             Settings for surface system, by default None
         calc_settings : Dict, optional
@@ -87,7 +87,7 @@ class SurfaceSystem:
         self.distance_matrix = []
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
-        self.initialize(atoms, ads_coords, calc, surface_depth, occ)
+        self.initialize(atoms, ads_coords, calc, occ, surface_depth)
 
     def save_state(self, key: str):
         """Save the state of the SurfaceSystem object.
@@ -141,8 +141,8 @@ class SurfaceSystem:
         atoms: ase.Atoms,
         ads_coords: List,
         calc: Calculator = None,
-        surface_depth: int = None,
         occ: List = None,
+        surface_depth: int = None,
     ):
         """Initialize the SurfaceSystem object.
 
@@ -152,14 +152,14 @@ class SurfaceSystem:
             The atoms object representing the surface.
         ads_coords : List
             The coordinates of the virtual adsorption sites.
-        surface_depth : int, optional
-            Number of slab layers to leave unconstrained, starting from 
-            highest z coord. A layer is defined as a unique z-coordinate, 
-            if left blank will retain constraints from input slab
         calc : Calculator, optional
             The calculator object to use, by default None.
         occ : List, optional
             The index of the adsorbed atom at each adsorption site, by default None
+        surface_depth : int, optional
+            Number of slab layers to leave unconstrained, starting from 
+            highest z coord. A layer is defined as a unique z-coordinate, 
+            if left blank will retain constraints from input slab
 
         Returns
         -------
@@ -191,7 +191,11 @@ class SurfaceSystem:
         if surface_depth is not None:
             #clear existing constraints
             self.real_atoms.constraints = []
-
+            #check valid surface_depth
+            if surface_depth > max(self.real_atoms.get_tags()):
+                logger.info(
+                    "WARNING: Surface depth exceeds number of unique z-coordinates in system, all atoms will be unconstrained.")
+            #set constraints according to surface depth
             surface_mask = np.isin(
                 self.real_atoms.get_tags(), list(range(1, self.surface_depth + 1)))
             self.surface_idx = np.where(surface_mask)[0]
@@ -199,8 +203,9 @@ class SurfaceSystem:
             constraints = FixAtoms(indices=self.bulk_idx)
             self.real_atoms.set_constraint(constraints)
         else:
-            constraints=self.real_atoms.constraint
-            self.bulk_idx = constraints[0].todict()['kwargs']['indices']
+            # extract constraints for application to relaxed slab
+            constraints=self.real_atoms.constraints
+            self.bulk_idx = [] if not constraints else constraints[0].todict()['kwargs']['indices']
             self.surface_idx = [
                 i for i in range(len(self.real_atoms.positions)) if i not in self.bulk_idx]
         logger.info("bulk indices are %s", self.bulk_idx)
