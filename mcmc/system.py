@@ -39,6 +39,7 @@ class SurfaceSystem:
         occ: List = None,
         system_settings: Dict = None,
         calc_settings: Dict = None,
+        distance_weight_matrix: np.ndarray = None,
     ):
         """Initialize the SurfaceSystem object that encompasses a material surface and adsorption sites.
 
@@ -73,9 +74,10 @@ class SurfaceSystem:
         self.relax_atoms = self.calc_settings.get(
             "relax_atoms", False
         )  # whether to relax surface
+        # TODO: before relaxing atoms, save the current unrelaxed state
         self.results = {}
         self._states = {}
-        self.constraints = []  # TODO
+        self.constraints = []
         self.surface_area = 0.0  # TODO
 
         self.surface_idx = []
@@ -83,7 +85,7 @@ class SurfaceSystem:
         self.ads_idx = []
         self.ads_coords = []
         self.occ = []
-        self.distance_matrix = []
+        self.distance_weight_matrix = distance_weight_matrix
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
         self.initialize(atoms, ads_coords, calc, occ)

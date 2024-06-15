@@ -260,7 +260,7 @@ def main(
     # Sample across chemical potentials
     starting_surface = deepcopy(surface)
 
-    # Perform MCMC and view results.
+    # Perform MCMC and view results
     mcmc = MCMC(
         system_settings["surface_name"],
         calc=nff_surf_calc,
