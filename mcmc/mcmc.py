@@ -143,7 +143,6 @@ class MCMC:
         self.num_pristine_atoms = 0
         self.run_folder = ""
         self.curr_energy = 0
-        self.curr_similarity = 0
         self.sweep_size = 100
         # self.state = None
         self.connectivity = None
@@ -157,7 +156,7 @@ class MCMC:
         self.reference_structure = kwargs.get("reference_structure", None)
         self.reference_structure_embeddings = None
         self.device = kwargs.get("device", "cpu")
-        self.rmsd_criterion = kwargs.get("rmsd_criterion", False)
+        # self.rmsd_criterion = kwargs.get("rmsd_criterion", False)
 
         if self.canonical:
             # perform canonical runs
@@ -170,24 +169,24 @@ class MCMC:
         """The function "run" calls the function "mcmc_run"."""
         self.mcmc_run(surface)
 
-    def get_structure_embeddings(self, slab: AtomsBatch):
-        """This function calculates the structure embeddings for a given slab."""
-        batch = batch_to(slab.get_batch(), self.device)
-        if not (isinstance(self.calc, NeuralFF) or isinstance(self.calc, EnsembleNFF)):
-            raise ValueError("This function only works with NeuralFF")
-        atomwise_out, xyz, r_ij, nbrs = self.calc.model.atomwise(batch=batch)
-        structure_embeddings = (
-            atomwise_out["features"].sum(axis=0).detach().cpu().numpy()
-        )
-        return structure_embeddings
+    # def get_structure_embeddings(self, slab: AtomsBatch):
+    #     """This function calculates the structure embeddings for a given slab."""
+    #     batch = batch_to(slab.get_batch(), self.device)
+    #     if not (isinstance(self.calc, NeuralFF) or isinstance(self.calc, EnsembleNFF)):
+    #         raise ValueError("This function only works with NeuralFF")
+    #     atomwise_out, xyz, r_ij, nbrs = self.calc.model.atomwise(batch=batch)
+    #     structure_embeddings = (
+    #         atomwise_out["features"].sum(axis=0).detach().cpu().numpy()
+    #     )
+    #     return structure_embeddings
 
-    def get_cosine_similarity(self, slab: AtomsBatch):
-        """This function calculates the cosine similarity between the provided slab and the reference structure."""
-        curr_structure_embeddings = self.get_structure_embeddings(slab)
-        curr_similarity = 1 - distance.cosine(
-            curr_structure_embeddings, self.reference_structure_embeddings
-        )
-        return curr_similarity
+    # def get_cosine_similarity(self, slab: AtomsBatch):
+    #     """This function calculates the cosine similarity between the provided slab and the reference structure."""
+    #     curr_structure_embeddings = self.get_structure_embeddings(slab)
+    #     curr_similarity = 1 - distance.cosine(
+    #         curr_structure_embeddings, self.reference_structure_embeddings
+    #     )
+    #     return curr_similarity
 
     def get_adsorption_coords(self):
         """If not already set, this function sets the absolute adsorption coordinates for a given slab and element
@@ -684,71 +683,50 @@ class MCMC:
             filter_distance = self.kwargs["filter_distance"]
             energy = 0
 
-            if filter_distances(
-                self.surface.real_atoms,
-                ads=self.adsorbates,
-                cutoff_distance=filter_distance,
-            ):
-                # succeeds! keep already changed slab
-                logger.debug("state changed with filtering!")
-                accept = True
-            else:
-                # failed, keep current state and revert slab back to original
-                self.surface = change_site(
-                    self.surface,
-                    site1_idx,
-                    site1_ads,
-                )
-                self.surface = change_site(
-                    self.surface,
-                    site2_idx,
-                    site2_ads,
-                )
+        # DEPRECATED
+        # elif self.rmsd_criterion:
+        #     # use cosine distance from ideal structure
+        #     prev_similarity = self.curr_similarity
+        #     # relax structure
+        #     relaxed_slab, _, _ = optimize_slab(
+        #         self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
+        #     )
+        #     # get the current cosine similarity
+        #     curr_similarity = self.get_cosine_similarity(relaxed_slab)
 
-                logger.debug("state kept the same with filtering")
-        elif self.rmsd_criterion:
-            # use cosine distance from ideal structure
-            prev_similarity = self.curr_similarity
-            # relax structure
-            relaxed_slab, _, _ = optimize_slab(
-                self.surface.real_atoms, folder_name=self.run_folder, **self.kwargs
-            )
-            # get the current cosine similarity
-            curr_similarity = self.get_cosine_similarity(relaxed_slab)
+        #     # use the difference in the exponential of the cosine distance as the probability
+        #     similarity_diff = curr_similarity - prev_similarity
+        #     logger.debug(f"prev similarity is {prev_similarity}")
+        #     logger.debug(f"curr similarity is {curr_similarity}")
+        #     logger.debug(f"similarity diff is {similarity_diff}")
 
-            # use the difference in the exponential of the cosine distance as the probability
-            similarity_diff = curr_similarity - prev_similarity
-            logger.debug(f"prev similarity is {prev_similarity}")
-            logger.debug(f"curr similarity is {curr_similarity}")
-            logger.debug(f"similarity diff is {similarity_diff}")
+        #     base_prob = np.exp(similarity_diff / self.temp)
+        #     logger.debug(f"base probability is {base_prob}")
 
-            base_prob = np.exp(similarity_diff / self.temp)
-            logger.debug(f"base probability is {base_prob}")
-
-            if np.random.rand() < base_prob:
-                # succeeds! keep already changed slab
-                # state = state.copy()
-                logger.debug("state changed!")
-                # still give the relaxed energy
-                curr_energy = float(self.surface.get_surface_energy(recalculate=True))
-                energy = curr_energy
-                accept = True
-                self.curr_similarity = curr_similarity  # update current similarity
-            else:
-                # failed, keep current state and revert slab back to original
-                self.surface = change_site(
-                    self.surface,
-                    site1_idx,
-                    site1_ads,
-                )
-                self.surface = change_site(
-                    self.surface,
-                    site2_idx,
-                    site2_ads,
-                )
-                logger.debug("state kept the same")
-                energy = prev_energy
-                accept = False
+        #     if np.random.rand() < base_prob:
+        #         # succeeds! keep already changed slab
+        #         # state = state.copy()
+        #         logger.debug("state changed!")
+        #         # still give the relaxed energy
+        #         curr_energy = float(self.surface.get_surface_energy(recalculate=True))
+        #         energy = curr_energy
+        #         accept = True
+        #         self.curr_similarity = curr_similarity  # update current similarity
+        #     else:
+        #         # failed, keep current state and revert slab back to original
+        #         self.surface = change_site(
+        #             self.surface,
+        #             site1_idx,
+        #             site1_ads,
+        #         )
+        #         self.surface = change_site(
+        #             self.surface,
+        #             site2_idx,
+        #             site2_ads,
+        #         )
+        #         logger.debug("state kept the same")
+        #         energy = prev_energy
+        #         accept = False
         elif self.testing:
             energy = 0
         else:
@@ -1121,13 +1099,13 @@ class MCMC:
 
         self.curr_energy = self.get_initial_energy()
 
-        if self.reference_structure:
-            self.reference_structure_embeddings = self.get_structure_embeddings(
-                self.reference_structure
-            )
-            self.curr_similarity = self.get_cosine_similarity(
-                self.surface.relaxed_atoms
-            )
+        # if self.reference_structure:
+        #     self.reference_structure_embeddings = self.get_structure_embeddings(
+        #         self.reference_structure
+        #     )
+        #     self.curr_similarity = self.get_cosine_similarity(
+        #         self.surface.relaxed_atoms
+        #     )
 
         self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
 
