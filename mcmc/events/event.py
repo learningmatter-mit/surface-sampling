@@ -39,6 +39,14 @@ class Event:
         """
         raise NotImplementedError
 
+    def backward(self) -> None:
+        """Perform the backward step of the event.
+
+        Raises:
+            NotImplementedError: This method should be implemented in the derived classes.
+        """
+        raise NotImplementedError
+
     def acceptance(self, **kwargs) -> tuple[bool, SurfaceSystem]:
         """Perform the acceptance step of the event and determine whether the change is accepted or rejected.
         If rejected, the system state is restored to the state before the change.
@@ -50,7 +58,7 @@ class Event:
         self.forward()
         accept = self.criterion(self.system, **kwargs)
         if not accept:
-            self.system.restore_state("before")
+            self.backward()
             logger.debug("state not changed!")
         else:
             logger.debug("state changed!")
@@ -91,19 +99,26 @@ class Change(Event):
             self.site_idx,
             self.end_ads,
         )
-        self.system.save_state("after")
+        self.system.save_state(
+            "after"
+        )  # TODO: think about if we need to save the state after the change
+        # make sure num atoms is conserved
         logger.debug("after proposed state is")
         logger.debug(self.system.occ)
-        # TODO it's a bit slower now, add a backward method
+
+    def backward(self) -> None:
+        """Perform the backward step of the event and restores the system to the state before the change."""
+        self.system = change_site(
+            self.system,
+            self.site_idx,
+            self.start_ads,
+        )
 
 
 class Exchange(Event):
-    """Canonical Monte Carlo event for exchanging the adsorbates at two sites."""
+    """Canonical Monte Carlo event for exchanging the adsorbates at two sites.
 
-    def __init__(
-        self, system: SurfaceSystem, proposal: Proposal, criterion: Criterion, **kwargs
-    ) -> None:
-        """Args:
+    Args:
             system (SurfaceSystem): The surface system to propose changes to.
             proposal (Proposal): The proposal object to generate the change.
             criterion (Criterion): The criterion object to determine acceptance or rejection.
@@ -114,7 +129,11 @@ class Exchange(Event):
             site_idx (int): The index of the site where the change is proposed.
             start_ads (str): The adsorbate at the site before the change.
             end_ads (str): The adsorbate at the site after the change.
-        """
+    """
+
+    def __init__(
+        self, system: SurfaceSystem, proposal: Proposal, criterion: Criterion, **kwargs
+    ) -> None:
         super().__init__(system, proposal, criterion, **kwargs)
         self.action = self.proposal.get_action()
         self.site1_idx = self.action["site1_idx"]
@@ -137,19 +156,19 @@ class Exchange(Event):
             self.site1_ads,
         )
         self.system.save_state("after")
+        # make sure num atoms is conserved
         logger.debug("after proposed state is")
         logger.debug(self.system.occ)
 
     def backward(self) -> None:
-        # TODO use this
         """Perform the backward step of the event and restores the system to the state before the change."""
-        self.system.restore_state("before")
-
-
-class CanonicalEvent(Event):
-    # distance-based decay
-    # random
-    def __init__(
-        self, system: SurfaceSystem, proposal: Proposal, criterion: Criterion, **kwargs
-    ) -> None:
-        super().__init__(system, proposal, criterion, **kwargs)
+        self.system = change_site(
+            self.system,
+            self.site1_idx,
+            self.site1_ads,
+        )
+        self.system = change_site(
+            self.system,
+            self.site2_idx,
+            self.site2_ads,
+        )
