@@ -65,6 +65,10 @@ class Event:
 
         return accept, self.system
 
+    def backward(self) -> None:
+        """Perform the backward step of the event and restores the system to the state before the change."""
+        self.system.restore_state("before")
+
 
 class Change(Event):
     """Semigrand Canonical Monte Carlo event for changing the adsorbate at one site.
@@ -105,14 +109,6 @@ class Change(Event):
         # make sure num atoms is conserved
         logger.debug("after proposed state is")
         logger.debug(self.system.occ)
-
-    def backward(self) -> None:
-        """Perform the backward step of the event and restores the system to the state before the change."""
-        self.system = change_site(
-            self.system,
-            self.site_idx,
-            self.start_ads,
-        )
 
 
 class Exchange(Event):
@@ -159,16 +155,3 @@ class Exchange(Event):
         # make sure num atoms is conserved
         logger.debug("after proposed state is")
         logger.debug(self.system.occ)
-
-    def backward(self) -> None:
-        """Perform the backward step of the event and restores the system to the state before the change."""
-        self.system = change_site(
-            self.system,
-            self.site1_idx,
-            self.site1_ads,
-        )
-        self.system = change_site(
-            self.system,
-            self.site2_idx,
-            self.site2_ads,
-        )
