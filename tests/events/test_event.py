@@ -31,6 +31,33 @@ def test_change_forward(system, proposal, criterion):
     assert ~np.allclose(event.system.occ, system.occ)
 
 
+def test_change_backward(system, proposal, criterion):
+    start_ads_pos = system.real_atoms.get_positions()[system.occ]
+    start_chem_symbols = system.real_atoms.get_chemical_formula()
+    start_occ = system.occ
+
+    # Create a Change event object
+    event = Change(system, proposal, criterion)
+
+    # Perform the forward step of the event
+    event.forward()
+
+    # Perform the backward step of the event
+    event.backward()
+    curr_ads_pos = system.real_atoms.get_positions()[system.occ]
+    curr_chem_symbols = system.real_atoms.get_chemical_formula()
+    curr_occ = system.occ
+
+    # Assert that the ads positions are the same before and after the event
+    assert np.allclose(start_ads_pos, curr_ads_pos)
+
+    # Assert that the chemical symbols are the same before and after the event
+    assert start_chem_symbols == curr_chem_symbols
+
+    # Assert that the occupation numbers are different before and after the event
+    assert ~np.allclose(start_occ, curr_occ)
+
+
 def test_change_acceptance(system, proposal, criterion):
     # Create a Change event object
     event = Change(system, proposal, criterion)
