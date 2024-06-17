@@ -1047,9 +1047,7 @@ class MCMC:
         # append values
         self.energy_hist[i] = final_energy
 
-        ads_counts = count_adsorption_sites(
-            self.surface.real_atoms, self.surface.occ, self.connectivity
-        )
+        ads_counts = count_adsorption_sites(self.surface, self.connectivity)
         for key in set(self.site_types):
             if ads_counts[key]:
                 self.adsorption_count_hist[key].append(ads_counts[key])

@@ -18,21 +18,28 @@ logger = logging.getLogger(__name__)
 
 
 def initialize_slab(
-    alat,
-    elem="Cu",
-    vacuum=15.0,
-    miller=(1, 0, 0),
-    termination=0,
-    orthogonal=False,
-    size=(4, 4, 4),
+    alat: float,
+    elem: str = "Cu",
+    vacuum: float = 15.0,
+    miller: tuple[int] = (1, 0, 0),
+    termination: int = 0,
+    orthogonal: bool = False,
+    size: tuple[int] = (4, 4, 4),
     **kwargs,
-):
+) -> ase.Atoms:
     """Creates the slab structure using ASE.
 
-    Parameters
-    ----------
-    alat : float
-        Lattice parameter in angstroms
+    Args:
+        alat (float): The lattice constant in angstroms.
+        elem (str): The element to use.
+        vacuum (float): The vacuum thickness.
+        miller (tuple): The Miller indices.
+        termination (int): The termination.
+        orthogonal (bool): Whether to use orthogonal coordinates.
+        size (tuple): The size of the slab in each dimension.
+
+    Returns:
+        ase.Atoms: The slab structure.
     """
     a1 = bulk(elem, "fcc", a=alat)
     write(f"{elem}_a1_bulk.cif", a1)
@@ -51,35 +58,30 @@ def initialize_slab(
     return catkit_slab
 
 
-def get_random_idx(connectivity, type=None):
-    """Get random site index"""
-    connectivities = {"top": 1, "bridge": 2, "hollow": 4}  # defaults to hollow
-
-    # top should have connectivity 1, bridge should be 2 and hollow more like 4
-    if type:
-        site_idx = random.choice(
-            np.argwhere(connectivity == connectivities[type]).flatten()
-        )
-
-    else:
-        site_idx = random.randrange(len(connectivity))
-
-    return site_idx
-
-
 def get_complementary_idx(
     surface: SurfaceSystem,
     require_per_atom_energies: bool = False,
     require_distance_decay: bool = False,
     **kwargs,
-):
-    """Get two indices, site1 and site2 of different elemental identities."""
+) -> tuple[int, int, str, str]:
+    """Get two indices, site1 and site2 of different elemental identities.
+
+    Args:
+        surface (SurfaceSystem): The surface system to propose changes to.
+        require_per_atom_energies (bool): Whether to use per atom energies.
+        require_distance_decay (bool): Whether to use distance decay.
+
+    Returns:
+        Tuple[int, int, str, str]: A tuple containing the indices of the two sites and the elemental identities of the adsorbates.
+    """
+    # TODO: split into two functions
+    # find indices of adsorbed atoms
     adsorbed_idx = np.argwhere(surface.occ != 0).flatten()
 
     per_atom_energies = kwargs.get("per_atom_energies", None)
     distance_weight_matrix = kwargs.get("distance_weight_matrix", None)
     # logger.info(f"distance weight matrix has shape {distance_weight_matrix.shape}")
-    # select adsorbates present in slab
+    # group adsorbates present in slab
     curr_ads = {
         k: list(g)
         for k, g in itertools.groupby(
@@ -87,8 +89,10 @@ def get_complementary_idx(
         )
     }
     # add empty sites
+    # find indices of empty sites
     empty_idx = np.argwhere(surface.occ == 0).flatten().tolist()
     curr_ads["None"] = empty_idx
+    # complelety populate the adsorbates including empty sites
     logger.debug(f"current ads {curr_ads}")
 
     if require_per_atom_energies:
@@ -104,7 +108,8 @@ def get_complementary_idx(
         logger.debug("temp is %s", temp)
         boltzmann_weights = softmax(per_atom_energies / temp)
         logger.debug("boltzmann weights are %s", boltzmann_weights)
-        # creat weights for each adsorbate except empty sites
+
+        # create weight dict for each adsorbate except empty sites
         weights = {
             k: boltzmann_weights[surface.occ[v]] if k != "None" else np.ones_like(v)
             for k, v in curr_ads.items()
@@ -112,6 +117,7 @@ def get_complementary_idx(
     else:
         # all uniform weights
         weights = {k: np.ones_like(v) for k, v in curr_ads.items()}
+
     # choose two types
     types = list(curr_ads.keys())
     type1, type2 = random.sample(types, 2)
@@ -182,19 +188,13 @@ def change_site(
 ) -> SurfaceSystem:
     """Change the adsorbate at a site to a new adsorbate.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site_idx : int
-        the index of the site to change
-    end_ads : Union[str, ase.Atoms]
-        the new adsorbate to place at the site
+    Args:
+        surface (SurfaceSystem): The surface system to propose changes to.
+        site_idx (int): The index of the site to change.
+        end_ads (Union[str, ase.Atoms]): The new adsorbate to place at the site.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
     logger.debug("current slab has %s atoms", len(surface))
 
@@ -214,7 +214,7 @@ def change_site(
 
     if end_ads != "None":
         logger.debug("replacing %s with %s", start_ads, end_ads)
-        surface = add_atom(surface, end_ads, site_idx)
+        surface = add_atom(surface, site_idx, end_ads)
     else:
         logger.debug("desorbing %s", start_ads)
 
@@ -223,24 +223,17 @@ def change_site(
 
 
 def add_atom(
-    surface: SurfaceSystem, adsorbate: Union[str, ase.Atoms], site_idx: int
+    surface: SurfaceSystem, site_idx: int, adsorbate: Union[str, ase.Atoms]
 ) -> SurfaceSystem:
-    """It adds an adsorbate to a surface, and updates the state to reflect the new adsorbate
+    """Add an adsorbate at an empty site and updates the state.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site is empty, the integer is 0.
-    adsorbate : ase.Atoms
-        the adsorbate molecule
-    site_idx : int
-        the index of the site on the slab where the adsorbate will be placed
+    Args:
+        surface (SurfaceSystem): The surface system.
+        site_idx (int): The index of the site to change.
+        adsorbate (Union[str, ase.Atoms]): The adsorbate to add.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
 
     adsorbate_idx = len(surface)
@@ -251,19 +244,14 @@ def add_atom(
 
 
 def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
-    """Remove the adsorbate from the slab and update the state
+    """Remove an adsorbate from the slab and updates the state.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site_idx : int
-        the index of the site to remove the adsorbate from
+    Args:
+        surface (SurfaceSystem): The surface system.
+        site_idx (int): The index of the site to change.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
     adsorbate_idx = surface.occ[site_idx]
     assert len(np.argwhere(surface.occ == adsorbate_idx)) <= 1, "more than 1 site found"
@@ -283,73 +271,17 @@ def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
     return surface
 
 
-# def get_adsorption_coords(slab, atom, connectivity, debug=False):
-#     """Takes a slab, an atom, and a list of site indices, and returns the actual coordinates of the
-#     adsorbed atoms
+def count_adsorption_sites(
+    surface: SurfaceSystem, connectivity: Union[list, np.ndarray]
+) -> Counter:
+    """Count the number of adsorption sites with a given number of adsorbates.
 
-#     Parameters
-#     ----------
-#     slab : ase.Atoms
-#         the original slab
-#     atom : ase.Atoms
-#         the atom you want to adsorb
-#     connectivity : list
-#         list of lists of integers, each list is a list of the indices of the atoms that are connected to
-#     the atom at the index of the list.
+    Args:
+        surface (SurfaceSystem): The surface system.
+        connectivity (Union[list, np.ndarray]): The connectivity matrix.
 
-#     Returns
-#     -------
-#         The positions of the adsorbed atoms.
-
-#     """
-#     logger.debug(f"getting actual adsorption site coordinates")
-#     new_slab = slab.copy()
-
-#     proposed_slab_builder = catkit.gen.adsorption.Builder(new_slab)
-
-#     # add multiple adsorbates
-#     site_indices = list(range(len(connectivity)))
-
-#     # use proposed_slab_builder._single_adsorption multiple times
-#     for i, index in enumerate(site_indices):
-#         new_slab = proposed_slab_builder._single_adsorption(
-#             atom,
-#             bond=0,
-#             slab=new_slab,
-#             site_index=site_indices[i],
-#             auto_construct=False,
-#             symmetric=False,
-#         )
-
-#     if debug:
-#         write(f"ads_{str(atom.symbols)}_all_adsorbed_slab.cif", new_slab)
-
-#     # store the actual positions of the sides
-#     logger.debug(
-#         f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms."
-#     )
-
-#     return new_slab.get_positions(wrap=True)[len(slab) :]
-
-
-def count_adsorption_sites(slab, state, connectivity):
-    """It takes a slab, a state, and a connectivity matrix, and returns a dictionary of the number of
-    adsorption sites of each type
-
-    Parameters
-    ----------
-    slab
-        ase.Atoms object
-    state
-        a list of the same length as the number of sites in the slab.
-    connectivity
-        a list of the same length as the number of sites in the slab.
-
-    Returns
-    -------
-        A dictionary with the number of adsorption sites as keys and the number of atoms with that number
-    of adsorption sites as values.
-
+    Returns:
+        Counter: The number of adsorption sites with a given number of adsorbates.
     """
-    occ_idx = state > 0
+    occ_idx = surface.occ > 0
     return Counter(connectivity[occ_idx])
