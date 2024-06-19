@@ -9,14 +9,14 @@ from typing import List, Literal, Union
 
 import numpy as np
 from ase.constraints import FixAtoms
-from nff.io.ase_calcs import NeuralFF
+from nff.train.builders.model import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
 from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.io.ase import AseAtomsAdaptor
 
 from mcmc import MCMC
-from mcmc.calculators import EnsembleNFFSurface, NFFPourbaix
-from mcmc.pourbaix.atoms import PourbaixAtom
+from mcmc.calculators import NFFPourbaix
+from mcmc.pourbaix.atoms import generate_pourbaix_atoms
 from mcmc.system import SurfaceSystem
 from mcmc.utils.misc import get_atoms_batch
 
@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 np.set_printoptions(precision=3, suppress=True)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Perform MCMC on surfaces under electrochemical conditions."
@@ -54,6 +54,16 @@ def parse_args():
         type=str,
         nargs="+",
         help="paths to the models",
+    )
+    parser.add_argument(
+        "--phase_diagram_path",
+        type=str,
+        help="path to the saved pymatgen PhaseDiagram",
+    )
+    parser.add_argument(
+        "--pourbaix_diagram_path",
+        type=str,
+        help="path to the saved pymatgen PourbaixDiagram",
     )
     parser.add_argument(
         "--save_folder",
@@ -108,8 +118,7 @@ def parse_args():
         help="device to use for calculations",
     )
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(
@@ -117,6 +126,8 @@ def main(
     starting_structure_path: Union[Path, str],
     model_type: Literal["NffScaleMACE", "CHGNetNFF"],
     model_paths: List[str],
+    phase_diagram_path: Union[Path, str],
+    pourbaix_diagram_path: Union[Path, str],
     chem_pot: List[float],
     phi: float,
     pH: float,
@@ -140,7 +151,8 @@ def main(
         starting_structure_path (Union[Path, str]): path to the starting structure
         model_type (Literal["NffScaleMACE", "CHGNetNFF"]): type of model to use
         model_paths (List[str]): paths to the models
-        save_folder (Path): Folder to output
+        phase_diagram_path (Union[Path, str]): path to the saved pymatgen PhaseDiagram
+        pourbaix_diagram_path (Union[Path, str]): path to the saved pymatgen PourbaixDiagram
         chem_pot (List[float]): chemical potential for each element
         phi (float): electrical potential
         pH (float): pH
@@ -150,6 +162,11 @@ def main(
         alpha (float): alpha for MCMC
         samp_temp (float): sampling temperature in kbT
         relax (bool): perform relaxation for the steps
+        relax_steps (int): max relaxation steps
+        record_interval (int): record interval for relaxation
+        offset (bool): whether to use energy offsets
+        device (str): device to use for calculations
+        save_folder (Path): Folder to output
 
     Returns:
         None
@@ -171,36 +188,11 @@ def main(
 
     print(f"Elements: {elements}")
 
-    # TODO probably a way to more automatically extract from Pymatgen
-    Sr_pourbaix_atom = PourbaixAtom(
-        "Sr",
-        dominant_species="Sr2+",  # oxidized Sr -> Sr2+ + 2e-
-        species_conc=1e-6,
-        num_e=2,
-        num_H=0,
-        atom_std_state_energy=-1.664947875,  # from DFT
-        delta_G2_std=-5.798,  # -(-2.899) * -2 = -5.798 from Bratsch, S. G. (1989)
+    pourbaix_atoms = generate_pourbaix_atoms(
+        phase_diagram_path, pourbaix_diagram_path, phi, pH, elements
     )
-    Ir_pourbaix_atom = PourbaixAtom(
-        "Ir",
-        dominant_species="IrO2",  # oxidized Ir + H2O -> IrO2 + 4H+ + 4e-
-        species_conc=1,
-        num_e=4,
-        num_H=4,
-        atom_std_state_energy=-8.84254924,  # from DFT
-        delta_G2_std=1.76738,  # from pymatgen pourbaix_diagram, original task mp-1440326 GGA
-    )
-    O_pourbaix_atom = PourbaixAtom(
-        "O",
-        dominant_species="H2O",  # reduced 1/2 O2 + 2H+ + 2e- -> H2O
-        species_conc=1,
-        num_e=-2,
-        num_H=-2,
-        atom_std_state_energy=-5.2647,  # from task mp-1933400 GGA
-        delta_G2_std=-2.46,  # 1.23 * -2 = -2.46 from Bratsch, S. G. (1989). Standard electrode potentials and temperature coefficients in water at 298.15 K. Journal of Physical and Chemical Reference Data, 18(1), 1-21.
-    )
-
-    pourbaix_atoms = dict(Sr=Sr_pourbaix_atom, Ir=Ir_pourbaix_atom, O=O_pourbaix_atom)
+    print(f"Pourbaix atoms: {pourbaix_atoms}")
+    offset_data = json.load(open(offset_data_path, "r")) if offset else None
 
     system_settings = {
         "surface_name": surface_name,
@@ -230,7 +222,7 @@ def main(
         "pH": pH,
         "phi": phi,
         "pourbaix_atoms": pourbaix_atoms,
-        "offset_data": json.load(open(offset_data_path, "r")),
+        "offset_data": offset_data,
     }
 
     # Obtain adsorption sites
@@ -249,11 +241,10 @@ def main(
     print(f"adsorption coordinates are: {ads_positions[:5]}...")
 
     # Load Ensemble NFF Model
-    # requires an ensemble of models in this path and an `offset_data.json` file
     models = []
-    for modeldir in model_paths:
-        m = NeuralFF.from_file(modeldir, device=DEVICE, model_type=model_type).model
-        models.append(m)
+    for model_path in model_paths:
+        model = load_model(model_path, model_type=model_type, map_location=device)
+        models.append(model)
 
     # TODO write support for multiple models
     nff_surf_calc = NFFPourbaix(
@@ -263,25 +254,6 @@ def main(
         prediction_units="eV",
     )
     nff_surf_calc.set(**calc_settings)
-
-    # Use Pretrained NFF model
-    # chgnet_nff = CHGNetNFF.load(device=system_settings["device"])
-
-    # nff_calc = NeuralFF(
-    #     chgnet_nff,
-    #     device=system_settings["device"],
-    #     model_units="eV/atom",
-    #     prediction_units="eV",
-    # )
-
-    # nff_surf_calc = EnsembleNFFSurface(
-    #     [nff_calc.model],
-    #     device=system_settings["device"],
-    #     model_units="eV/atom",
-    #     prediction_units="eV",
-    #     offset_units="eV",
-    # )
-    # nff_surf_calc.set(**calc_settings)
 
     # Initialize SurfaceSystem (actually bulk system)
     slab_batch = get_atoms_batch(
@@ -379,6 +351,8 @@ if __name__ == "__main__":
         args.starting_structure_path,
         args.model_type,
         args.model_paths,
+        args.phase_diagram_path,
+        args.pourbaix_diagram_path,
         args.chem_pot,
         args.phi,
         args.pH,
