@@ -40,12 +40,8 @@ class Event:
         raise NotImplementedError
 
     def backward(self) -> None:
-        """Perform the backward step of the event.
-
-        Raises:
-            NotImplementedError: This method should be implemented in the derived classes.
-        """
-        raise NotImplementedError
+        """Perform the backward step of the event and restores the system to the state before the change."""
+        self.system.restore_state("before")
 
     def acceptance(self, **kwargs) -> tuple[bool, SurfaceSystem]:
         """Perform the acceptance step of the event and determine whether the change is accepted or rejected.
@@ -64,10 +60,6 @@ class Event:
             logger.debug("state changed!")
 
         return accept, self.system
-
-    def backward(self) -> None:
-        """Perform the backward step of the event and restores the system to the state before the change."""
-        self.system.restore_state("before")
 
 
 class Change(Event):

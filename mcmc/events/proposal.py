@@ -25,6 +25,7 @@ class Proposal:
     def __init__(self, system: SurfaceSystem, adsorbate_list: Iterable[str]) -> None:
         self.system = system
         self.adsorbate_list = list(adsorbate_list).copy()
+        self.adsorbate_list.append("None")
 
     def get_action(self) -> Dict[str, Any]:
         """Obtain a dictionary containing the proposed change.
@@ -53,7 +54,6 @@ class ChangeProposal(Proposal):
         site_idx: int = None,
     ) -> None:
         super().__init__(system, adsorbate_list)
-        self.adsorbate_list.append("None")
         self.site_idx = site_idx
 
     def get_action(self) -> Dict[str, Any]:

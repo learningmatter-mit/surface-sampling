@@ -34,17 +34,17 @@ class AcceptanceCriterion:
 class TestingCriterion(AcceptanceCriterion):
     """Testing acceptance criterion for debugging purposes."""
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, always_accept=True) -> None:
+        self.always_accept = always_accept
 
     def criterion(self, *args, **kwargs) -> bool:
-        """Always returns True for testing purposes.
+        """Always returns one value for testing purposes.
 
         Returns:
-            bool: Always True.
+            bool: The value to return.
         """
         logger.debug("Testing criterion called")
-        return True
+        return self.always_accept
 
 
 class DistanceCriterion(AcceptanceCriterion):

@@ -11,7 +11,7 @@ def system():
     atoms = Atoms(
         "GaAsGaAs", positions=[[0, 0, 0], [0, 0, 3], [1, 1, 1], [1, 1, 4]]
     )  # fake positions for now
-    ads_coords = [(0, 0, 3), (1, 1, 4)]
+    ads_coords = [(0, 0, 3), (1, 1, 4), (2, 2, 5)]
     calc = Calculator()
-    occ = [1, 3]
+    occ = [1, 3, 0]
     return SurfaceSystem(atoms, ads_coords, calc, occ)
