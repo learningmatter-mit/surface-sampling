@@ -14,4 +14,4 @@ def system():
     ads_coords = [(0, 0, 3), (1, 1, 4)]
     calc = Calculator()
     occ = [1, 3]
-    return SurfaceSystem(atoms, ads_coords, calc, occ)
+    return SurfaceSystem(atoms, ads_coords=ads_coords, calc=calc, occ=occ)

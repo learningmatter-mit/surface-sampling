@@ -14,6 +14,7 @@ from mcmc.system import SurfaceSystem
 
 current_dir = os.path.dirname(__file__)
 
+
 # some regression testing first
 def test_Cu_energy():
     required_energy = -25.2893
@@ -78,7 +79,10 @@ def test_Cu_energy():
 
     # initialize SurfaceSystem
     surface = SurfaceSystem(
-        slab, ads_positions, lammps_surf_calc, system_settings=system_settings
+        slab,
+        ads_coords=ads_positions,
+        calc=lammps_surf_calc,
+        system_settings=system_settings,
     )
 
     mcmc = MCMC(
