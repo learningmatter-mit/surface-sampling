@@ -124,7 +124,6 @@ class SwitchProposal(Proposal):
         require_per_atom_energies: bool = False,
         require_distance_decay: bool = False,
         per_atom_energies: np.ndarray = None,
-        distance_weight_matrix: np.ndarray = None,
         temp: float = None,
         run_folder: str = None,
         plot_specific_distance_weights: bool = False,
@@ -134,7 +133,6 @@ class SwitchProposal(Proposal):
         self.require_per_atom_energies = require_per_atom_energies
         self.require_distance_decay = require_distance_decay
         self.per_atom_energies = per_atom_energies
-        self.distance_weight_matrix = distance_weight_matrix
         self.temp = temp
         self.run_folder = run_folder
         self.plot_weights = plot_specific_distance_weights
@@ -154,9 +152,7 @@ class SwitchProposal(Proposal):
             require_per_atom_energies=self.require_per_atom_energies,
             require_distance_decay=self.require_distance_decay,
             per_atom_energies=self.per_atom_energies,  # TODO: move to Calculator
-            distance_weight_matrix=self.distance_weight_matrix,  # TODO: move to SurfaceSystem
-            temp=self.temp,
-            ads_coords=self.system.ads_coords,
+            temperature=self.temp,
             run_folder=self.run_folder,
             plot_weights=self.plot_weights,
             run_iter=self.run_iter,

@@ -621,7 +621,6 @@ class MCMC:
             ),
             require_distance_decay=self.kwargs.get("require_distance_decay", False),
             per_atom_energies=self.per_atom_energies,
-            distance_weight_matrix=self.distance_weight_matrix,
             temp=self.temp,
             run_folder=self.run_folder,
             plot_specific_distance_weights=plot_specific_distance_weights,

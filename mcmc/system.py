@@ -30,7 +30,6 @@ ADSORBATE_TAG = 2
 
 
 class SurfaceSystem:
-    # state here is changed to occ
     def __init__(
         self,
         atoms: ase.Atoms,
@@ -57,6 +56,8 @@ class SurfaceSystem:
             Settings for surface system, by default None
         calc_settings : Dict, optional
             Settings for calculator, by default None
+        distance_weight_matrix : np.ndarray, optional
+            The distance weight matrix with size (n, n) where n is the number of ads sites, by default None
         """
         # TODO the procedure is to go from all_atoms to real_atoms and relaxed_atoms
         # but for now, we only have the real_atoms and relaxed_atoms to maintain compatibility
@@ -75,6 +76,7 @@ class SurfaceSystem:
             "relax_atoms", False
         )  # whether to relax surface
         # TODO: before relaxing atoms, save the current unrelaxed state
+        # compare real_atoms with unrelaxed_atoms before deciding to relax
         self.results = {}
         self._states = {}
         self.constraints = []
@@ -101,7 +103,7 @@ class SurfaceSystem:
         self.real_atoms.calc = None
         if self.relax_atoms:
             self.relaxed_atoms.calc = None
-        # TODO perhaps fix the trajectory saving
+        # TODO can add saving the trajectory
         self._states[key] = {
             "real_atoms": copy.deepcopy(self.real_atoms),
             "relaxed_atoms": copy.deepcopy(self.relaxed_atoms),
@@ -162,7 +164,7 @@ class SurfaceSystem:
         None
         """
         self.real_atoms = copy.deepcopy(atoms)
-        self.ads_coords = ads_coords
+        self.ads_coords = np.array(ads_coords)
         self.calc = calc
         self.real_atoms.calc = self.calc
         self.all_atoms = copy.deepcopy(self.real_atoms)
@@ -186,8 +188,11 @@ class SurfaceSystem:
         logger.info("surface indices are %s", self.surface_idx)
 
         # set constraints
-        constraints = FixAtoms(indices=self.bulk_idx)
-        self.real_atoms.set_constraint(constraints)
+        if self.real_atoms.constraints:
+            constraints = self.real_atoms.constraints
+        else:
+            constraints = FixAtoms(indices=self.bulk_idx)
+            self.real_atoms.set_constraint(constraints)
         if self.relax_atoms:
             self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
@@ -214,7 +219,7 @@ class SurfaceSystem:
 
     @property
     def adsorbate_idx(self):
-        """Get the indices of the adsorbate atoms.
+        """Get the indices of the adsorbate atoms in the slab.
 
         Returns
         -------
@@ -223,6 +228,28 @@ class SurfaceSystem:
         """
         self.ads_idx = self.occ[self.occ.nonzero()[0]]
         return self.ads_idx
+
+    @property
+    def empty_occ_idx(self) -> list[int]:
+        """Get the indices of the empty adsorption sites.
+
+        Returns
+        -------
+        list[int]
+            The indices of the empty adsorption sites.
+        """
+        return np.argwhere(self.occ == 0).flatten().tolist()
+
+    @property
+    def filled_occ_idx(self) -> list[int]:
+        """Get the indices of the filled adsorption sites.
+
+        Returns
+        -------
+        list[int]
+            The indices of the filled adsorption sites.
+        """
+        return np.argwhere(self.occ != 0).flatten().tolist()
 
     def relax_structure(self, **kwargs):
         """Relax the surface structure.
