@@ -2,12 +2,14 @@ import copy
 import functools
 import logging
 import os
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 import ase
 import numpy as np
 from ase.calculators.calculator import Calculator, PropertyNotImplementedError
 from ase.constraints import FixAtoms
+from pymatgen.analysis.adsorption import AdsorbateSiteFinder
+from pymatgen.io.ase import AseAtomsAdaptor
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -34,7 +36,8 @@ class SurfaceSystem:
     def __init__(
         self,
         atoms: ase.Atoms,
-        ads_coords: List,
+        ads_coords: Iterable = (),
+        ads_surface: bool = False,  # TODO
         calc: Calculator = None,
         occ: List = None,
         system_settings: Dict = None,
@@ -48,6 +51,8 @@ class SurfaceSystem:
             The atoms object representing the surface.
         ads_coords : List
             The coordinates of the virtual adsorption sites.
+        ads_surface : bool, optional
+            Whether surface atoms should be included in adsorption sites, by default False
         calc : Calculator, optional
             ASE Calculator, by default None
         occ : List, optional
@@ -160,7 +165,13 @@ class SurfaceSystem:
         None
         """
         self.real_atoms = copy.deepcopy(atoms)
-        self.ads_coords = ads_coords
+        if not (
+            (isinstance(ads_coords, list) and (len(ads_coords) > 0))
+            or isinstance(ads_coords, np.ndarray)
+        ):
+            self.ads_coords = self.initialize_adsorption_sites()
+        else:
+            self.ads_coords = ads_coords
         self.calc = calc
         self.real_atoms.calc = self.calc
         self.all_atoms = copy.deepcopy(self.real_atoms)
@@ -175,20 +186,40 @@ class SurfaceSystem:
             self.occ = np.array(occ)
         logger.info("initial state is %s", self.occ)
 
-        # calculate from real_atoms and occ
-        self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
-        logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
-        self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
-        self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
-        logger.info("bulk indices are %s", self.bulk_idx)
-        logger.info("surface indices are %s", self.surface_idx)
+        if not self.real_atoms.constraints:
+            # calculate from real_atoms and occ
+            self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
+            logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
+            self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
+            self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
+            logger.info("bulk indices are %s", self.bulk_idx)
+            logger.info("surface indices are %s", self.surface_idx)
 
-        # set constraints
-        constraints = FixAtoms(indices=self.bulk_idx)
-        self.real_atoms.set_constraint(constraints)
+            # set constraints
+            constraints = FixAtoms(indices=self.bulk_idx)
+            self.real_atoms.set_constraint(constraints)
+        else:
+            constraints = self.real_atoms.constraints
+        logger.info("Real atoms have constraints %s", self.real_atoms.constraints)
+
         if self.relax_atoms:
             self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
+            logger.info(
+                "Relaxed atoms have constraints %s", self.relaxed_atoms.constraints
+            )
+
+    def initialize_adsorption_sites(self):
+        site_finder = AdsorbateSiteFinder(self.pymatgen_unrelaxed_structure)
+        ads_positions = site_finder.find_adsorption_sites(
+            put_inside=True,
+            symm_reduce=False,
+            near_reduce=self.system_settings["near_reduce"],
+            distance=self.system_settings["planar_distance"],
+            no_obtuse_hollow=self.system_settings["no_obtuse_hollow"],
+        )["all"]
+        logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
+        return ads_positions
 
     def initialize_virtual_atoms(self, virtual_atom_str: str = "X"):
         """Initialize virtual atoms on the surface.
@@ -221,6 +252,10 @@ class SurfaceSystem:
         """
         self.ads_idx = self.occ[self.occ.nonzero()[0]]
         return self.ads_idx
+
+    @property
+    def pymatgen_unrelaxed_structure(self):
+        return AseAtomsAdaptor.get_structure(self.real_atoms)
 
     def relax_structure(self, **kwargs):
         """Relax the surface structure.
