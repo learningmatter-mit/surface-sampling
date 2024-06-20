@@ -12,6 +12,7 @@ from pymatgen.analysis.pourbaix_diagram import (
 )
 from pymatgen.core import Composition, Element
 from pymatgen.entries.computed_entries import ComputedEntry
+from typing_extensions import Self
 
 ELEMENTS_HO = {Element("H"), Element("O")}
 SYMBOLS_HO = {elem.symbol for elem in ELEMENTS_HO}
@@ -99,6 +100,39 @@ class PourbaixAtom(Atom):
             delta_G2_std=(pbx_entry.energy - pbx_entry.conc_term)
             * pbx_entry.normalization_factor,
             **kwargs,
+        )
+
+    def as_dict(self):
+        """Get MSONable dict."""
+        return {
+            "@module": type(self).__module__,
+            "@class": type(self).__name__,
+            "symbol": self.symbol,
+            "dominant_species": self.dominant_species,
+            "species_conc": self.species_conc,
+            "num_e": self.num_e,
+            "num_H": self.num_H,
+            "atom_std_state_energy": self.atom_std_state_energy,
+            "delta_G2_std": self.delta_G2_std,
+        }
+
+    @classmethod
+    def from_dict(cls, dct: dict) -> Self:
+        """
+        Args:
+            dct (dict): Dict representation.
+
+        Returns:
+            SurfacePourbaixDiagram
+        """
+        return cls(
+            symbol=dct["symbol"],
+            dominant_species=dct["dominant_species"],
+            species_conc=dct["species_conc"],
+            num_e=dct["num_e"],
+            num_H=dct["num_H"],
+            atom_std_state_energy=dct["atom_std_state_energy"],
+            delta_G2_std=dct["delta_G2_std"],
         )
 
     def __repr__(self):

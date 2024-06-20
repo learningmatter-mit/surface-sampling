@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import json
 import logging
 import pickle
@@ -9,6 +10,7 @@ from typing import List, Literal, Union
 
 import numpy as np
 from ase.constraints import FixAtoms
+from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
 from pymatgen.analysis.adsorption import AdsorbateSiteFinder
@@ -171,9 +173,11 @@ def main(
     Returns:
         None
     """
+    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_folder = save_folder / f"{start_time}_{surface_name}"
 
-    save_path = Path(save_folder)
-    save_path.mkdir(parents=True, exist_ok=True)
+    run_path = Path(run_folder)
+    run_path.mkdir(parents=True, exist_ok=True)
 
     if device == "cuda":
         DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
@@ -192,7 +196,7 @@ def main(
         phase_diagram_path, pourbaix_diagram_path, phi, pH, elements
     )
     print(f"Pourbaix atoms: {pourbaix_atoms}")
-    offset_data = json.load(open(offset_data_path, "r")) if offset else None
+    offset_data = loadfn(offset_data_path, "r") if offset else None
 
     system_settings = {
         "surface_name": surface_name,
@@ -224,6 +228,14 @@ def main(
         "pourbaix_atoms": pourbaix_atoms,
         "offset_data": offset_data,
     }
+    # TODO: make a load settings file as well as an alternative
+    # Save settings to file
+    all_settings = {
+        "system_settings": system_settings,
+        "sampling_settings": sampling_settings,
+        "calc_settings": calc_settings,
+    }
+    dumpfn(all_settings, run_folder / "settings.json")
 
     # Obtain adsorption sites
     pristine_slab = starting_slab.copy()
@@ -264,6 +276,8 @@ def main(
     )
 
     # Fix atoms in the bulk
+    # TODO add flag to SurfaceSystem
+    # If atoms are already fixed here, we don't need to do it again within SurfaceSystem
     num_bulk_atoms = len(slab_batch)
     bulk_indices = list(range(num_bulk_atoms))
     print(f"bulk indices {bulk_indices}")
@@ -278,8 +292,7 @@ def main(
     surface = SurfaceSystem(
         slab_batch, ads_positions, nff_surf_calc, system_settings=system_settings
     )
-    starting_atoms_path = save_path / "all_virtual_ads.cif"
-
+    starting_atoms_path = run_folder / "all_virtual_ads.cif"
     print(f"Saving surface with virtual atoms to {starting_atoms_path}")
     surface.all_atoms.write(starting_atoms_path)
 
