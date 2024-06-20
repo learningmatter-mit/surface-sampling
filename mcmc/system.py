@@ -186,15 +186,14 @@ class SurfaceSystem:
             self.occ = np.array(occ)
         logger.info("initial state is %s", self.occ)
 
+        self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
+        # calculate from real_atoms and occ
+        logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
+        self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
+        self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
+        logger.info("bulk indices are %s", self.bulk_idx)
+        logger.info("surface indices are %s", self.surface_idx)
         if not self.real_atoms.constraints:
-            # calculate from real_atoms and occ
-            self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
-            logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
-            self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
-            self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
-            logger.info("bulk indices are %s", self.bulk_idx)
-            logger.info("surface indices are %s", self.surface_idx)
-
             # set constraints
             constraints = FixAtoms(indices=self.bulk_idx)
             self.real_atoms.set_constraint(constraints)
