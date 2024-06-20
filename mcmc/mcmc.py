@@ -113,7 +113,6 @@ class MCMC:
         distance_weight_matrix=None,
         **kwargs,
     ) -> None:
-
         # https://github.com/HojeChun/EpiKmc/blob/main/epikmc/system.py#L54
         # TODO create class SurfaceSystem to contain both surface slab, state, params, and calculator
 
@@ -837,7 +836,6 @@ class MCMC:
         # delta_N = 0
 
         if not prev_energy and not self.testing:
-
             prev_energy = float(self.surface.get_surface_energy(recalculate=True))
             self.per_atom_energies = self.surface.calc.results.get(
                 "per_atom_energies", []
