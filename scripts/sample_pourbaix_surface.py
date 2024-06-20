@@ -249,8 +249,14 @@ def main(
         distance=system_settings["planar_distance"],
         no_obtuse_hollow=system_settings["no_obtuse_hollow"],
     )["all"]
+    print(f"Generated adsorption coordinates are: {ads_positions[:5]}...")
 
-    print(f"adsorption coordinates are: {ads_positions[:5]}...")
+    surf_atom_idx = pristine_slab.get_surface_atoms()
+    surf_atom_positions = pristine_slab.get_positions()[surf_atom_idx]
+    print(f"Surface atom coordinates are: {surf_atom_positions[:5]}...")
+    all_ads_coords = np.vstack([ads_positions, surf_atom_positions])
+
+    occ = np.hstack([[0] * len(ads_positions), surf_atom_idx])
 
     # Load Ensemble NFF Model
     models = []
@@ -290,7 +296,11 @@ def main(
     slab_batch.set_constraint(c)
 
     surface = SurfaceSystem(
-        slab_batch, ads_positions, nff_surf_calc, system_settings=system_settings
+        slab_batch,
+        all_ads_coords,
+        calc=nff_surf_calc,
+        occ=occ,
+        system_settings=system_settings,
     )
     starting_atoms_path = run_folder / "all_virtual_ads.cif"
     print(f"Saving surface with virtual atoms to {starting_atoms_path}")
@@ -333,6 +343,7 @@ def main(
         pot=list(calc_settings["chem_pots"].values()),
         alpha=sampling_settings["alpha"],
         surface=starting_surface,
+        run_folder=run_folder,
     )
     stop = perf_counter()
     print(f"Time taken = {stop - start} seconds")
