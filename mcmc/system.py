@@ -207,7 +207,7 @@ class SurfaceSystem:
             constraints=self.real_atoms.constraints
             self.bulk_idx = [] if not constraints else constraints[0].todict()['kwargs']['indices']
             self.surface_idx = [
-                i for i in range(len(self.real_atoms.positions)) if i not in self.bulk_idx]
+                i for i in range(len(atoms)) if i not in self.bulk_idx]
         logger.info("bulk indices are %s", self.bulk_idx)
         logger.info("surface indices are %s", self.surface_idx)
         if self.relax_atoms:

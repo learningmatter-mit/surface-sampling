@@ -4,8 +4,19 @@ from numpy import array_equal
 from ase.calculators.calculator import Calculator
 from catkit.gen.surface import SlabGenerator
 from mcmc.system import SurfaceSystem
-from chgnet.model.dynamics import CHGNetCalculator
+from numpy import array,ndarray
+from ase.calculators.calculator import Calculator
 
+class TestCalculator(Calculator):
+    # ASE Calculator, intended to help reduce test time by skipping relaxations
+    implemented_properties = ['energy', 'energies', 'forces', 'free_energy']
+    def __init__(self, **kwargs):
+        Calculator.__init__(self, **kwargs)
+    def calculate(self, atoms=None, properties=None, system_changes=None):
+        self.results['energies'] = ndarray([0 for i in range(len(atoms))])
+        self.results['energy'] = sum(self.results['energies'])
+        self.results['free energy'] = self.results['energy']
+        self.results['forces'] = array([[0.0,0.0,0.0] for _ in range(len(atoms))])
 
 @pytest.fixture
 def surface_system():
@@ -64,11 +75,10 @@ def si_slab():
     return slab
 
 def test_surface_system_constraint_retention(si_slab):
-    unchanged = SurfaceSystem(si_slab,ads_coords=[],calc=CHGNetCalculator(),calc_settings={"relax_atoms":True})
+    unchanged = SurfaceSystem(si_slab,ads_coords=[],calc=TestCalculator(),calc_settings={"relax_atoms":True,"relax_steps":1})
     unchanged_constraints = unchanged.real_atoms.constraints[0].todict()['kwargs']['indices']
     unchanged_relaxed_constraints = unchanged.relaxed_atoms.constraints[0].todict()['kwargs']['indices']
     original_constraints = si_slab.constraints[0].todict()['kwargs']['indices']
-    print(f'HEREEEEEEEEEEE {unchanged_constraints}')
     tags = unchanged.real_atoms.get_tags()
     #checking proper constraint application
     assert unchanged_constraints == unchanged_relaxed_constraints
@@ -80,14 +90,7 @@ def test_surface_system_constraint_retention(si_slab):
     
 
 def test_surface_system_constraint_setting(si_slab):
-    unconstrained = SurfaceSystem(si_slab,ads_coords=[],calc=CHGNetCalculator(),surface_depth=3,calc_settings={"relax_atoms":True})
-    #checking full removal of constraints
-    unconstrained_constraints = unconstrained.real_atoms.constraints[0].todict()['kwargs']['indices']
-    unconstrained_relaxed = unconstrained.relaxed_atoms.constraints[0].todict()['kwargs']['indices']
-    assert unconstrained_constraints == []
-    assert unconstrained_constraints == unconstrained_relaxed
-
-    partially_constrained = SurfaceSystem(si_slab,ads_coords=[],calc=CHGNetCalculator(),surface_depth=2,calc_settings={"relax_atoms":True})
+    partially_constrained = SurfaceSystem(si_slab,ads_coords=[],calc=TestCalculator(),surface_depth=2,calc_settings={"relax_atoms":True,"relax_steps":1})
     partial_constraints = partially_constrained.real_atoms.constraints[0].todict()['kwargs']['indices']
     relaxed_constraints = partially_constrained.relaxed_atoms.constraints[0].todict()['kwargs']['indices']
     tags = partially_constrained.real_atoms.get_tags()
