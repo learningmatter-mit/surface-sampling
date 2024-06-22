@@ -1,5 +1,6 @@
 import pytest
 from ase import Atoms
+
 from numpy import array_equal
 from ase.calculators.calculator import Calculator
 from catkit.gen.surface import SlabGenerator
@@ -27,25 +28,7 @@ def surface_system():
     occ = [0, 1]
     system_settings = {"relax_atoms": True}
     calc_settings = {"optimizer": "BFGS"}
-
     system = SurfaceSystem(atoms, ads_coords, calc, occ, surface_depth, system_settings, calc_settings)
-
-    # assert surface_system.all_atoms is None
-    # assert surface_system.real_atoms == atoms
-    # assert surface_system.system_settings == system_settings
-    # assert surface_system.calc_settings == calc_settings
-    # assert surface_system.relax_atoms == system_settings.get("relax_atoms", False)
-    # assert surface_system.results == {}
-    # assert surface_system._states == {}
-    # assert surface_system.constraints == []
-    # assert surface_system.surface_area == 0.0
-    # assert surface_system.surface_idx == []
-    # assert surface_system.bulk_idx == []
-    # assert surface_system.ads_idx == []
-    # assert surface_system.ads_coords == ads_coords
-    # assert surface_system.occ == occ
-    # assert surface_system.distance_matrix == []
-
     return system
 
 @pytest.fixture
@@ -88,7 +71,6 @@ def test_surface_system_constraint_retention(si_slab):
     for idx in unchanged_constraints:
         assert tags[idx] != 1
     
-
 def test_surface_system_constraint_setting(si_slab):
     partially_constrained = SurfaceSystem(si_slab,ads_coords=[],calc=TestCalculator(),surface_depth=2,calc_settings={"relax_atoms":True,"relax_steps":1})
     partial_constraints = partially_constrained.real_atoms.constraints[0].todict()['kwargs']['indices']
@@ -104,7 +86,6 @@ def test_surface_system_constraint_setting(si_slab):
     #checking if constraints were set on bottom layer
     for idx in partial_constraints:
          assert tags[idx] == 3
-    
 
 def test_surface_system_save_and_restore_state(surface_system):
     starting_occ = [0, 1]
