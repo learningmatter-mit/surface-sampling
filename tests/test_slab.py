@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase import Atoms
+from ase.calculators.calculator import Calculator
 
 from mcmc.slab import (
     change_site,
@@ -69,12 +70,14 @@ def test_get_adsorbate_indices(system):
 def test_compute_boltzmann_weights(system):
     # Set up the test case
     per_atom_energies = [1.0, 0.5, 1.0, 0.6]
+    calc = Calculator()
+    calc.results = {"per_atom_energies": per_atom_energies}
+    system.calc = calc
     temperature = 1.0
     curr_ads = get_adsorbate_indices(system)
 
     weights = compute_boltzmann_weights(
         system,
-        per_atom_energies=per_atom_energies,
         temperature=temperature,
         curr_ads=curr_ads,
     )
@@ -133,7 +136,6 @@ def test_get_complementary_idx(system):
     # Set up the test case
     require_per_atom_energies = False
     require_distance_decay = False
-    per_atom_energies = None
     temperature = 1.0
     plot_weights = False
     run_folder = "."
@@ -144,7 +146,6 @@ def test_get_complementary_idx(system):
         system,
         require_per_atom_energies,
         require_distance_decay,
-        per_atom_energies,
         temperature,
         plot_weights,
         run_folder,

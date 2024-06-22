@@ -145,8 +145,6 @@ class MCMC:
         self.adsorption_count_hist = None
         self.frac_accept_hist = None
 
-        self.per_atom_energies = []
-
         self.reference_structure = kwargs.get("reference_structure", None)
         self.reference_structure_embeddings = None
         self.device = kwargs.get("device", "cpu")
@@ -350,9 +348,6 @@ class MCMC:
         # sometimes slab.calc does not exist
         if self.surface.calc:
             energy = float(self.surface.get_surface_energy(recalculate=True))
-            self.per_atom_energies = self.surface.calc.results.get(
-                "per_atom_energies", []
-            )
         else:
             energy = 0
 
@@ -608,10 +603,6 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             prev_energy = float(self.surface.get_surface_energy(recalculate=True))
-            # TODO: can move to per-atom energies in the Calculator
-            self.per_atom_energies = self.surface.calc.results.get(
-                "per_atom_energies", []
-            )
 
         proposal = SwitchProposal(
             system=self.surface,
@@ -620,7 +611,6 @@ class MCMC:
                 "require_per_atom_energies", False
             ),
             require_distance_decay=self.kwargs.get("require_distance_decay", False),
-            per_atom_energies=self.per_atom_energies,
             temp=self.temp,
             run_folder=self.run_folder,
             plot_specific_distance_weights=plot_specific_distance_weights,
@@ -861,10 +851,6 @@ class MCMC:
 
         if not prev_energy and not self.testing:
             prev_energy = float(self.surface.get_surface_energy(recalculate=True))
-            # TODO: can move to per-atom energies in the Calculator
-            self.per_atom_energies = self.surface.calc.results.get(
-                "per_atom_energies", []
-            )
 
         proposal = ChangeProposal(
             system=self.surface,

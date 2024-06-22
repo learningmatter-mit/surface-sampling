@@ -99,7 +99,6 @@ def choose_adsorbate_type(adsorbates: dict) -> tuple[str, str]:
 
 def compute_boltzmann_weights(
     surface: SurfaceSystem,
-    per_atom_energies: Union[list, np.ndarray],
     temperature: float,
     curr_ads: dict[str, list],
 ) -> dict[str, np.ndarray]:
@@ -107,7 +106,6 @@ def compute_boltzmann_weights(
 
     Args:
         surface (SurfaceSystem): The surface system.
-        per_atom_energies (Union[list, np.ndarray]): The per atom energies in eV.
         temperature (float): The temperature in eV.
         curr_ads (dict): A dictionary of adsorbate indices grouped by elemental identity.
 
@@ -117,10 +115,16 @@ def compute_boltzmann_weights(
     Raises:
         ValueError: If require_per_atom_energies is True, but no per_atom_energies were provided.
     """
-    if per_atom_energies is None:
+    per_atom_energies = surface.calc.results.get("per_atom_energies", [])
+    # TODO write a dedicated surface.get_per_atom_energies() method
+
+    if len(per_atom_energies) == 0:
         raise ValueError(
             "require_per_atom_energies is True, but no per_atom_energies were provided"
         )
+    assert len(per_atom_energies) == len(
+        surface.real_atoms
+    ), "length mismatch in per atom energies and number of real atoms"
     logger.debug("in `get_complementary_idx` using per atom energies")
     logger.debug("per atom energies are %s", per_atom_energies)
     logger.debug("temperature is %s", temperature)
@@ -192,7 +196,6 @@ def get_complementary_idx(
     surface: SurfaceSystem,
     require_per_atom_energies: bool = False,
     require_distance_decay: bool = False,
-    per_atom_energies: np.ndarray = None,
     temperature: float = 1.0,
     plot_weights: bool = False,
     run_folder: str = ".",
@@ -204,7 +207,6 @@ def get_complementary_idx(
         surface (SurfaceSystem): The surface system to propose changes to.
         require_per_atom_energies (bool): Whether to use per atom energies.
         require_distance_decay (bool): Whether to use distance decay.
-        per_atom_energies (np.ndarray): The per atom energies in eV.
         temperature (float): The temperature in eV.
         plot_weights (bool): Whether to plot the specific distance weights.
         run_folder (str): The folder to save the plots in.
@@ -217,9 +219,7 @@ def get_complementary_idx(
     logger.debug("current ads %s", curr_ads)
 
     if require_per_atom_energies:
-        weights = compute_boltzmann_weights(
-            surface, per_atom_energies, temperature, curr_ads
-        )
+        weights = compute_boltzmann_weights(surface, temperature, curr_ads)
     else:
         # Uniform weights
         weights = {k: np.ones_like(v) for k, v in curr_ads.items()}

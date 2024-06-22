@@ -98,7 +98,6 @@ class SwitchProposal(Proposal):
         adsorbate_list (Iterable[str]): The list of adsorbates that can be proposed.
         require_per_atom_energies (bool): Whether to require per atom energies.
         require_distance_decay (bool): Whether to require distance decay.
-        per_atom_energies (np.ndarray): The per atom energies.
         distance_weight_matrix (np.ndarray): The distance weight matrix.
         temp (float): The temperature.
         run_folder (str): The folder to run the calculations in.
@@ -109,7 +108,6 @@ class SwitchProposal(Proposal):
         adsorbate_list (List[str]): The list of adsorbates that can be proposed.
         require_per_atom_energies (bool): Whether to require per atom energies.
         require_distance_decay (bool): Whether to require distance decay.
-        per_atom_energies (np.ndarray): The per atom energies.
         distance_weight_matrix (np.ndarray): The distance weight matrix.
         temp (float): The temperature.
         run_folder (str): The folder to run the calculations in.
@@ -123,7 +121,6 @@ class SwitchProposal(Proposal):
         adsorbate_list: Iterable[str] = ("Sr", "O"),
         require_per_atom_energies: bool = False,
         require_distance_decay: bool = False,
-        per_atom_energies: np.ndarray = None,
         temp: float = None,
         run_folder: str = None,
         plot_specific_distance_weights: bool = False,
@@ -132,7 +129,6 @@ class SwitchProposal(Proposal):
         super().__init__(system, adsorbate_list)
         self.require_per_atom_energies = require_per_atom_energies
         self.require_distance_decay = require_distance_decay
-        self.per_atom_energies = per_atom_energies
         self.temp = temp
         self.run_folder = run_folder
         self.plot_weights = plot_specific_distance_weights
@@ -151,7 +147,6 @@ class SwitchProposal(Proposal):
             self.system,
             require_per_atom_energies=self.require_per_atom_energies,
             require_distance_decay=self.require_distance_decay,
-            per_atom_energies=self.per_atom_energies,  # TODO: move to Calculator
             temperature=self.temp,
             run_folder=self.run_folder,
             plot_weights=self.plot_weights,
