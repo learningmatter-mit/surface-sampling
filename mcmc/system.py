@@ -8,6 +8,7 @@ import ase
 import numpy as np
 from ase.calculators.calculator import Calculator, PropertyNotImplementedError
 from ase.constraints import FixAtoms
+from catkit.gen.utils import get_unique_coordinates
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -24,10 +25,6 @@ DEFAULT_SETTINGS = {
     "no_obtuse_hollow": True,
 }
 
-BULK_TAG = 0
-SURFACE_TAG = 1
-ADSORBATE_TAG = 2
-
 
 class SurfaceSystem:
     def __init__(
@@ -36,6 +33,7 @@ class SurfaceSystem:
         ads_coords: List,
         calc: Calculator = None,
         occ: List = None,
+        surface_depth: int = None,
         system_settings: Dict = None,
         calc_settings: Dict = None,
         distance_weight_matrix: np.ndarray = None,
@@ -52,6 +50,10 @@ class SurfaceSystem:
             ASE Calculator, by default None
         occ : List, optional
             The index of the adsorbed atom at each adsorption site, by default None
+        surface_depth : int, optional
+            Number of slab layers to leave unconstrained, starting from
+            highest z coord. A layer is defined as a unique z-coordinate,
+            if left blank will retain constraints from input slab
         system_settings : Dict, optional
             Settings for surface system, by default None
         calc_settings : Dict, optional
@@ -90,7 +92,7 @@ class SurfaceSystem:
         self.distance_weight_matrix = distance_weight_matrix
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
-        self.initialize(atoms, ads_coords, calc, occ)
+        self.initialize(atoms, ads_coords, calc, occ, surface_depth)
 
     def save_state(self, key: str):
         """Save the state of the SurfaceSystem object.
@@ -145,6 +147,7 @@ class SurfaceSystem:
         ads_coords: List,
         calc: Calculator = None,
         occ: List = None,
+        surface_depth: int = None,
     ):
         """Initialize the SurfaceSystem object.
 
@@ -158,6 +161,10 @@ class SurfaceSystem:
             The calculator object to use, by default None.
         occ : List, optional
             The index of the adsorbed atom at each adsorption site, by default None
+        surface_depth : int, optional
+            Number of slab layers to leave unconstrained, starting from
+            highest z coord. A layer is defined as a unique z-coordinate,
+            if left blank will retain constraints from input slab
 
         Returns
         -------
@@ -166,6 +173,7 @@ class SurfaceSystem:
         self.real_atoms = copy.deepcopy(atoms)
         self.ads_coords = np.array(ads_coords)
         self.calc = calc
+        self.surface_depth = surface_depth
         self.real_atoms.calc = self.calc
         self.all_atoms = copy.deepcopy(self.real_atoms)
         self.initialize_virtual_atoms()
@@ -182,17 +190,34 @@ class SurfaceSystem:
         # calculate from real_atoms and occ
         self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
         logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
-        self.bulk_idx = np.where(self.real_atoms.get_tags() == BULK_TAG)[0]
-        self.surface_idx = np.where(self.real_atoms.get_tags() == SURFACE_TAG)[0]
-        logger.info("bulk indices are %s", self.bulk_idx)
-        logger.info("surface indices are %s", self.surface_idx)
 
-        # set constraints
-        if self.real_atoms.constraints:
-            constraints = self.real_atoms.constraints
-        else:
+        # setting tags according to Z coordinate (surface will be tagged 1, with tag increasing layerwise downwards)
+        get_unique_coordinates(self.real_atoms, tag=True)
+        if surface_depth is not None:
+            # clear existing constraints
+            self.real_atoms.constraints = []
+            # check valid surface_depth
+            if surface_depth > max(self.real_atoms.get_tags()):
+                logger.info(
+                    "WARNING: Surface depth exceeds number of unique z-coordinates in system, all atoms will be unconstrained."
+                )
+            # set constraints according to surface depth
+            surface_mask = np.isin(
+                self.real_atoms.get_tags(), list(range(1, self.surface_depth + 1))
+            )
+            self.surface_idx = np.where(surface_mask)[0]
+            self.bulk_idx = np.where(~surface_mask)[0]
             constraints = FixAtoms(indices=self.bulk_idx)
             self.real_atoms.set_constraint(constraints)
+        else:
+            # extract constraints for application to relaxed slab
+            constraints = self.real_atoms.constraints
+            self.bulk_idx = (
+                [] if not constraints else constraints[0].todict()["kwargs"]["indices"]
+            )
+            self.surface_idx = [i for i in range(len(atoms)) if i not in self.bulk_idx]
+        logger.info("bulk indices are %s", self.bulk_idx)
+        logger.info("surface indices are %s", self.surface_idx)
         if self.relax_atoms:
             self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
