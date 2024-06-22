@@ -198,8 +198,8 @@ class SurfaceSystem:
             self.real_atoms.constraints = []
             # check valid surface_depth
             if surface_depth > max(self.real_atoms.get_tags()):
-                logger.info(
-                    "WARNING: Surface depth exceeds number of unique z-coordinates in system, all atoms will be unconstrained."
+                logger.warning(
+                    "Surface depth exceeds number of unique z-coordinates in system, all atoms will be unconstrained."
                 )
             # set constraints according to surface depth
             surface_mask = np.isin(
@@ -218,6 +218,8 @@ class SurfaceSystem:
             self.surface_idx = [i for i in range(len(atoms)) if i not in self.bulk_idx]
         logger.info("bulk indices are %s", self.bulk_idx)
         logger.info("surface indices are %s", self.surface_idx)
+        logger.info("constraints are %s", constraints)
+
         if self.relax_atoms:
             self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
