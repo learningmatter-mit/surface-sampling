@@ -122,6 +122,7 @@ def test_surface_system_constraint_setting(si_slab):
 def test_surface_system_save_and_restore_state(surface_system):
     starting_occ = [0, 1]
     starting_results = {"energy": 0.0, "forces": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]}
+    starting_positions = surface_system.real_atoms.get_positions()
     surface_system.occ = starting_occ
     surface_system.results = starting_results
     surface_system.save_state("start_state")
@@ -131,6 +132,8 @@ def test_surface_system_save_and_restore_state(surface_system):
         "energy": 1.0,
         "forces": [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
     }
+    ending_positions = starting_positions + 1.0
+    surface_system.real_atoms.set_positions(ending_positions)  # translate the atoms
     surface_system.occ = ending_occ
     surface_system.results = ending_results
     surface_system.save_state("end_state")
@@ -140,12 +143,14 @@ def test_surface_system_save_and_restore_state(surface_system):
     # test the restored results are a dict
     assert isinstance(surface_system.results, dict)
     assert surface_system.results == starting_results
+    assert np.allclose(surface_system.real_atoms.get_positions(), starting_positions)
 
     surface_system.restore_state("end_state")
     assert surface_system.occ == ending_occ
     # test the restored results are a dict
     assert isinstance(surface_system.results, dict)
     assert surface_system.results == ending_results
+    assert np.allclose(surface_system.real_atoms.get_positions(), ending_positions)
 
 
 # def test_surface_system_get_relaxed_energy():
