@@ -287,95 +287,42 @@ class MCMC:
             )
 
     # TODO change to save per iter and save per entry
-    def save_structures(self, i: int = 0, **kwargs):
-        """This function saves the optimized structure of a slab and calculates its energy and force error.
+    # TODO move to SurfaceSystem
+    # def save_structures(
+    #     self, energy: float, chemical_formula: str, i: int = 0, save_folder: str = "."
+    # ):
+    #     """This function saves the optimized structure of a slab."""
+    #     chemical_formula = self.surface.relaxed_atoms.get_chemical_formula()
+    #     logger.info("optim structure has Energy = %.3f", energy)
 
-        Parameters
-        ----------
-        i : int, optional
-            The parameter `i` is an integer that represents the iteration number. It has a default value of
-        0.
+    #     if self.relax:
+    #         write(
+    #             f"{save_folder}/relaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.cif",
+    #             self.surface.relaxed_atoms,
+    #         )
+    #     write(
+    #         f"{save_folder}/unrelaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.cif",
+    #         self.surface.real_atoms,
+    #     )
 
-        Returns
-        -------
-            the energy of the optimized structure.
+    #     save_slab = self.surface.real_atoms.copy()
+    #     save_slab.calc = None
+    #     with open(
+    #         f"{save_folder}/unrelaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.pkl",
+    #         "wb",
+    #     ) as f:
+    #         pkl.dump(save_slab, f)
 
-        """
-        testing = kwargs.get("testing", False)
-        if testing:
-            energy = 0
-            energy_std = 0
-            force_std = 0
-        else:
-            energy = float(self.surface.get_surface_energy(recalculate=True))
-            energy_std = float(self.surface.calc.results.get("energy_std", 0.0))
-            _forces = self.surface.get_forces()
-            force_std = float(
-                self.surface.calc.results.get("forces_std", np.array([0.0])).mean()
-            )
-
-        if type(self.surface.real_atoms) is AtomsBatch:
-            logger.info(
-                f"current energy is {self.curr_energy}, calculated energy is {energy}"
-            )
-            logger.info(f"optim structure has Energy = {energy:.3f}+/-{energy_std:.3f}")
-
-            logger.info(f"average force error = {force_std:.3f}")
-
-            if self.relax:
-                write(
-                    f"{self.run_folder}/optim_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.relaxed_atoms.get_chemical_formula()}.cif",
-                    self.surface.relaxed_atoms,
-                )
-
-            # save cif and pkl file
-            write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
-                self.surface.real_atoms,
-            )
-            save_slab = self.surface.real_atoms.copy()
-            save_slab.calc = None
-            with open(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}err{force_std:.3f}_{self.surface.real_atoms.get_chemical_formula()}.pkl",
-                "wb",
-            ) as f:
-                pkl.dump(save_slab, f)
-
-        else:
-            energy = self.curr_energy
-            logger.info(f"optim structure has Energy = {energy}")
-
-            if self.relax:
-                write(
-                    f"{self.run_folder}/optim_slab_run_{i+1:03}_{energy:.3f}_{self.surface.relaxed_atoms.get_chemical_formula()}.cif",
-                    self.surface.relaxed_atoms,
-                )
-
-            # save cif file
-            write(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.cif",
-                self.surface.real_atoms,
-            )
-            save_slab = self.surface.real_atoms.copy()
-            save_slab.calc = None
-            with open(
-                f"{self.run_folder}/final_slab_run_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.pkl",
-                "wb",
-            ) as f:
-                pkl.dump(save_slab, f)
-
-        # save trajectories
-        if self.surface.relax_traj:
-            # use TrajectoryWriter
-            atoms_list = self.surface.relax_traj["atoms"]
-            writer = TrajectoryWriter(
-                f"{self.run_folder}/traj_{i+1:03}_{energy:.3f}_{self.surface.real_atoms.get_chemical_formula()}.traj",
-                mode="a",
-            )
-            for atoms in atoms_list:
-                writer.write(atoms)
-
-        return energy
+    #     # save trajectories
+    #     if self.surface.relax_traj:
+    #         # use TrajectoryWriter
+    #         atoms_list = self.surface.relax_traj["atoms"]
+    #         writer = TrajectoryWriter(
+    #             f"{save_folder}/traj_{i+1:03}_{energy:.3f}_{chemical_formula}.traj",
+    #             mode="a",
+    #         )
+    #         for atoms in atoms_list:
+    #             writer.write(atoms)
 
     def change_site_canonical(self, prev_energy: float = 0, iter_num: int = 1):
         """This function performs a canonical sampling step. It switches the adsorption sites of two
@@ -501,6 +448,7 @@ class MCMC:
 
         """
         num_accept = 0
+        trajectories = []
         logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
@@ -515,24 +463,19 @@ class MCMC:
                 )
             num_accept += accept
 
-        # put this here to relax the proper structure first
-        final_energy = self.save_structures(i=i, testing=self.testing, **self.kwargs)
-
-        # end of sweep, append to history
-        # use an Observer to save the state and other statistics
-        if self.relax:
-            history_slab = self.surface.relaxed_atoms.copy()
-        else:
-            history_slab = self.surface.real_atoms.copy()
-
-        # save space, don't copy neighbor
-        # TODO: save whole SurfaceSystem
-        self.history.append(history_slab)
-        self.trajectories.append(self.surface.relax_traj)
-        # TODO can save some compute here
+        # save structure and traj for easy viewing
+        self.surface.save_structures(sweep_num=i + 1, save_folder=self.run_folder)
+        # surface = self.surface.copy_without_calc() # BUG: not workign for example.ipynb `TypeError: cannot pickle '_thread.lock' object`
+        surface = (
+            self.surface.relaxed_atoms.copy()
+            if self.relax
+            else self.surface.real_atoms.copy()
+        )
+        self.history.append(surface)
+        trajectories.append(self.surface.relax_traj)
 
         # append values
-        self.energy_hist[i] = final_energy
+        self.energy_hist[i] = self.surface.get_surface_energy()
 
         ads_counts = count_adsorption_sites(self.surface, self.connectivity)
         for key in set(self.site_types):
@@ -601,18 +544,11 @@ class MCMC:
         self.pot = pot
         self.alpha = alpha
         self.surface = surface
-        # self.state = state
-
-        # if num_pristine_atoms == 0:
-        #     self.num_pristine_atoms = len(self.slab)
-        # else:
-        #     self.num_pristine_atoms = num_pristine_atoms
         self.num_pristine_atoms = self.surface.num_pristine_atoms
         logger.info("there are %d atoms in pristine slab", self.num_pristine_atoms)
 
         # initialize history
         self.history = []
-        self.trajectories = []
         self.energy_hist = np.random.rand(self.total_sweeps)
         self.adsorption_count_hist = defaultdict(list)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
@@ -628,7 +564,9 @@ class MCMC:
         self.sweep_size = sweep_size
 
         logger.info(
-            f"running for {self.sweep_size} iterations per run over a total of {self.total_sweeps} runs"
+            "running for %s iterations per run over a total of %s runs",
+            self.sweep_size,
+            self.total_sweeps,
         )
         # new parameters
         # self.start_temp
@@ -644,14 +582,14 @@ class MCMC:
             temp_list = np.repeat(
                 self.start_temp, self.total_sweeps
             )  # constant temperature
-        logger.info(f"starting with iteration {starting_iteration}")
-        print(f"temp list is:")
-        print(temp_list)
+        logger.info("starting with iteration %d", starting_iteration)
+        logger.info("temp list is: %s", temp_list)
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
             self.mcmc_sweep(i=i)  # TODO change to .step
 
         # plot and save the results
+        # TODO should be moved outside to script
         plot_summary_stats(
             self.energy_hist,
             self.frac_accept_hist,
