@@ -79,6 +79,7 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
             and kwargs.get("iter", None)
             and kwargs.get("save", False)
         ):
+            # TODO: remove
             # save every 10 steps
             iter = int(kwargs.get("iter"))
             # if iter % 10 == 0:

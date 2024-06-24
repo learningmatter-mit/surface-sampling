@@ -17,6 +17,7 @@ from mcmc.utils.misc import plot_specific_weights
 logger = logging.getLogger(__name__)
 
 
+# TODO: deprecate if not needed
 def initialize_slab(
     alat: float,
     elem: str = "Cu",
@@ -56,6 +57,9 @@ def initialize_slab(
 
     write(f"{elem}_pristine_slab.cif", catkit_slab)
     return catkit_slab
+
+
+# TODO move prepare_canonical to here
 
 
 def get_adsorbate_indices(surface: SurfaceSystem) -> dict[str, list[int]]:

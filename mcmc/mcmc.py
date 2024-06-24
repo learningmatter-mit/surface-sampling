@@ -158,6 +158,7 @@ class MCMC:
         """The function "run" calls the function "mcmc_run"."""
         self.mcmc_run(surface)
 
+    # TODO deprecate
     def get_adsorption_coords(self):
         """If not already set, this function sets the absolute adsorption coordinates for a given slab and element
         using the catkit `get_adsorption_sites` method.
@@ -186,6 +187,7 @@ class MCMC:
             f"In pristine slab, there are a total of {len(self.surface.ads_coords)} sites"
         )
 
+    # TODO move to utils
     def setup_folders(self):
         """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
         if not self.run_folder:
@@ -222,6 +224,7 @@ class MCMC:
             f"Running with num_sweeps = {self.total_sweeps}, temp = {self.start_temp}, pot = {self.pot}, alpha = {self.alpha}"
         )
 
+    # TODO: move to surface system
     def get_initial_energy(self):
         """This function returns the initial energy of a slab, which is calculated using the slab_energy
         function if the slab does not exists.
@@ -240,6 +243,7 @@ class MCMC:
 
         return energy
 
+    # TODO: move to slab or even creating a utils.sampling
     def prepare_canonical(self, even_adsorption_sites: bool = False):
         # TODO can move to System initialization
         """This function prepares a canonical slab by performing semi-grand canonical adsorption runs until the
@@ -324,6 +328,7 @@ class MCMC:
     #         for atoms in atoms_list:
     #             writer.write(atoms)
 
+    # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
     def change_site_canonical(self, prev_energy: float = 0, iter_num: int = 1):
         """This function performs a canonical sampling step. It switches the adsorption sites of two
         adsorbates and checks if the change is energetically favorable.
@@ -466,11 +471,14 @@ class MCMC:
         # save structure and traj for easy viewing
         self.surface.save_structures(sweep_num=i + 1, save_folder=self.run_folder)
         # surface = self.surface.copy_without_calc() # BUG: not workign for example.ipynb `TypeError: cannot pickle '_thread.lock' object`
+        # TODO fix
         surface = (
             self.surface.relaxed_atoms.copy()
             if self.relax
             else self.surface.real_atoms.copy()
         )
+
+        # TODO instead of self.history, move to `mcmc_run` and use a dictionary of lists to store all the values
         self.history.append(surface)
         trajectories.append(self.surface.relax_traj)
 
@@ -535,6 +543,8 @@ class MCMC:
         """
         if run_folder:
             self.run_folder = run_folder
+
+        # TODO: add logger, reduce the number of arguments
 
         self.total_sweeps = total_sweeps
         self.start_temp = start_temp
