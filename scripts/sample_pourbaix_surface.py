@@ -205,6 +205,7 @@ def main(
         "near_reduce": 0.01,
         "planar_distance": 1.55,
         "no_obtuse_hollow": True,
+        "ads_pos_type": "ontop",  # ontop, bridge, hollow, all
     }
 
     sampling_settings = {
@@ -242,13 +243,14 @@ def main(
     pristine_pmg_slab = AseAtomsAdaptor.get_structure(pristine_slab)
     site_finder = AdsorbateSiteFinder(pristine_pmg_slab)
 
-    ads_positions = site_finder.find_adsorption_sites(
+    all_ads_positions = site_finder.find_adsorption_sites(
         put_inside=True,
         symm_reduce=False,
         near_reduce=system_settings["near_reduce"],
         distance=system_settings["planar_distance"],
         no_obtuse_hollow=system_settings["no_obtuse_hollow"],
-    )["all"]
+    )
+    ads_positions = all_ads_positions[system_settings["ads_pos_type"]]
     print(f"Generated adsorption coordinates are: {ads_positions[:5]}...")
 
     surf_atom_idx = pristine_slab.get_surface_atoms()
