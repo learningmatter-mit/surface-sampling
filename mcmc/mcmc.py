@@ -8,6 +8,7 @@ import pickle as pkl
 import random
 from collections import Counter, defaultdict
 from datetime import datetime
+from pathlib import Path
 from typing import Union
 
 import ase
@@ -32,6 +33,7 @@ from mcmc.events.criterion import (
 )
 from mcmc.events.event import Change, Exchange
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
+from mcmc.utils import setup_folders, setup_logger
 
 from .energy import optimize_slab
 from .plot import plot_summary_stats
@@ -155,10 +157,14 @@ class MCMC:
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
     def run(self, surface: SurfaceSystem):
-        """The function "run" calls the function "mcmc_run"."""
+        """Alias for `mcmc_run` function. Runs the MCMC simulation for a given surface system.
+
+        Args:
+            surface (SurfaceSystem): The surface system on which the MCMC simulation is to be performed.
+        """
         self.mcmc_run(surface)
 
-    # TODO deprecate
+    # TODO DEPRECATE
     def get_adsorption_coords(self):
         """If not already set, this function sets the absolute adsorption coordinates for a given slab and element
         using the catkit `get_adsorption_sites` method.
@@ -185,43 +191,6 @@ class MCMC:
 
         logger.info(
             f"In pristine slab, there are a total of {len(self.surface.ads_coords)} sites"
-        )
-
-    # TODO move to utils
-    def setup_folders(self):
-        """Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
-        if not self.run_folder:
-            start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%f.%f")
-
-            # prepare both run folders
-            canonical_run_folder = os.path.join(
-                os.getcwd(),
-                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.start_temp}_adsatoms{self.num_ads_atoms:02}_alpha{self.alpha}_{start_timestamp}",
-            )
-            sgc_run_folder = os.path.join(
-                os.getcwd(),
-                f"{self.surface_name}/runs{self.total_sweeps}_temp{self.start_temp}_pot{self.pot}_alpha{self.alpha}_{start_timestamp}",
-            )
-
-            # default to semi-grand canonical run folder unless canonical is specified
-            if self.canonical:
-                self.run_folder = canonical_run_folder
-            else:
-                self.run_folder = sgc_run_folder
-
-        if not os.path.exists(self.run_folder):
-            os.makedirs(self.run_folder)
-
-        logging.basicConfig(
-            filename=os.path.join(self.run_folder, "logging.log"),
-            filemode="a",
-            format="%(levelname)s:%(message)s",
-            level=logging.INFO,
-            datefmt="%m/%d/%Y %I:%M:%S %p",
-        )
-
-        logger.info(
-            f"Running with num_sweeps = {self.total_sweeps}, temp = {self.start_temp}, pot = {self.pot}, alpha = {self.alpha}"
         )
 
     # TODO: move to surface system
@@ -495,6 +464,27 @@ class MCMC:
         frac_accept = num_accept / self.sweep_size
         self.frac_accept_hist[i] = frac_accept
 
+    def set_up_mcmc_run(self):
+        """This function sets up the folders for the simulation depending on whether it is semi-grand canonical or canonical."""
+
+        if not self.run_folder:
+            self.run_folder = setup_folders(
+                self.surface_name,
+                canonical=self.canonical,
+                total_sweeps=self.total_sweeps,
+                start_temp=self.start_temp,
+                alpha=self.alpha,
+                num_ads_atoms=self.num_ads_atoms,
+                pot=self.pot,
+            )
+
+        Path(self.run_folder).mkdir(parents=True, exist_ok=True)
+
+        # if not self.logger:
+        # self.logger = setup_logger(
+        #     __name__, f"{self.run_folder}/mc.log", level=logging.INFO
+        # )
+
     def mcmc_run(
         self,
         surface: SurfaceSystem,
@@ -541,6 +531,13 @@ class MCMC:
         `self.adsorption_count_hist`, and `self.run_folder`.
 
         """
+        logger.info(
+            "Running with num_sweeps = %d, temp = %.3f, alpha = %.3f, pot = %s",
+            total_sweeps,
+            self.start_temp,
+            self.alpha,
+            self.pot,
+        )
         if run_folder:
             self.run_folder = run_folder
 
@@ -563,7 +560,9 @@ class MCMC:
         self.adsorption_count_hist = defaultdict(list)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
 
-        self.setup_folders()
+        # self.setup_folders()
+
+        self.set_up_mcmc_run()
 
         self.get_adsorption_coords()
 
@@ -574,9 +573,7 @@ class MCMC:
         self.sweep_size = sweep_size
 
         logger.info(
-            "running for %s iterations per run over a total of %s runs",
-            self.sweep_size,
-            self.total_sweeps,
+            f"Running with num_sweeps = {self.total_sweeps}, sweep_size = {self.sweep_size}, temp = {self.start_temp}, pot = {self.pot}, alpha = {self.alpha}"
         )
         # new parameters
         # self.start_temp
