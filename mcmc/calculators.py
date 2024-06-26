@@ -16,7 +16,7 @@ from lammps import (
     lammps,
 )
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
-from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
+from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_EV, HARTREE_TO_KCAL_MOL
 
 from mcmc.pourbaix.atoms import PourbaixAtom
 

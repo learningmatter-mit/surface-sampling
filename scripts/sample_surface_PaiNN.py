@@ -260,7 +260,7 @@ def main(
     # Sample across chemical potentials
     starting_surface = deepcopy(surface)
 
-    # Perform MCMC and view results.
+    # Perform MCMC and view results
     mcmc = MCMC(
         system_settings["surface_name"],
         calc=nff_surf_calc,
@@ -284,6 +284,7 @@ def main(
         pot=list(calc_settings["chem_pots"].values()),
         alpha=sampling_settings["alpha"],
         surface=starting_surface,
+        run_folder=save_path,
     )
     stop = perf_counter()
     print(f"Time taken = {stop - start} seconds")

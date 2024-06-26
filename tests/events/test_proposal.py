@@ -3,7 +3,7 @@ import random
 import numpy as np
 import pytest
 
-from mcmc.events.proposal import ChangeProposal
+from mcmc.events.proposal import ChangeProposal, SwitchProposal
 from tests.events.test_fixtures import system
 
 SEED = 11
@@ -70,3 +70,32 @@ def test_change_at_adsorbed_site(system):
 
     # Assert that the end_ads value is a valid adsorbate
     assert action["end_ads"] in set(proposal.adsorbate_list)
+
+
+def test_switch_at_adsorbed_sites_simple(system):
+    # None of the distance-based or energy-based proposal
+
+    # Create a SwitchProposal object
+    adsorbate_list = ("Ga", "As")
+    proposal = SwitchProposal(system, adsorbate_list)
+
+    # system.occ should be [1, 3]
+
+    # Get the action dictionary
+    action = proposal.get_action()
+
+    # Assert that the site1_ads and site2_ads values are valid adsorbates
+    assert action["site1_ads"] in set(proposal.adsorbate_list)
+    assert action["site2_ads"] in set(proposal.adsorbate_list)
+
+    # Assert that the site1_ads and site2_ads values are different
+    assert action["site1_ads"] != action["site2_ads"]
+
+    # Assert that the site_idx values are valid indices
+    assert action["site1_idx"] >= 0
+    assert action["site1_idx"] < len(system.occ)
+    assert action["site2_idx"] >= 0
+    assert action["site2_idx"] < len(system.occ)
+
+    # Assert that the site_idx values are different
+    assert action["site1_idx"] != action["site2_idx"]

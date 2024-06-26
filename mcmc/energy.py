@@ -29,9 +29,6 @@ ENERGY_THRESHOLD = 1000  # eV
 MAX_FORCE_THRESHOLD = 1000  # eV/Angstrom
 
 logger = logging.getLogger(__name__)
-# curr_dir = os.getcwd()
-# OPT_TEMPLATE = f"{curr_dir}/lammps_opt_template.txt"
-# ENERGY_TEMPLATE = f"{curr_dir}/lammps_energy_template.txt"
 
 
 def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
@@ -50,11 +47,6 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
         Relaxed slab
     """
     if "LAMMPS" in optimizer:
-        # if "folder_name" in kwargs:
-        #     folder_name = kwargs["folder_name"]
-        #     calc_slab, energy = run_lammps_opt(slab, main_dir=folder_name, **kwargs)
-        # else:
-        #     calc_slab, energy = run_lammps_opt(slab, **kwargs)
         calc_slab, energy, _ = slab.calc.run_lammps_opt(slab, run_dir=slab.calc.run_dir)
 
         if isinstance(slab, AtomsBatch):
@@ -87,6 +79,7 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
             and kwargs.get("iter", None)
             and kwargs.get("save", False)
         ):
+            # TODO: remove
             # save every 10 steps
             iter = int(kwargs.get("iter"))
             # if iter % 10 == 0:
@@ -135,29 +128,13 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
 
     if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
         logger.info("encountered energy or force out of bounds")
-        logger.info(f"energy {energy:.3f}")
-        logger.info(f"max force {max_force:.3f}")
-
-        if kwargs.get("folder_name", None) and kwargs.get("iter", None):
-            # save the final frame as cif
-            logger.info("saving this slab")
-            iter = int(kwargs.get("iter"))
-            calc_slab.write(
-                f"{kwargs['folder_name']}/oob_trial_slab_run_{energy:.3f}_{max_force:.3f}_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
-            )
+        logger.info("energy %.3f", energy)
+        logger.info("max force %.3f}", max_force)
 
         # set a high energy for mc acceptance criteria to reject
         energy = ENERGY_THRESHOLD
+        energy_oob = True
+    else:
+        energy_oob = False
 
-    if (
-        kwargs.get("folder_name", None)
-        and kwargs.get("iter", None)
-        and kwargs.get("save", False)
-    ):
-        # save the final frame as cif
-        iter = int(kwargs.get("iter"))
-        calc_slab.write(
-            f"{kwargs['folder_name']}/optim_slab_run_{iter:03}_{calc_slab.get_chemical_formula()}.cif"
-        )
-
-    return calc_slab, energy, traj
+    return calc_slab, traj, energy, energy_oob

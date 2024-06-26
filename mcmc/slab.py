@@ -17,22 +17,30 @@ from mcmc.utils.misc import plot_specific_weights
 logger = logging.getLogger(__name__)
 
 
+# TODO: deprecate if not needed
 def initialize_slab(
-    alat,
-    elem="Cu",
-    vacuum=15.0,
-    miller=(1, 0, 0),
-    termination=0,
-    orthogonal=False,
-    size=(4, 4, 4),
+    alat: float,
+    elem: str = "Cu",
+    vacuum: float = 15.0,
+    miller: tuple[int] = (1, 0, 0),
+    termination: int = 0,
+    orthogonal: bool = False,
+    size: tuple[int] = (4, 4, 4),
     **kwargs,
-):
+) -> ase.Atoms:
     """Creates the slab structure using ASE.
 
-    Parameters
-    ----------
-    alat : float
-        Lattice parameter in angstroms
+    Args:
+        alat (float): The lattice constant in angstroms.
+        elem (str): The element to use.
+        vacuum (float): The vacuum thickness.
+        miller (tuple): The Miller indices.
+        termination (int): The termination.
+        orthogonal (bool): Whether to use orthogonal coordinates.
+        size (tuple): The size of the slab in each dimension.
+
+    Returns:
+        ase.Atoms: The slab structure.
     """
     a1 = bulk(elem, "fcc", a=alat)
     write(f"{elem}_a1_bulk.cif", a1)
@@ -51,121 +59,205 @@ def initialize_slab(
     return catkit_slab
 
 
-def get_random_idx(connectivity, type=None):
-    """Get random site index"""
-    connectivities = {"top": 1, "bridge": 2, "hollow": 4}  # defaults to hollow
+# TODO move prepare_canonical to here
 
-    # top should have connectivity 1, bridge should be 2 and hollow more like 4
-    if type:
-        site_idx = random.choice(
-            np.argwhere(connectivity == connectivities[type]).flatten()
+
+def get_adsorbate_indices(surface: SurfaceSystem) -> dict[str, list[int]]:
+    """Get a dictionary of adsorbate indices grouped by elemental identity.
+
+    Args:
+        surface (SurfaceSystem): The surface system.
+
+    Returns:
+        dict: A dictionary of adsorbate indices grouped by elemental identity.
+    """
+    adsorbed_idx = surface.filled_occ_idx
+    # Group adsorbates present in slab
+    adsorbates = {
+        k: list(g)
+        for k, g in itertools.groupby(
+            adsorbed_idx, key=lambda x: surface.real_atoms[surface.occ[x]].symbol
+        )
+    }
+    # Add virtual sites only if there are empty ones
+    empty_idx = surface.empty_occ_idx
+    if len(empty_idx) > 0:
+        adsorbates["None"] = empty_idx
+
+    return adsorbates
+
+
+def choose_adsorbate_type(adsorbates: dict) -> tuple[str, str]:
+    """Choose two types of adsorbates from the given dictionary.
+
+    Args:
+        adsorbates (dict): A dictionary of adsorbate indices grouped by elemental identity.
+
+    Returns:
+        tuple: A tuple containing the two chosen adsorbate types.
+    """
+    types = list(adsorbates.keys())
+    type1, type2 = random.sample(types, 2)
+    return type1, type2
+
+
+def compute_boltzmann_weights(
+    surface: SurfaceSystem,
+    temperature: float,
+    curr_ads: dict[str, list],
+) -> dict[str, np.ndarray]:
+    """Compute the Boltzmann weights for each adsorbate type.
+
+    Args:
+        surface (SurfaceSystem): The surface system.
+        temperature (float): The temperature in eV.
+        curr_ads (dict): A dictionary of adsorbate indices grouped by elemental identity.
+
+    Returns:
+        dict: A dictionary containing the Boltzmann weights for each adsorbate type.
+
+    Raises:
+        ValueError: If require_per_atom_energies is True, but no per_atom_energies were provided.
+    """
+    per_atom_energies = surface.calc.results.get("per_atom_energies", [])
+    # TODO write a dedicated surface.get_per_atom_energies() method
+
+    if len(per_atom_energies) == 0:
+        raise ValueError(
+            "require_per_atom_energies is True, but no per_atom_energies were provided"
+        )
+    assert len(per_atom_energies) == len(
+        surface.real_atoms
+    ), "length mismatch in per atom energies and number of real atoms"
+    logger.debug("in `get_complementary_idx` using per atom energies")
+    logger.debug("per atom energies are %s", per_atom_energies)
+    logger.debug("temperature is %s", temperature)
+    boltzmann_weights = softmax(np.array(per_atom_energies) / temperature)
+    logger.debug("boltzmann weights are %s", boltzmann_weights)
+
+    # create weight dict for each adsorbate except empty sites
+    weights = {
+        k: boltzmann_weights[surface.occ[v]] if k != "None" else np.ones_like(v)
+        for k, v in curr_ads.items()
+    }
+    return weights
+
+
+def get_complementary_idx_distance_decay(
+    surface: SurfaceSystem,
+    curr_ads: dict[str, list],
+    type1: str,
+    type2: str,
+    weights1: np.ndarray,
+    weights2: np.ndarray,
+    plot_weights: bool,
+    run_folder: str,
+    run_iter: int,
+) -> tuple[int, int]:
+    """Get two indices, site1 and site2 of different elemental identities using distance decay.
+
+    Args:
+        surface (SurfaceSystem): The surface system.
+        curr_ads (dict): A dictionary of adsorbate indices grouped by elemental identity.
+        type1 (str): The first adsorbate type.
+        type2 (str): The second adsorbate type.
+        weights1 (np.ndarray): The weights for the first adsorbate type.
+        weights2 (np.ndarray): The weights for the second adsorbate type.
+        plot_weights (bool): Whether to plot the specific distance weights.
+        run_folder (str): The folder to save the plots in.
+        run_iter (int): The iteration number.
+
+    Returns:
+        Tuple[int, int]: A tuple containing the indices of the two sites.
+
+    Raises:
+        ValueError: If require_distance_decay is True, but no distance_weight_matrix was provided.
+    """
+    if surface.distance_weight_matrix is None:
+        raise ValueError(
+            "require_distance_decay is True, but no distance_weight_matrix was provided"
         )
 
-    else:
-        site_idx = random.randrange(len(connectivity))
-
-    return site_idx
+    # TODO: run_folder and run_iter should be saved to the SurfaceSystem
+    logger.debug("Length of curr_ads[type1]: %s", len(curr_ads[type1]))
+    logger.debug("Length of weights1: %s", len(weights1))
+    site1_idx = random.choices(curr_ads[type1], weights=weights1, k=1)[0]
+    specific_distance_weights = surface.distance_weight_matrix[site1_idx]
+    if plot_weights:
+        plot_specific_weights(
+            surface.ads_coords,
+            specific_distance_weights,
+            site1_idx,
+            save_folder=run_folder,
+            run_iter=run_iter,
+        )
+    combined_type2_weights = weights2 * specific_distance_weights[curr_ads[type2]]
+    site2_idx = random.choices(curr_ads[type2], weights=combined_type2_weights, k=1)[0]
+    return site1_idx, site2_idx
 
 
 def get_complementary_idx(
     surface: SurfaceSystem,
     require_per_atom_energies: bool = False,
     require_distance_decay: bool = False,
-    **kwargs,
-):
-    """Get two indices, site1 and site2 of different elemental identities."""
-    adsorbed_idx = np.argwhere(surface.occ != 0).flatten()
+    temperature: float = 1.0,
+    plot_weights: bool = False,
+    run_folder: str = ".",
+    run_iter: int = 0,
+) -> tuple[int, int, str, str]:
+    """Get two indices, site1 and site2 of different elemental identities.
 
-    per_atom_energies = kwargs.get("per_atom_energies", None)
-    distance_weight_matrix = kwargs.get("distance_weight_matrix", None)
-    # logger.info(f"distance weight matrix has shape {distance_weight_matrix.shape}")
-    # select adsorbates present in slab
-    curr_ads = {
-        k: list(g)
-        for k, g in itertools.groupby(
-            adsorbed_idx, key=lambda x: surface.real_atoms[surface.occ[x]].symbol
-        )
-    }
-    # add empty sites
-    empty_idx = np.argwhere(surface.occ == 0).flatten().tolist()
-    curr_ads["None"] = empty_idx
-    logger.debug(f"current ads {curr_ads}")
+    Args:
+        surface (SurfaceSystem): The surface system to propose changes to.
+        require_per_atom_energies (bool): Whether to use per atom energies.
+        require_distance_decay (bool): Whether to use distance decay.
+        temperature (float): The temperature in eV.
+        plot_weights (bool): Whether to plot the specific distance weights.
+        run_folder (str): The folder to save the plots in.
+        run_iter (int): The iteration number.
+
+    Returns:
+        Tuple[int, int, str, str]: A tuple containing the indices of the two sites and the elemental identities of the adsorbates.
+    """
+    curr_ads = get_adsorbate_indices(surface)
+    logger.debug("current ads %s", curr_ads)
 
     if require_per_atom_energies:
-        if per_atom_energies is None:
-            raise ValueError(
-                "require_per_atom_energies is True, but no per_atom_energies were provided"
-            )
-        logger.debug("in `get_complementary_idx` using per atom energies")
-        logger.debug("per atom energies are %s", per_atom_energies)
-        # TODO might want to change the "temperature"
-        # temp = kwargs.get("temp", 0.5)  # in terms of eV
-        temp = 1  # fixed at 1 eV
-        logger.debug("temp is %s", temp)
-        boltzmann_weights = softmax(per_atom_energies / temp)
-        logger.debug("boltzmann weights are %s", boltzmann_weights)
-        # creat weights for each adsorbate except empty sites
-        weights = {
-            k: boltzmann_weights[surface.occ[v]] if k != "None" else np.ones_like(v)
-            for k, v in curr_ads.items()
-        }
+        weights = compute_boltzmann_weights(surface, temperature, curr_ads)
     else:
-        # all uniform weights
+        # Uniform weights
         weights = {k: np.ones_like(v) for k, v in curr_ads.items()}
-    # choose two types
-    types = list(curr_ads.keys())
-    type1, type2 = random.sample(types, 2)
 
+    # Randomly pick two adsorbate types
+    type1, type2 = choose_adsorbate_type(curr_ads)
+    weights1, weights2 = weights[type1], weights[type2]
     # Checking if the weights are valid, and if not, replace them with an array of ones.
-    weights1 = (
-        weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-    )
-    weights2 = (
-        weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
-    )
+    # weights1 = (
+    #     weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
+    # )
+    # weights2 = (
+    #     weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
+    # )
 
     if require_distance_decay:
-        # TODO merge with per atom energies
-        if distance_weight_matrix is None:
-            raise ValueError(
-                "require_distance_decay is True, but no distance_weight_matrix was provided"
-            )
-        logger.debug("in `get_complementary_idx` using distance decay")
-        # get random idx for type 1 first
-        # weights_type1 = np.ones(len(curr_ads[type1]))
-        # weights_type1_new = weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-        site1_idx = random.choices(curr_ads[type1], weights=weights1, k=1)[
-            0
-        ]  # even weights
-
-        ads_coords = kwargs.get("ads_coords", None)
-        specific_distance_weights = distance_weight_matrix[
-            site1_idx
-        ]  # get the weights for the second type
-        logger.debug("specific weights shape is %s", specific_distance_weights.shape)
-        if kwargs.get("plot_weights", False):
-            logger.debug("plotting weights")
-            plot_specific_weights(
-                ads_coords,
-                specific_distance_weights,
-                site1_idx,
-                save_folder=kwargs.get("run_folder", "."),
-                run_iter=kwargs.get("run_iter", 0),
-            )
-        combined_type2_weights = (
-            weights2 * specific_distance_weights[curr_ads[type2]]
-        )  # energy based weights * distance decay weights
-        site2_idx = random.choices(
-            curr_ads[type2], weights=combined_type2_weights, k=1
-        )[
-            0
-        ]  # weighted by distance decay
+        site1_idx, site2_idx = get_complementary_idx_distance_decay(
+            surface,
+            curr_ads,
+            type1,
+            type2,
+            weights1,
+            weights2,
+            plot_weights,
+            run_folder,
+            run_iter,
+        )
     else:
         # get random idx belonging to those types
         site1_idx, site2_idx = [
             random.choices(curr_ads[x], weights=w, k=1)[0]
             for x, w in zip([type1, type2], [weights1, weights2])
         ]
+
     slab_idx_1, slab_idx_2 = surface.occ[site1_idx], surface.occ[site2_idx]
     logger.debug("type1 %s, type2 %s", type1, type2)
     logger.debug("site1_idx %s, site2_idx %s", slab_idx_1, slab_idx_2)
@@ -182,19 +274,13 @@ def change_site(
 ) -> SurfaceSystem:
     """Change the adsorbate at a site to a new adsorbate.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site_idx : int
-        the index of the site to change
-    end_ads : Union[str, ase.Atoms]
-        the new adsorbate to place at the site
+    Args:
+        surface (SurfaceSystem): The surface system to propose changes to.
+        site_idx (int): The index of the site to change.
+        end_ads (Union[str, ase.Atoms]): The new adsorbate to place at the site.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
     logger.debug("current slab has %s atoms", len(surface))
 
@@ -214,7 +300,7 @@ def change_site(
 
     if end_ads != "None":
         logger.debug("replacing %s with %s", start_ads, end_ads)
-        surface = add_atom(surface, end_ads, site_idx)
+        surface = add_atom(surface, site_idx, end_ads)
     else:
         logger.debug("desorbing %s", start_ads)
 
@@ -223,24 +309,17 @@ def change_site(
 
 
 def add_atom(
-    surface: SurfaceSystem, adsorbate: Union[str, ase.Atoms], site_idx: int
+    surface: SurfaceSystem, site_idx: int, adsorbate: Union[str, ase.Atoms]
 ) -> SurfaceSystem:
-    """It adds an adsorbate to a surface, and updates the state to reflect the new adsorbate
+    """Add an adsorbate at an empty site and updates the state.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site is empty, the integer is 0.
-    adsorbate : ase.Atoms
-        the adsorbate molecule
-    site_idx : int
-        the index of the site on the slab where the adsorbate will be placed
+    Args:
+        surface (SurfaceSystem): The surface system.
+        site_idx (int): The index of the site to change.
+        adsorbate (Union[str, ase.Atoms]): The adsorbate to add.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
 
     adsorbate_idx = len(surface)
@@ -251,19 +330,14 @@ def add_atom(
 
 
 def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
-    """Remove the adsorbate from the slab and update the state
+    """Remove an adsorbate from the slab and updates the state.
 
-    Parameters
-    ----------
-    surface : SurfaceSystem
-        the surface system
-    site_idx : int
-        the index of the site to remove the adsorbate from
+    Args:
+        surface (SurfaceSystem): The surface system.
+        site_idx (int): The index of the site to change.
 
-    Returns
-    -------
-    SurfaceSystem
-        the updated surface system
+    Returns:
+        SurfaceSystem: The updated surface system
     """
     adsorbate_idx = surface.occ[site_idx]
     assert len(np.argwhere(surface.occ == adsorbate_idx)) <= 1, "more than 1 site found"
@@ -283,73 +357,17 @@ def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
     return surface
 
 
-# def get_adsorption_coords(slab, atom, connectivity, debug=False):
-#     """Takes a slab, an atom, and a list of site indices, and returns the actual coordinates of the
-#     adsorbed atoms
+def count_adsorption_sites(
+    surface: SurfaceSystem, connectivity: Union[list, np.ndarray]
+) -> Counter:
+    """Count the number of adsorption sites with a given number of adsorbates.
 
-#     Parameters
-#     ----------
-#     slab : ase.Atoms
-#         the original slab
-#     atom : ase.Atoms
-#         the atom you want to adsorb
-#     connectivity : list
-#         list of lists of integers, each list is a list of the indices of the atoms that are connected to
-#     the atom at the index of the list.
+    Args:
+        surface (SurfaceSystem): The surface system.
+        connectivity (Union[list, np.ndarray]): The connectivity matrix.
 
-#     Returns
-#     -------
-#         The positions of the adsorbed atoms.
-
-#     """
-#     logger.debug(f"getting actual adsorption site coordinates")
-#     new_slab = slab.copy()
-
-#     proposed_slab_builder = catkit.gen.adsorption.Builder(new_slab)
-
-#     # add multiple adsorbates
-#     site_indices = list(range(len(connectivity)))
-
-#     # use proposed_slab_builder._single_adsorption multiple times
-#     for i, index in enumerate(site_indices):
-#         new_slab = proposed_slab_builder._single_adsorption(
-#             atom,
-#             bond=0,
-#             slab=new_slab,
-#             site_index=site_indices[i],
-#             auto_construct=False,
-#             symmetric=False,
-#         )
-
-#     if debug:
-#         write(f"ads_{str(atom.symbols)}_all_adsorbed_slab.cif", new_slab)
-
-#     # store the actual positions of the sides
-#     logger.debug(
-#         f"new slab has {len(new_slab)} atoms and original slab has {len(slab)} atoms."
-#     )
-
-#     return new_slab.get_positions(wrap=True)[len(slab) :]
-
-
-def count_adsorption_sites(slab, state, connectivity):
-    """It takes a slab, a state, and a connectivity matrix, and returns a dictionary of the number of
-    adsorption sites of each type
-
-    Parameters
-    ----------
-    slab
-        ase.Atoms object
-    state
-        a list of the same length as the number of sites in the slab.
-    connectivity
-        a list of the same length as the number of sites in the slab.
-
-    Returns
-    -------
-        A dictionary with the number of adsorption sites as keys and the number of atoms with that number
-    of adsorption sites as values.
-
+    Returns:
+        Counter: The number of adsorption sites with a given number of adsorbates.
     """
-    occ_idx = state > 0
+    occ_idx = surface.occ > 0
     return Counter(connectivity[occ_idx])

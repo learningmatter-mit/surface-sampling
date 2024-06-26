@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable
 
 import numpy as np
 
+from mcmc.slab import get_complementary_idx
 from mcmc.system import SurfaceSystem
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class Proposal:
     def __init__(self, system: SurfaceSystem, adsorbate_list: Iterable[str]) -> None:
         self.system = system
         self.adsorbate_list = list(adsorbate_list).copy()
+        self.adsorbate_list.append("None")
 
     def get_action(self) -> Dict[str, Any]:
         """Obtain a dictionary containing the proposed change.
@@ -46,19 +48,25 @@ class ChangeProposal(Proposal):
     """
 
     def __init__(
-        self, system: SurfaceSystem, adsorbate_list: Iterable[str] = ("Sr", "O")
+        self,
+        system: SurfaceSystem,
+        adsorbate_list: Iterable[str] = ("Sr", "O"),
+        site_idx: int = None,
     ) -> None:
         super().__init__(system, adsorbate_list)
-        self.adsorbate_list.append("None")
+        self.site_idx = site_idx
 
     def get_action(self) -> Dict[str, Any]:
-        """Get two indices, site1 and site2 of different elemental identities.
+        """Get an index and the elemental identity of the adsorbate to change into.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the indices of the two sites and the elemental identities of the adsorbates.
+            Dict[str, Any]: A dictionary containing the index of the site and the elemental identity of the adsorbate to change into.
         """
         ads_choices = deepcopy(self.adsorbate_list)
-        site_idx = np.random.choice(range(len(self.system.occ)))
+        if isinstance(self.site_idx, int):
+            site_idx = self.site_idx
+        else:
+            site_idx = np.random.choice(range(len(self.system.occ)))
 
         logger.debug("before proposed state is")
         logger.debug(self.system.occ)
@@ -78,5 +86,85 @@ class ChangeProposal(Proposal):
             "site_idx": site_idx,
             "start_ads": start_ads,
             "end_ads": end_ads,
+        }
+        return action
+
+
+class SwitchProposal(Proposal):
+    """Proposal to switch two adsorbates at different sites.
+
+    Args:
+        system (SurfaceSystem): The surface system to propose changes to.
+        adsorbate_list (Iterable[str]): The list of adsorbates that can be proposed.
+        require_per_atom_energies (bool): Whether to require per atom energies.
+        require_distance_decay (bool): Whether to require distance decay.
+        distance_weight_matrix (np.ndarray): The distance weight matrix.
+        temp (float): The temperature.
+        run_folder (str): The folder to run the calculations in.
+        plot_specific_distance_weights (bool): Whether to plot the specific distance weights.
+        run_iter (int): The iteration number.
+
+    Attributes:
+        adsorbate_list (List[str]): The list of adsorbates that can be proposed.
+        require_per_atom_energies (bool): Whether to require per atom energies.
+        require_distance_decay (bool): Whether to require distance decay.
+        distance_weight_matrix (np.ndarray): The distance weight matrix.
+        temp (float): The temperature.
+        run_folder (str): The folder to run the calculations in.
+        plot_weights (bool): Whether to plot the specific distance weights.
+        run_iter (int): The iteration number.
+    """
+
+    def __init__(
+        self,
+        system: SurfaceSystem,
+        adsorbate_list: Iterable[str] = ("Sr", "O"),
+        require_per_atom_energies: bool = False,
+        require_distance_decay: bool = False,
+        temp: float = None,
+        run_folder: str = None,
+        plot_specific_distance_weights: bool = False,
+        run_iter: int = None,
+    ) -> None:
+        super().__init__(system, adsorbate_list)
+        self.require_per_atom_energies = require_per_atom_energies
+        self.require_distance_decay = require_distance_decay
+        self.temp = temp
+        self.run_folder = run_folder
+        self.plot_weights = plot_specific_distance_weights
+        self.run_iter = run_iter
+
+    def get_action(self) -> Dict[str, Any]:
+        """Get two indices, site1 and site2 of different elemental identities.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the indices of the two sites and the elemental identities of the adsorbates.
+        """
+        logger.debug("before proposed state is")
+        logger.debug(self.system.occ)
+
+        site1_idx, site2_idx, site1_ads, site2_ads = get_complementary_idx(
+            self.system,
+            require_per_atom_energies=self.require_per_atom_energies,
+            require_distance_decay=self.require_distance_decay,
+            temperature=self.temp,
+            run_folder=self.run_folder,
+            plot_weights=self.plot_weights,
+            run_iter=self.run_iter,
+        )
+
+        site1_coords = self.system.ads_coords[site1_idx]
+        site2_coords = self.system.ads_coords[site2_idx]
+
+        logger.debug("\n we are at iter %s", iter)
+        logger.debug("idx is %s at %s", site1_idx, site1_coords)
+        logger.debug("idx is %s at %s", site2_idx, site2_coords)
+
+        action = {
+            "name": "switch",
+            "site1_idx": site1_idx,
+            "site2_idx": site2_idx,
+            "site1_ads": site1_ads,
+            "site2_ads": site2_ads,
         }
         return action
