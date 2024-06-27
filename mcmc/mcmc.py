@@ -422,7 +422,6 @@ class MCMC:
 
         """
         num_accept = 0
-        trajectories = []
         logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
@@ -449,7 +448,7 @@ class MCMC:
 
         # TODO instead of self.history, move to `mcmc_run` and use a dictionary of lists to store all the values
         self.history.append(surface)
-        trajectories.append(self.surface.relax_traj)
+        self.trajectories.append(self.surface.relax_traj)
 
         # append values
         self.energy_hist[i] = self.surface.get_surface_energy()
@@ -556,6 +555,7 @@ class MCMC:
 
         # initialize history
         self.history = []
+        self.trajectories = []
         self.energy_hist = np.random.rand(self.total_sweeps)
         self.adsorption_count_hist = defaultdict(list)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
