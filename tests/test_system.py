@@ -32,7 +32,13 @@ def surface_system():
     system_settings = {"relax_atoms": True}
     calc_settings = {"optimizer": "BFGS"}
     system = SurfaceSystem(
-        atoms, ads_coords, calc, occ, surface_depth, system_settings, calc_settings
+        atoms,
+        ads_coords=ads_coords,
+        calc=calc,
+        occ=occ,
+        surface_depth=surface_depth,
+        system_settings=system_settings,
+        calc_settings=calc_settings,
     )
     return system
 
