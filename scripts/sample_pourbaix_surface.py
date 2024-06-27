@@ -54,7 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model_paths",
         type=str,
-        nargs="+",
+        nargs="*",
+        default=[""],
         help="paths to the models",
     )
     parser.add_argument(
@@ -103,6 +104,12 @@ def parse_args() -> argparse.Namespace:
         "--relax_steps", type=int, default=5, help="max relaxation steps"
     )
     parser.add_argument(
+        "--surface_depth",
+        type=int,
+        default=1,
+        help="layers of atoms from the surface to relax",
+    )
+    parser.add_argument(
         "--record_interval", type=int, default=5, help="record interval for relaxation"
     )
     parser.add_argument(
@@ -139,10 +146,11 @@ def main(
     alpha: float,
     samp_temp: float,
     relax: bool,
-    offset_data_path: str,
     relax_steps: int = 20,
+    surface_depth: int = 1,
     record_interval: int = False,
     offset: bool = False,
+    offset_data_path: str = "",
     device: str = "cuda",
     save_folder: str = "./",
 ):
@@ -165,8 +173,10 @@ def main(
         samp_temp (float): sampling temperature in kbT
         relax (bool): perform relaxation for the steps
         relax_steps (int): max relaxation steps
+        surface_depth (int): layers of atoms from the surface to relax
         record_interval (int): record interval for relaxation
         offset (bool): whether to use energy offsets
+        offset_data_path (str): path to offset data
         device (str): device to use for calculations
         save_folder (Path): Folder to output
 
@@ -184,18 +194,20 @@ def main(
     else:
         DEVICE = "cpu"
 
+    logging.info("Using device: %s", DEVICE)
+
     with open(starting_structure_path, "rb") as f:
         starting_slab = pickle.load(f)
 
     chem_symbols = starting_slab.get_chemical_symbols()
     elements = list(set(chem_symbols))
 
-    print(f"Elements: {elements}")
+    logger.info("Elements: %s", elements)
 
     pourbaix_atoms = generate_pourbaix_atoms(
         phase_diagram_path, pourbaix_diagram_path, phi, pH, elements
     )
-    print(f"Pourbaix atoms: {pourbaix_atoms}")
+    logger.info("Pourbaix atoms: %s", pourbaix_atoms)
     offset_data = loadfn(offset_data_path, "r") if offset else None
 
     system_settings = {
@@ -251,11 +263,11 @@ def main(
         no_obtuse_hollow=system_settings["no_obtuse_hollow"],
     )
     ads_positions = all_ads_positions[system_settings["ads_pos_type"]]
-    print(f"Generated adsorption coordinates are: {ads_positions[:5]}...")
+    logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
 
     surf_atom_idx = pristine_slab.get_surface_atoms()
     surf_atom_positions = pristine_slab.get_positions()[surf_atom_idx]
-    print(f"Surface atom coordinates are: {surf_atom_positions[:5]}...")
+    logger.info("Surface atom coordinates are: %s...", surf_atom_positions[:5])
     all_ads_coords = np.vstack([ads_positions, surf_atom_positions])
 
     occ = np.hstack([[0] * len(ads_positions), surf_atom_idx])
@@ -263,7 +275,7 @@ def main(
     # Load Ensemble NFF Model
     models = []
     for model_path in model_paths:
-        model = load_model(model_path, model_type=model_type, map_location=device)
+        model = load_model(model_path, model_type=model_type, map_location=DEVICE)
         models.append(model)
 
     # TODO write support for multiple models
@@ -282,45 +294,32 @@ def main(
         device=system_settings["device"],
         props={"energy": 0, "energy_grad": []},  # needed for NFF
     )
-
-    # Fix atoms in the bulk
-    # TODO add flag to SurfaceSystem
-    # If atoms are already fixed here, we don't need to do it again within SurfaceSystem
-    num_bulk_atoms = len(slab_batch)
-    bulk_indices = list(range(num_bulk_atoms))
-    print(f"bulk indices {bulk_indices}")
-    surf_indices = pristine_slab.get_surface_atoms()
-
-    fix_indices = list(set(bulk_indices) - set(surf_indices))
-    print(f"fix indices {fix_indices}")
-
-    c = FixAtoms(indices=fix_indices)
-    slab_batch.set_constraint(c)
-
     surface = SurfaceSystem(
         slab_batch,
         all_ads_coords,
         calc=nff_surf_calc,
         occ=occ,
+        surface_depth=surface_depth,
         system_settings=system_settings,
     )
     starting_atoms_path = run_folder / "all_virtual_ads.cif"
-    print(f"Saving surface with virtual atoms to {starting_atoms_path}")
+    logger.info("Saving surface with virtual atoms to %s", starting_atoms_path)
     surface.all_atoms.write(starting_atoms_path)
 
-    print(f"Starting chemical formula: {slab_batch.get_chemical_formula()}")
+    logger.info(
+        "Starting chemical formula: %s", surface.real_atoms.get_chemical_formula()
+    )
 
-    print(f"NFF calc starting energy: {surface.get_potential_energy()} eV")
+    logger.info("NFF calc starting energy: %.3f eV", surface.get_potential_energy())
 
-    print(f"Starting surface energy: {surface.get_surface_energy()} eV")
+    logger.info("Starting surface energy: %.3f eV", surface.get_surface_energy())
 
     if hasattr(nff_surf_calc, "offset_units"):
-        print(f"Offset units: {nff_surf_calc.offset_units}")
+        logger.info("Offset units: %s", nff_surf_calc.offset_units)
 
     # Do different bulk defect sampling for the 2x2x2 cell
     # Sample across chemical potentials
     starting_surface = deepcopy(surface)
-
     # Perform MCMC and view results.
     mcmc = MCMC(
         system_settings["surface_name"],
@@ -348,11 +347,11 @@ def main(
         run_folder=run_folder,
     )
     stop = perf_counter()
-    print(f"Time taken = {stop - start} seconds")
+    logger.info("time taken = %.3f seconds", stop - start)
 
     # Save structures for later use in latent space clustering or analysis
     relaxed_structures = mcmc.history
-    print(f"saving all relaxed structures with length {len(relaxed_structures)}")
+    logger.info("saving all relaxed structures with length %d", len(relaxed_structures))
 
     with open(f"{mcmc.run_folder}/full_run_{len(relaxed_structures)}.pkl", "wb") as f:
         pickle.dump(relaxed_structures, f)
@@ -362,8 +361,8 @@ def main(
 
     # Flatten list of lists
     traj_structures = [item for sublist in traj_structures for item in sublist]
-    print(
-        f"saving all structures in relaxation paths with length {len(traj_structures)}"
+    logger.info(
+        "saving all structures in relaxation paths with length %d", len(traj_structures)
     )
 
     with open(f"{mcmc.run_folder}/relax_traj_{len(traj_structures)}.pkl", "wb") as f:
@@ -388,10 +387,11 @@ if __name__ == "__main__":
         args.alpha,
         args.samp_temp,
         args.relax,
-        args.offset_data_path,
         args.relax_steps,
+        args.surface_depth,
         args.record_interval,
         args.offset,
+        args.offset_data_path,
         args.device,
         save_folder=args.save_folder,
     )
