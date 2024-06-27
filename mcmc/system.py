@@ -258,6 +258,15 @@ class SurfaceSystem:
         return self.ads_idx
 
     @property
+    def num_adsorbates(self) -> int:
+        """Get the number of adsorbate atoms in the slab.
+
+        Returns:
+            int: The number of adsorbate atoms.
+        """
+        return len(self.adsorbate_idx)
+
+    @property
     def empty_occ_idx(self) -> list[int]:
         """Get the indices of the empty adsorption sites.
 

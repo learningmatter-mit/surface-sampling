@@ -14,6 +14,7 @@ from mcmc.system import SurfaceSystem
 
 current_dir = os.path.dirname(__file__)
 
+
 # some regression testing first
 def test_Cu_energy():
     required_energy = -25.2893
@@ -60,8 +61,6 @@ def test_Cu_energy():
         no_obtuse_hollow=system_settings["no_obtuse_hollow"],
     )["all"]
     print(f"adsorption coordinates are: {ads_positions[:5]}...")
-
-    # ads_positions = get_adsorption_coords(pristine_slab, elem, connectivity, debug=True)
 
     # use LAMMPS
     parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}

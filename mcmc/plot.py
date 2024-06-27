@@ -10,7 +10,7 @@ def plot_summary_stats(
 ):
     runs = range(1, num_sweeps + 1)
 
-    fig, ax = plt.subplots(1, 3, figsize=(15, 4))
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4), dpi=200)
     ax[0].plot(runs, energy_hist)
     ax[0].set_xlabel("Sweep #")
     ax[0].set_ylabel("Energy (eV)")
@@ -21,10 +21,9 @@ def plot_summary_stats(
     ax[1].set_ylabel("Fraction accepted")
     ax[1].set_title("Fraction accepted vs Sweeps")
 
-    ax[2].plot(runs, np.array(list(adsorption_count_hist.values())).T)
+    ax[2].plot(runs, adsorption_count_hist)
     ax[2].set_xlabel("Sweep #")
     ax[2].set_ylabel("Adsorption count")
-    ax[2].legend(adsorption_count_hist.keys())
     ax[2].set_title("Adsorption count vs Sweeps")
 
     fig.tight_layout()

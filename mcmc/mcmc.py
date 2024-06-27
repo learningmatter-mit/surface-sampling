@@ -164,35 +164,6 @@ class MCMC:
         """
         self.mcmc_run(surface)
 
-    # TODO DEPRECATE
-    def get_adsorption_coords(self):
-        """If not already set, this function sets the absolute adsorption coordinates for a given slab and element
-        using the catkit `get_adsorption_sites` method.
-
-        """
-        self.connectivity = np.ones(len(self.surface.ads_coords), dtype=int)
-
-        # if require distance decay
-        distance_decay_factor = self.kwargs.get("distance_decay_factor", 1.0)
-        if self.kwargs.get("require_distance_decay", False):
-            if self.distance_weight_matrix is None:
-                logger.info("computing distance weight matrix")
-                self.distance_weight_matrix = compute_distance_weight_matrix(
-                    self.surface.ads_coords, distance_decay_factor
-                )
-            else:
-                logger.info("using provided distance weight matrix")
-            plot_distance_weight_matrix(
-                self.distance_weight_matrix, save_folder=self.run_folder
-            )
-            plot_decay_curve(distance_decay_factor, save_folder=self.run_folder)
-
-        self.site_types = set(self.connectivity)
-
-        logger.info(
-            f"In pristine slab, there are a total of {len(self.surface.ads_coords)} sites"
-        )
-
     # TODO: move to surface system
     def get_initial_energy(self):
         """This function returns the initial energy of a slab, which is calculated using the slab_energy
@@ -258,44 +229,6 @@ class MCMC:
             self.surface.real_atoms.write(
                 os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
             )
-
-    # TODO change to save per iter and save per entry
-    # TODO move to SurfaceSystem
-    # def save_structures(
-    #     self, energy: float, chemical_formula: str, i: int = 0, save_folder: str = "."
-    # ):
-    #     """This function saves the optimized structure of a slab."""
-    #     chemical_formula = self.surface.relaxed_atoms.get_chemical_formula()
-    #     logger.info("optim structure has Energy = %.3f", energy)
-
-    #     if self.relax:
-    #         write(
-    #             f"{save_folder}/relaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.cif",
-    #             self.surface.relaxed_atoms,
-    #         )
-    #     write(
-    #         f"{save_folder}/unrelaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.cif",
-    #         self.surface.real_atoms,
-    #     )
-
-    #     save_slab = self.surface.real_atoms.copy()
-    #     save_slab.calc = None
-    #     with open(
-    #         f"{save_folder}/unrelaxed_slab_run_{i+1:03}_{energy:.3f}_{chemical_formula}.pkl",
-    #         "wb",
-    #     ) as f:
-    #         pkl.dump(save_slab, f)
-
-    #     # save trajectories
-    #     if self.surface.relax_traj:
-    #         # use TrajectoryWriter
-    #         atoms_list = self.surface.relax_traj["atoms"]
-    #         writer = TrajectoryWriter(
-    #             f"{save_folder}/traj_{i+1:03}_{energy:.3f}_{chemical_formula}.traj",
-    #             mode="a",
-    #         )
-    #         for atoms in atoms_list:
-    #             writer.write(atoms)
 
     # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
     def change_site_canonical(self, prev_energy: float = 0, iter_num: int = 1):
@@ -454,12 +387,7 @@ class MCMC:
         # append values
         self.energy_hist[i] = self.surface.get_surface_energy()
 
-        ads_counts = count_adsorption_sites(self.surface, self.connectivity)
-        for key in set(self.site_types):
-            if ads_counts[key]:
-                self.adsorption_count_hist[key].append(ads_counts[key])
-            else:
-                self.adsorption_count_hist[key].append(0)
+        self.adsorption_count_hist[i] = self.surface.num_adsorbates
 
         frac_accept = num_accept / self.sweep_size
         self.frac_accept_hist[i] = frac_accept
@@ -557,14 +485,14 @@ class MCMC:
         # initialize history
         self.history = []
         self.energy_hist = np.random.rand(self.total_sweeps)
-        self.adsorption_count_hist = defaultdict(list)
+        self.adsorption_count_hist = np.zeros(self.total_sweeps)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
 
         # self.setup_folders()
 
         self.set_up_mcmc_run()
 
-        self.get_adsorption_coords()
+        # self.get_adsorption_coords()
 
         self.curr_energy = self.get_initial_energy()
 
