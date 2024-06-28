@@ -346,8 +346,15 @@ class MCMC:
         frac_accept = num_accept / self.sweep_size
         self.frac_accept_hist[i] = frac_accept
 
-    def set_up_mcmc_run(self):
-        """This function sets up the folders for the simulation depending on whether it is semi-grand canonical or canonical."""
+    def initialize(
+        self,
+        even_adsorption_sites: bool = False,
+        perform_annealing=False,
+        anneal_schedule=None,
+        multiple_anneal=False,
+    ):
+        """Initialize the MCMC simulation by setting up the run folder, preparing the canonical slab, and creating the
+        annealing schedule."""
 
         if not self.run_folder:
             self.run_folder = setup_folders(
@@ -367,6 +374,23 @@ class MCMC:
         # self.logger = setup_logger(
         #     __name__, f"{self.run_folder}/mc.log", level=logging.INFO
         # )
+
+        if self.canonical:
+            self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
+
+        if isinstance(anneal_schedule, Iterable):
+            temp_list = anneal_schedule  # user-defined annealing schedule
+        elif perform_annealing:
+            temp_list = create_anneal_schedule(
+                start_temp=self.temp,
+                total_sweeps=self.total_sweeps,
+                alpha=self.alpha,
+                multiple_anneal=multiple_anneal,
+                save_folder=self.run_folder,
+            )
+        else:
+            temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
+        return temp_list
 
     def mcmc_run(
         self,
@@ -438,23 +462,9 @@ class MCMC:
         self.adsorption_count_hist = np.zeros(self.total_sweeps)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
 
-        self.set_up_mcmc_run()
-
-        if self.canonical:
-            self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
-
-        if isinstance(anneal_schedule, Iterable):
-            temp_list = anneal_schedule  # user-defined annealing schedule
-        elif perform_annealing:
-            temp_list = create_anneal_schedule(
-                start_temp=self.temp,
-                total_sweeps=self.total_sweeps,
-                alpha=self.alpha,
-                multiple_anneal=multiple_anneal,
-                save_folder=self.run_folder,
-            )
-        else:
-            temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
+        temp_list = self.initialize(
+            even_adsorption_sites, perform_annealing, anneal_schedule, multiple_anneal
+        )
 
         logger.info("Starting with iteration %d", starting_iteration)
         logger.info(
