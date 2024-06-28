@@ -14,5 +14,7 @@ __pycache__/
 *tmp_files/*
 
 # test file should still be committed
-!tests/resources/*.pkl
-!tests/resources/*.cif
+!tests/data/**.pkl
+!tests/data/*/*.pkl
+!tests/data/**.cif
+!tests/data/*/*.cif
