@@ -5,6 +5,8 @@
 *.pyc
 *.traj
 *.cif
+*.csv
+*.log
 *.in
 *.out
 *.data
