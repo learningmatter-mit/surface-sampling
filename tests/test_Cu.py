@@ -100,9 +100,12 @@ def test_Cu_energy(required_energy):
         **sampling_settings,
         relax=calc_settings["relax_atoms"],
     )
-    mcmc.mcmc_run(
+    results = mcmc.mcmc_run(
         surface=surface,
         **sampling_settings,
     )
 
-    assert np.allclose(np.min(mcmc.energy_hist), required_energy)
+    assert np.allclose(
+        np.min(results["energy_hist"]),
+        required_energy,
+    )

@@ -2,12 +2,11 @@
 
 import logging
 import os
+from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Union
 
 import numpy as np
-from ase.calculators.eam import EAM
 
 from mcmc.events.criterion import (
     DistanceCriterion,
@@ -16,7 +15,6 @@ from mcmc.events.criterion import (
 )
 from mcmc.events.event import Change, Exchange
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
-from mcmc.plot import plot_summary_stats
 from mcmc.system import SurfaceSystem
 from mcmc.utils import create_anneal_schedule, setup_folders, setup_logger
 from mcmc.utils.misc import (
@@ -99,17 +97,69 @@ class MCMC:
         self.run_folder = ""
         self.curr_energy = 0  # TODO: move to elsewhere or exclude
 
-        self.history = None
-        self.energy_hist = None
-        self.adsorption_count_hist = None
-        self.frac_accept_hist = None
-
         if self.canonical:
             # perform canonical runs
             # adsorb num_ads_atoms
             assert (
                 self.num_ads_atoms > 0
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
+
+    def initialize(
+        self,
+        even_adsorption_sites: bool = False,
+        perform_annealing=False,
+        anneal_schedule=None,
+        multiple_anneal=False,
+    ) -> np.ndarray:
+        # TODO update with logger
+        """Initialize the MCMC simulation by setting up the run folder, preparing the canonical slab, and creating the
+        annealing schedule.
+
+        Args:
+            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to False.
+            perform_annealing (bool, optional): If True, perform annealing. Defaults to False.
+            anneal_schedule (list, optional): The annealing schedule. Defaults to None.
+            multiple_anneal (bool, optional): If True, perform multiple annealing. Defaults to False.
+
+        Returns:
+            np.ndarray: The annealing schedule.
+        """
+
+        if not self.run_folder:
+            self.run_folder = setup_folders(
+                self.surface.surface_name,
+                canonical=self.canonical,
+                total_sweeps=self.total_sweeps,
+                start_temp=self.temp,
+                alpha=self.alpha,
+            )
+            logger.info("Generating run folder %s", self.run_folder)
+        else:
+            logger.info("Using user specified run folder %s", self.run_folder)
+
+        Path(self.run_folder).mkdir(parents=True, exist_ok=True)
+
+        # if not self.logger:
+        # self.logger = setup_logger(
+        #     __name__, f"{self.run_folder}/mc.log", level=logging.INFO
+        # )
+
+        if self.canonical:
+            self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
+
+        if isinstance(anneal_schedule, Iterable):
+            temp_list = anneal_schedule  # user-defined annealing schedule
+        elif perform_annealing:
+            temp_list = create_anneal_schedule(
+                start_temp=self.temp,
+                total_sweeps=self.total_sweeps,
+                alpha=self.alpha,
+                multiple_anneal=multiple_anneal,
+                save_folder=self.run_folder,
+            )
+        else:
+            temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
+        return temp_list
 
     def run(self, surface: SurfaceSystem):
         """Alias for `mcmc_run` function.
@@ -296,20 +346,16 @@ class MCMC:
         energy = self.surface.results["surface_energy"]
         return energy, accept
 
-    def mcmc_sweep(self, i: int = 0):
-        """This function performs a Monte Carlo sweep and saves the resulting structures, energies, and adsorption site counts
-        to a history.
+    def sweep(self, i: int = 0) -> dict:
+        """Perform MC sweep.
 
-        Parameters
-        ----------
-        i, optional
-            The parameter "i" is an optional integer argument that represents the current sweep number in the
-            MCMC simulation. It is used to keep track of the progress of the simulation and to append the
-            results to the appropriate indices in the output arrays.
+        Args:
+            i (int, optional): The sweep number. Defaults to 0.
 
+        Returns:
+            dict: A dictionary containing the history, trajectory, energy, adsorption count, and acceptance rate.
         """
         num_accept = 0
-        trajectories = []
         logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
@@ -326,7 +372,8 @@ class MCMC:
 
         # save structure and traj for easy viewing
         self.surface.save_structures(sweep_num=i + 1, save_folder=self.run_folder)
-        # surface = self.surface.copy_without_calc() # BUG: not workign for example.ipynb `TypeError: cannot pickle '_thread.lock' object`
+        # surface = self.surface.copy_without_calc()
+        # BUG: not working for example.ipynb `TypeError: cannot pickle '_thread.lock' object`
         # TODO fix
         surface = (
             self.surface.relaxed_atoms.copy()
@@ -334,63 +381,14 @@ class MCMC:
             else self.surface.real_atoms.copy()
         )
 
-        # TODO instead of self.history, move to `mcmc_run` and use a dictionary of lists to store all the values
-        self.history.append(surface)
-        trajectories.append(self.surface.relax_traj)
-
-        # append values
-        self.energy_hist[i] = self.surface.get_surface_energy()
-
-        self.adsorption_count_hist[i] = self.surface.num_adsorbates
-
-        frac_accept = num_accept / self.sweep_size
-        self.frac_accept_hist[i] = frac_accept
-
-    def initialize(
-        self,
-        even_adsorption_sites: bool = False,
-        perform_annealing=False,
-        anneal_schedule=None,
-        multiple_anneal=False,
-    ):
-        """Initialize the MCMC simulation by setting up the run folder, preparing the canonical slab, and creating the
-        annealing schedule."""
-
-        if not self.run_folder:
-            self.run_folder = setup_folders(
-                self.surface.surface_name,
-                canonical=self.canonical,
-                total_sweeps=self.total_sweeps,
-                start_temp=self.temp,
-                alpha=self.alpha,
-            )
-            logger.info("Generating run folder %s", self.run_folder)
-        else:
-            logger.info("Using user specified run folder %s", self.run_folder)
-
-        Path(self.run_folder).mkdir(parents=True, exist_ok=True)
-
-        # if not self.logger:
-        # self.logger = setup_logger(
-        #     __name__, f"{self.run_folder}/mc.log", level=logging.INFO
-        # )
-
-        if self.canonical:
-            self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
-
-        if isinstance(anneal_schedule, Iterable):
-            temp_list = anneal_schedule  # user-defined annealing schedule
-        elif perform_annealing:
-            temp_list = create_anneal_schedule(
-                start_temp=self.temp,
-                total_sweeps=self.total_sweeps,
-                alpha=self.alpha,
-                multiple_anneal=multiple_anneal,
-                save_folder=self.run_folder,
-            )
-        else:
-            temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
-        return temp_list
+        result = {
+            "history": surface,
+            "trajectory": self.surface.relax_traj,
+            "energy": self.surface.get_surface_energy(),
+            "adsorption_count": self.surface.num_adsorbates,
+            "acceptance_rate": num_accept / self.sweep_size,
+        }
+        return result
 
     def mcmc_run(
         self,
@@ -456,12 +454,6 @@ class MCMC:
         self.temp = start_temp
         self.alpha = alpha
 
-        # initialize history
-        self.history = []
-        self.energy_hist = np.random.rand(self.total_sweeps)
-        self.adsorption_count_hist = np.zeros(self.total_sweeps)
-        self.frac_accept_hist = np.random.rand(self.total_sweeps)
-
         temp_list = self.initialize(
             even_adsorption_sites, perform_annealing, anneal_schedule, multiple_anneal
         )
@@ -470,27 +462,19 @@ class MCMC:
         logger.info(
             "Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list]
         )
+
+        # perform MC sweeps
+        results = defaultdict(list)  # TODO: make a dataclass
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
-            self.mcmc_sweep(i=i)  # TODO change to .step
+            sweep_result = self.sweep(i=i)  # TODO change to .step
+            results["history"].append(sweep_result["history"])
+            results["trajectories"].append(sweep_result["trajectory"])
+            results["energy_hist"].append(sweep_result["energy"])
+            results["frac_accept_hist"].append(sweep_result["acceptance_rate"])
+            results["adsorption_count_hist"].append(sweep_result["adsorption_count"])
 
-        # plot and save the results
-        # TODO should be moved outside to script
-        plot_summary_stats(
-            self.energy_hist,
-            self.frac_accept_hist,
-            self.adsorption_count_hist,
-            self.total_sweeps,
-            self.run_folder,
-        )
-
-        return (
-            self.history,
-            self.energy_hist,
-            self.frac_accept_hist,
-            self.adsorption_count_hist,
-            self.run_folder,
-        )
+        return results
 
 
 if __name__ == "__main__":
