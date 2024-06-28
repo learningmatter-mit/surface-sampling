@@ -23,6 +23,13 @@ class TestCalculator(Calculator):
 
 
 @pytest.fixture
+def test_calculator():
+    calc = TestCalculator()
+    calc.set(**{"relax_atoms": True, "relax_steps": 1})
+    return calc
+
+
+@pytest.fixture
 def surface_system():
     atoms = Atoms(symbols=["Ga", "As"], positions=[(0, 0, 0), (0, 0, 3)])
     ads_coords = [(0, 0, 2), (0, 0, 3)]
@@ -70,12 +77,11 @@ def si_slab():
     return slab
 
 
-def test_surface_system_constraint_retention(si_slab):
+def test_surface_system_constraint_retention(si_slab, test_calculator):
     unchanged = SurfaceSystem(
         si_slab,
         ads_coords=[],
-        calc=TestCalculator(),
-        calc_settings={"relax_atoms": True, "relax_steps": 1},
+        calc=test_calculator,
     )
     unchanged_constraints = unchanged.real_atoms.constraints[0].todict()["kwargs"][
         "indices"
@@ -94,13 +100,14 @@ def test_surface_system_constraint_retention(si_slab):
         assert tags[idx] != 1
 
 
-def test_surface_system_constraint_setting(si_slab):
+def test_surface_system_constraint_setting(si_slab, test_calculator):
     partially_constrained = SurfaceSystem(
         si_slab,
         ads_coords=[],
-        calc=TestCalculator(),
-        surface_depth=2,
-        calc_settings={"relax_atoms": True, "relax_steps": 1},
+        calc=test_calculator,
+        system_settings={
+            "surface_depth": 2,
+        },
     )
     partial_constraints = partially_constrained.real_atoms.constraints[0].todict()[
         "kwargs"
