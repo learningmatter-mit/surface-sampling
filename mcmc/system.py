@@ -303,7 +303,7 @@ class SurfaceSystem:
             Tuple[ase.Atoms, Union[float, List[float]]]: The relaxed surface structure and the potential energy of the system.
         """
         # have to import here to avoid circular imports
-        from .mcmc import optimize_slab
+        from mcmc.energy import optimize_slab
 
         relaxed_slab, traj, energy, energy_oob = optimize_slab(
             self.real_atoms, **self.calc_settings, **kwargs

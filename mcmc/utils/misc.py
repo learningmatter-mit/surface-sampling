@@ -157,7 +157,7 @@ def plot_clustering_results(
     n_clusters: int,
     labels: np.ndarray,
     closest_points_indices: np.ndarray,
-    save_folder=".",
+    save_folder: Union[Path, str] = ".",
 ) -> Figure:
     """Plot the clustering results.
 

@@ -1,30 +1,13 @@
 """Performs sampling of surface reconstructions using an MCMC-based algorithm"""
 
-import copy
-import json
 import logging
 import os
-import pickle as pkl
-import random
-from collections import Counter, defaultdict
-from datetime import datetime
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Union
 
-import ase
-import catkit
 import numpy as np
 from ase.calculators.eam import EAM
-from ase.constraints import FixAtoms
-from ase.io import write
-from ase.io.trajectory import TrajectoryWriter
-from catkit.gen.adsorption import get_adsorption_sites
-from nff.io.ase import AtomsBatch
-from nff.io.ase_calcs import EnsembleNFF, NeuralFF
-from nff.utils.cuda import batch_to
-from scipy.spatial import distance
-from scipy.spatial.distance import cdist
-from scipy.special import softmax
 
 from mcmc.events.criterion import (
     DistanceCriterion,
@@ -33,20 +16,13 @@ from mcmc.events.criterion import (
 )
 from mcmc.events.event import Change, Exchange
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
-from mcmc.utils import setup_folders, setup_logger
-
-from .energy import optimize_slab
-from .plot import plot_summary_stats
-from .slab import change_site, count_adsorption_sites
-from .system import SurfaceSystem
-from .utils.misc import (
-    compute_distance_weight_matrix,
-    filter_distances,
+from mcmc.plot import plot_summary_stats
+from mcmc.system import SurfaceSystem
+from mcmc.utils import create_anneal_schedule, setup_folders, setup_logger
+from mcmc.utils.misc import (
     find_closest_points_indices,
     get_cluster_centers,
     plot_clustering_results,
-    plot_decay_curve,
-    plot_distance_weight_matrix,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,7 +83,6 @@ class MCMC:
         testing=False,
         adsorbates=None,
         relax=False,
-        distance_weight_matrix=None,
         **kwargs,
     ) -> None:
         self.calc = calc
@@ -115,7 +90,6 @@ class MCMC:
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms
         # self.ads_coords = np.array(ads_coords)
-        self.distance_weight_matrix = distance_weight_matrix
         self.testing = testing
         self.adsorbates = adsorbates
         self.relax = relax
@@ -123,10 +97,6 @@ class MCMC:
 
         # initialize here for subsequent runs
         self.total_sweeps = 800
-        self.start_temp = 1.0
-        self.peak_scale = 1 / 2
-        self.ramp_up_sweeps = 10
-        self.ramp_down_sweeps = 200
 
         self.temp = 1.0
         self.pot = 1.0
@@ -137,17 +107,12 @@ class MCMC:
         self.run_folder = ""
         self.curr_energy = 0
         self.sweep_size = 100
-        # self.state = None
-        self.connectivity = None
+
         self.history = None
         self.energy_hist = None
         self.adsorption_count_hist = None
         self.frac_accept_hist = None
-
-        self.reference_structure = kwargs.get("reference_structure", None)
-        self.reference_structure_embeddings = None
         self.device = kwargs.get("device", "cpu")
-        # self.rmsd_criterion = kwargs.get("rmsd_criterion", False)
 
         if self.canonical:
             # perform canonical runs
@@ -157,78 +122,75 @@ class MCMC:
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
     def run(self, surface: SurfaceSystem):
-        """Alias for `mcmc_run` function. Runs the MCMC simulation for a given surface system.
+        """Alias for `mcmc_run` function.
 
         Args:
             surface (SurfaceSystem): The surface system on which the MCMC simulation is to be performed.
         """
         self.mcmc_run(surface)
 
-    # TODO: move to surface system
     def get_initial_energy(self):
-        """This function returns the initial energy of a slab, which is calculated using the slab_energy
-        function if the slab does not exists.
+        """Calculate the energy of the initial surface structure. If the calculator is not set, energy will be
+        set to 0.
 
-        Returns
-        -------
-            The function `get_initial_energy` returns the energy of the slab calculated using the `slab_energy`
-        function if `self.slab.calc` is not `None`, otherwise it returns 0.
-
+        Returns:
+            float: The energy of the initial surface structure.
         """
-        # sometimes slab.calc does not exist
-        if self.surface.calc:
+        try:
             energy = float(self.surface.get_surface_energy(recalculate=True))
-        else:
-            energy = 0
-
+        except RuntimeError:
+            energy = 0  # Calculator does not exist
         return energy
 
-    # TODO: move to slab or even creating a utils.sampling
+    # TODO: refactor out, might take some effort
     def prepare_canonical(self, even_adsorption_sites: bool = False):
-        # TODO can move to System initialization
-        """This function prepares a canonical slab by performing semi-grand canonical adsorption runs until the
-        desired number of adsorbed atoms are obtained.
+        """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the desired number of
+        adsorbed atoms are obtained.
 
+        Args:
+            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to False.
+
+        Raises:
+            AssertionError: If the number of adsorbed atoms is less than 0.
         """
-        if self.canonical:
-            assert (
-                self.num_ads_atoms > 0
-            ), "for canonical runs, need number of adsorbed atoms greater than 0"
+        assert (
+            self.num_ads_atoms > 0
+        ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
-            if even_adsorption_sites:
-                logger.info("evenly adsorbing sites")
-                # Do clustering
-                centers, labels = get_cluster_centers(
-                    self.surface.ads_coords[:, :2], self.num_ads_atoms
-                )
-                sites_idx = find_closest_points_indices(
-                    self.surface.ads_coords[:, :2], centers, labels
-                )
-                plot_clustering_results(
-                    self.surface.ads_coords,
-                    self.num_ads_atoms,
-                    labels,
-                    sites_idx,
-                    save_folder=self.run_folder,
-                )
-
-                for site_idx in sites_idx:
-                    self.curr_energy, _ = self.change_site(
-                        prev_energy=self.curr_energy, site_idx=site_idx
-                    )
-            else:
-                logger.info("randomly adsorbing sites")
-                # perform semi-grand canonical until num_ads_atoms are obtained
-                while len(self.surface) < self.num_pristine_atoms + self.num_ads_atoms:
-                    self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
-                    # site_idx = next(site_iterator)
-                    # self.curr_energy, _ = self.change_site(
-                    #     prev_energy=self.curr_energy, site_idx=site_idx
-                    # )
-
-            self.surface.real_atoms.write(
-                os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
+        if even_adsorption_sites:
+            logger.info("evenly adsorbing sites")
+            # Do clustering
+            centers, labels = get_cluster_centers(
+                self.surface.ads_coords[:, :2], self.num_ads_atoms
             )
+            sites_idx = find_closest_points_indices(
+                self.surface.ads_coords[:, :2], centers, labels
+            )
+            plot_clustering_results(
+                self.surface.ads_coords,
+                self.num_ads_atoms,
+                labels,
+                sites_idx,
+                save_folder=self.run_folder,
+            )
+
+            for site_idx in sites_idx:
+                self.curr_energy, _ = self.change_site(
+                    prev_energy=self.curr_energy, site_idx=site_idx
+                )
+        else:
+            logger.info("randomly adsorbing sites")
+            # perform semi-grand canonical until num_ads_atoms are obtained
+            while len(self.surface) < self.num_pristine_atoms + self.num_ads_atoms:
+                self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
+                # site_idx = next(site_iterator)
+                # self.curr_energy, _ = self.change_site(
+                #     prev_energy=self.curr_energy, site_idx=site_idx
+                # )
+
+        self.surface.real_atoms.write(
+            os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
+        )
 
     # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
     def change_site_canonical(self, prev_energy: float = 0, iter_num: int = 1):
@@ -400,7 +362,7 @@ class MCMC:
                 self.surface_name,
                 canonical=self.canonical,
                 total_sweeps=self.total_sweeps,
-                start_temp=self.start_temp,
+                start_temp=self.temp,
                 alpha=self.alpha,
                 num_ads_atoms=self.num_ads_atoms,
                 pot=self.pot,
@@ -416,15 +378,13 @@ class MCMC:
     def mcmc_run(
         self,
         surface: SurfaceSystem,
-        peak_scale: float = 1 / 2,
-        ramp_up_sweeps: int = 10,
-        ramp_down_sweeps: int = 200,
         total_sweeps: int = 800,
         start_temp: float = 1.0,
-        pot: Union[float, list] = 1.0,
-        alpha: float = 0.9,
         perform_annealing=False,
+        alpha: float = 0.9,
+        multiple_anneal: bool = False,
         anneal_schedule: list = None,
+        pot: Union[float, list] = 1.0,
         run_folder: str = None,
         starting_iteration: list = 0,
         sweep_size: int = 300,
@@ -460,27 +420,30 @@ class MCMC:
 
         """
         logger.info(
-            "Running with num_sweeps = %d, temp = %.3f, alpha = %.3f, pot = %s",
+            "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f, pot = %s",
             total_sweeps,
-            self.start_temp,
-            self.alpha,
-            self.pot,
+            sweep_size,
+            start_temp,
+            pot,
         )
+
         if run_folder:
             self.run_folder = run_folder
 
         # TODO: add logger, reduce the number of arguments
 
-        self.total_sweeps = total_sweeps
-        self.start_temp = start_temp
-        self.peak_scale = peak_scale
-        self.ramp_up_sweeps = ramp_up_sweeps
-        self.ramp_down_sweeps = ramp_down_sweeps
-        self.pot = pot
-        self.alpha = alpha
         self.surface = surface
         self.num_pristine_atoms = self.surface.num_pristine_atoms
-        logger.info("there are %d atoms in pristine slab", self.num_pristine_atoms)
+        logger.info("There are %d atoms in pristine slab", self.num_pristine_atoms)
+        self.curr_energy = self.get_initial_energy()
+        logger.info("Initial energy is %.3f", self.curr_energy)
+
+        self.total_sweeps = total_sweeps
+        self.sweep_size = sweep_size
+
+        self.temp = start_temp
+        self.alpha = alpha
+        self.pot = pot
 
         # initialize history
         self.history = []
@@ -488,37 +451,28 @@ class MCMC:
         self.adsorption_count_hist = np.zeros(self.total_sweeps)
         self.frac_accept_hist = np.random.rand(self.total_sweeps)
 
-        # self.setup_folders()
-
         self.set_up_mcmc_run()
 
-        # self.get_adsorption_coords()
+        if self.canonical:
+            self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
 
-        self.curr_energy = self.get_initial_energy()
-
-        self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
-
-        self.sweep_size = sweep_size
-
-        logger.info(
-            f"Running with num_sweeps = {self.total_sweeps}, sweep_size = {self.sweep_size}, temp = {self.start_temp}, pot = {self.pot}, alpha = {self.alpha}"
-        )
-        # new parameters
-        # self.start_temp
-        # self.peak_scale
-        # self.ramp_up_sweeps
-        # self.ramp_down_sweeps
-        # self.total_sweeps
-        if type(anneal_schedule) == list or type(anneal_schedule) == np.ndarray:
-            temp_list = anneal_schedule
+        if isinstance(anneal_schedule, Iterable):
+            temp_list = anneal_schedule  # user-defined annealing schedule
         elif perform_annealing:
-            temp_list = self.create_anneal_schedule()
+            temp_list = create_anneal_schedule(
+                start_temp=self.temp,
+                total_sweeps=self.total_sweeps,
+                alpha=self.alpha,
+                multiple_anneal=multiple_anneal,
+                save_folder=self.run_folder,
+            )
         else:
-            temp_list = np.repeat(
-                self.start_temp, self.total_sweeps
-            )  # constant temperature
-        logger.info("starting with iteration %d", starting_iteration)
-        logger.info("temp list is: %s", temp_list)
+            temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
+
+        logger.info("Starting with iteration %d", starting_iteration)
+        logger.info(
+            "Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list]
+        )
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
             self.mcmc_sweep(i=i)  # TODO change to .step
@@ -540,36 +494,6 @@ class MCMC:
             self.adsorption_count_hist,
             self.run_folder,
         )
-
-    # TODO move to utils/sampling.py
-    def create_anneal_schedule(self):
-        temp_list = [self.start_temp]
-
-        curr_sweep = 1
-        curr_temp = self.start_temp
-        while curr_sweep < self.total_sweeps:
-            # new low temperature annealing schedule
-            # **0.2 to 0.10 relatively fast, say 100 steps**
-            # **then 0.10 to 0.08 for 200 steps**
-            # **0.08 for 200 steps, go up to 0.2 in 10 steps**
-            temp_list.extend(np.linspace(curr_temp, 0.10, 100).tolist())
-            curr_sweep += 100
-            temp_list.extend(np.linspace(0.10, 0.08, 200).tolist())
-            curr_sweep += 200
-            temp_list.extend(np.repeat(0.08, 200).tolist())
-            curr_sweep += 200
-            temp_list.extend(np.linspace(0.08, curr_temp, 10).tolist())
-
-        temp_list = temp_list[: self.total_sweeps]
-
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots()
-        ax.plot(temp_list)
-        plt.savefig(f"{self.run_folder}/anneal_schedule.png")
-        with open(f"{self.run_folder}/anneal_schedule.csv", "w") as f:
-            f.write(",".join([str(temp) for temp in temp_list]))
-        return temp_list
 
 
 if __name__ == "__main__":

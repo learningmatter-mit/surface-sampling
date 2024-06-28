@@ -29,7 +29,7 @@ def setup_folders(
     Returns:
         Path: Path to the run folder.
     """
-    start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S.%3f")
+    start_timestamp = datetime.now().isoformat(sep="-", timespec="milliseconds")
     run_folder_path = Path(os.getcwd()) / surface_name
     run_folder_base = (
         f"{start_timestamp}_sweeps_{total_sweeps}_start_temp_{start_temp}_alpha_{alpha}"
