@@ -1,6 +1,5 @@
 import argparse
 import datetime
-import json
 import logging
 import pickle
 from copy import deepcopy
@@ -9,7 +8,6 @@ from time import perf_counter
 from typing import List, Literal, Union
 
 import numpy as np
-from ase.constraints import FixAtoms
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
@@ -110,7 +108,25 @@ def parse_args() -> argparse.Namespace:
         help="layers of atoms from the surface to relax",
     )
     parser.add_argument(
+        "--ads_site_planar_distance",
+        type=float,
+        default=2.0,
+        help="distance of adsorption sites from surface",
+    )
+    parser.add_argument(
+        "--ads_site_type",
+        choices=["ontop", "bridge", "hollow", "all"],
+        default="all",
+        help="type of adsorption sites to include",
+    )
+    parser.add_argument(
         "--record_interval", type=int, default=5, help="record interval for relaxation"
+    )
+    parser.add_argument(
+        "--neighbor_cutoff",
+        type=float,
+        default=5.0,
+        help="cutoff for neighbor calculations",
     )
     parser.add_argument(
         "--offset", action="store_true", help="whether to use energy offsets"
@@ -148,7 +164,10 @@ def main(
     relax: bool,
     relax_steps: int = 20,
     surface_depth: int = 1,
+    ads_site_planar_distance: float = 2.0,
+    ads_site_type: Literal["ontop", "bridge", "hollow", "all"] = "all",
     record_interval: int = False,
+    neighbor_cutoff: float = 5.0,
     offset: bool = False,
     offset_data_path: str = "",
     device: str = "cuda",
@@ -174,7 +193,10 @@ def main(
         relax (bool): perform relaxation for the steps
         relax_steps (int): max relaxation steps
         surface_depth (int): layers of atoms from the surface to relax
+        ads_site_planar_distance (float): distance of adsorption sites from surface
+        ads_site_type (Literal["ontop", "bridge", "hollow", "all"]): type of adsorption sites to include
         record_interval (int): record interval for relaxation
+        neighbor_cutoff (float): cutoff for neighbor calculations
         offset (bool): whether to use energy offsets
         offset_data_path (str): path to offset data
         device (str): device to use for calculations
@@ -212,12 +234,12 @@ def main(
 
     system_settings = {
         "surface_name": surface_name,
-        "cutoff": 5.0,
+        "cutoff": neighbor_cutoff,
         "device": DEVICE,
         "near_reduce": 0.01,
-        "planar_distance": 1.55,
+        "planar_distance": ads_site_planar_distance,  # 2.0 (default)
         "no_obtuse_hollow": True,
-        "ads_pos_type": "ontop",  # ontop, bridge, hollow, all
+        "ads_site_type": ads_site_type,  # ontop, bridge, hollow, all
     }
 
     sampling_settings = {
@@ -262,7 +284,7 @@ def main(
         distance=system_settings["planar_distance"],
         no_obtuse_hollow=system_settings["no_obtuse_hollow"],
     )
-    ads_positions = all_ads_positions[system_settings["ads_pos_type"]]
+    ads_positions = all_ads_positions[system_settings["ads_site_type"]]
     logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
 
     surf_atom_idx = pristine_slab.get_surface_atoms()
@@ -287,7 +309,7 @@ def main(
     )
     nff_surf_calc.set(**calc_settings)
 
-    # Initialize SurfaceSystem (actually bulk system)
+    # Initialize SurfaceSystem
     slab_batch = get_atoms_batch(
         pristine_slab,
         nff_cutoff=system_settings["cutoff"],
@@ -389,7 +411,10 @@ if __name__ == "__main__":
         args.relax,
         args.relax_steps,
         args.surface_depth,
+        args.ads_site_planar_distance,
+        args.ads_site_type,
         args.record_interval,
+        args.neighbor_cutoff,
         args.offset,
         args.offset_data_path,
         args.device,
