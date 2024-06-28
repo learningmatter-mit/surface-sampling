@@ -72,47 +72,37 @@ class MCMC:
 
     def __init__(
         self,
-        surface_name,
-        calc=EAM(
-            potential=os.path.join(
-                os.path.dirname(os.path.realpath(__file__)), "potentials", "Cu2.eam.fs"
-            )
-        ),
         canonical=False,
         num_ads_atoms=0,
         testing=False,
         adsorbates=None,
         relax=False,
+        filter_distance: float = 0.0,
         **kwargs,
     ) -> None:
-        self.calc = calc
-        self.surface_name = surface_name
         self.canonical = canonical
-        self.num_ads_atoms = num_ads_atoms
-        # self.ads_coords = np.array(ads_coords)
+        self.num_ads_atoms = num_ads_atoms  # TODO can be (re)moved
         self.testing = testing
         self.adsorbates = adsorbates
-        self.relax = relax
+        self.relax = (
+            relax  # TODO remove after writing the copy methods for SurfaceSystem
+        )
+        self.filter_distance = filter_distance
         self.kwargs = kwargs
 
         # initialize here for subsequent runs
-        self.total_sweeps = 800
-
-        self.temp = 1.0
-        self.pot = 1.0
-        self.alpha = 1.0
-        self.surface: SurfaceSystem = None
-
-        self.num_pristine_atoms = 0
-        self.run_folder = ""
-        self.curr_energy = 0
+        self.surface = None
+        self.total_sweeps = 100
         self.sweep_size = 100
+        self.temp = 1.0
+        self.alpha = 1.0
+        self.run_folder = ""
+        self.curr_energy = 0  # TODO: move to elsewhere or exclude
 
         self.history = None
         self.energy_hist = None
         self.adsorption_count_hist = None
         self.frac_accept_hist = None
-        self.device = kwargs.get("device", "cpu")
 
         if self.canonical:
             # perform canonical runs
@@ -181,7 +171,7 @@ class MCMC:
         else:
             logger.info("randomly adsorbing sites")
             # perform semi-grand canonical until num_ads_atoms are obtained
-            while len(self.surface) < self.num_pristine_atoms + self.num_ads_atoms:
+            while self.surface.num_adsorbates < self.num_ads_atoms:
                 self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
                 # site_idx = next(site_iterator)
                 # self.curr_energy, _ = self.change_site(
@@ -189,7 +179,9 @@ class MCMC:
                 # )
 
         self.surface.real_atoms.write(
-            os.path.join(self.run_folder, f"{self.surface_name}_canonical_init.cif")
+            os.path.join(
+                self.run_folder, f"{self.surface.surface_name}_canonical_init.cif"
+            )
         )
 
     # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
@@ -234,7 +226,7 @@ class MCMC:
         )
         logger.debug("\n we are at iter %s", iter)
 
-        if self.kwargs.get("filter_distance", None):
+        if self.filter_distance:
             criterion = DistanceCriterion(
                 filter_distance=self.kwargs["filter_distance"],
             )
@@ -284,7 +276,7 @@ class MCMC:
             site_idx=site_idx,
         )
 
-        if self.kwargs.get("filter_distance", None):
+        if self.filter_distance:
             criterion = DistanceCriterion(
                 filter_distance=self.kwargs["filter_distance"]
             )
@@ -359,14 +351,15 @@ class MCMC:
 
         if not self.run_folder:
             self.run_folder = setup_folders(
-                self.surface_name,
+                self.surface.surface_name,
                 canonical=self.canonical,
                 total_sweeps=self.total_sweeps,
                 start_temp=self.temp,
                 alpha=self.alpha,
-                num_ads_atoms=self.num_ads_atoms,
-                pot=self.pot,
             )
+            logger.info("Generating run folder %s", self.run_folder)
+        else:
+            logger.info("Using user specified run folder %s", self.run_folder)
 
         Path(self.run_folder).mkdir(parents=True, exist_ok=True)
 
@@ -379,16 +372,16 @@ class MCMC:
         self,
         surface: SurfaceSystem,
         total_sweeps: int = 800,
+        sweep_size: int = 300,
         start_temp: float = 1.0,
         perform_annealing=False,
         alpha: float = 0.9,
         multiple_anneal: bool = False,
         anneal_schedule: list = None,
-        pot: Union[float, list] = 1.0,
         run_folder: str = None,
         starting_iteration: list = 0,
-        sweep_size: int = 300,
         even_adsorption_sites: bool = False,
+        **kwargs,
     ):
         # TODO separate out annealing schedule
         """This function runs an MC simulation for a given number of sweeps and temperature, and
@@ -403,9 +396,6 @@ class MCMC:
             It controls the probability of accepting a proposed move during the simulation. A higher temperature
             leads to a higher probability of accepting a move, while a lower temperature leads to a lower probability
             of accepting a move.
-        pot : float or list, optional
-            The chemical potential used in the simulation. The chemical potential can be a single value for one adsorbate or a list
-            of values for each adsorbate type.
         alpha : float, optional
             The alpha parameter is a value between 0 and 1 that determines the annealing rate. A higher
             alpha results in a slower annealing rate, while a lower alpha results in a faster annealing rate.
@@ -420,30 +410,27 @@ class MCMC:
 
         """
         logger.info(
-            "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f, pot = %s",
+            "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f",
             total_sweeps,
             sweep_size,
             start_temp,
-            pot,
         )
 
         if run_folder:
             self.run_folder = run_folder
 
         # TODO: add logger, reduce the number of arguments
-
         self.surface = surface
-        self.num_pristine_atoms = self.surface.num_pristine_atoms
-        logger.info("There are %d atoms in pristine slab", self.num_pristine_atoms)
+        logger.info(
+            "There are %d atoms in pristine slab", self.surface.num_pristine_atoms
+        )
         self.curr_energy = self.get_initial_energy()
         logger.info("Initial energy is %.3f", self.curr_energy)
 
         self.total_sweeps = total_sweeps
         self.sweep_size = sweep_size
-
         self.temp = start_temp
         self.alpha = alpha
-        self.pot = pot
 
         # initialize history
         self.history = []

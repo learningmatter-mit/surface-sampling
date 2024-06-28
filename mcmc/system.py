@@ -3,6 +3,7 @@ import functools
 import logging
 import os
 import pickle as pkl
+from collections.abc import Iterable
 from typing import Dict, List, Union
 
 import ase
@@ -39,9 +40,7 @@ class SurfaceSystem:
         ads_coords: List,
         calc: Calculator = None,
         occ: List = None,
-        surface_depth: int = None,
         system_settings: Dict = None,
-        calc_settings: Dict = None,
         distance_weight_matrix: np.ndarray = None,
         default_io_path: str = ".",
     ) -> None:
@@ -52,25 +51,26 @@ class SurfaceSystem:
             ads_coords (List): The coordinates of the virtual adsorption sites.
             calc (Calculator, optional): ASE-style Calculator. Defaults to None.
             occ (List, optional): The index of the adsorbed atom in the slab at each adsorption site. Defaults to None.
-            surface_depth (int, optional): Number of slab layers to leave unconstrained, starting from highest z coord.
-                A layer is defined as a unique z-coordinate, if left blank will retain constraints from input slab.
-                Defaults to None.
             system_settings (Dict, optional): Settings for surface system. Defaults to None.
-            calc_settings (Dict, optional): Settings for calculator. Defaults to None.
             distance_weight_matrix (np.ndarray, optional): The distance weight matrix with size (n, n) where n is the
                 number of ads sites. Defaults to None.
             default_io_path (str, optional): The default path to save the structures. Defaults to ".".
 
         TODO: add Attributes once refactored
         """
+
         # TODO the procedure is to go from all_atoms to real_atoms and relaxed_atoms
         # but for now, we only have the real_atoms and relaxed_atoms to maintain compatibility
         # with ASE
         self.all_atoms = None
         # self.real_atoms = self.all_atoms.copy()
         self.system_settings = system_settings or DEFAULT_SETTINGS
-        self.calc_settings = calc_settings or (calc.parameters.copy() if calc else {})
+        self.calc_settings = calc.parameters.copy() if calc else {}
 
+        self.surface_name = self.system_settings.get(
+            "surface_name", atoms.get_chemical_formula()
+        )
+        self.surface_depth = self.system_settings.get("surface_depth", None)
         self.real_atoms = None
         self.num_pristine_atoms = 0
         self.calc = calc
@@ -79,12 +79,13 @@ class SurfaceSystem:
         self.relax_atoms = self.calc_settings.get(
             "relax_atoms", False
         )  # whether to relax surface
+
         # TODO: before relaxing atoms, save the current unrelaxed state
         # compare real_atoms with unrelaxed_atoms before deciding to relax
         self.results = {}
         self._states = {}
         self.constraints = []
-        self.surface_area = 0.0  # TODO
+        self.surface_area = 0.0  # unused
 
         self.surface_idx = []
         self.bulk_idx = []
@@ -96,7 +97,7 @@ class SurfaceSystem:
         self.default_io_path = default_io_path
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
-        self.initialize(atoms, ads_coords, calc, occ, surface_depth)
+        self.initialize(atoms, ads_coords, calc, occ, self.surface_depth)
 
     def save_state(self, key: str) -> None:
         """Save the state of the SurfaceSystem object.
@@ -107,12 +108,11 @@ class SurfaceSystem:
         self.real_atoms.calc = None
         if self.relax_atoms:
             self.relaxed_atoms.calc = None
-        # TODO can add saving the trajectory
         self._states[key] = {
-            "real_atoms": copy.deepcopy(self.real_atoms),
-            "relaxed_atoms": copy.deepcopy(self.relaxed_atoms),
-            "occupation": copy.deepcopy(self.occ),
-            "results": copy.deepcopy(self.results),
+            "real_atoms": self.real_atoms.copy(),
+            "relaxed_atoms": self.relaxed_atoms.copy() if self.relaxed_atoms else None,
+            "occupation": self.occ.copy(),
+            "results": self.results.copy(),
         }
         self.real_atoms.calc = self.calc
         if self.relax_atoms:
@@ -158,26 +158,23 @@ class SurfaceSystem:
                 A layer is defined as a unique z-coordinate, if left blank will retain constraints from input slab.
                 Defaults to None.
         """
-        self.real_atoms = copy.deepcopy(atoms)
+        self.real_atoms = atoms.copy()
         self.ads_coords = np.array(ads_coords)
         self.calc = calc
-        self.surface_depth = surface_depth
         self.real_atoms.calc = self.calc
-        self.all_atoms = copy.deepcopy(self.real_atoms)
+        self.all_atoms = self.real_atoms.copy()
         self.initialize_virtual_atoms()
 
-        if not (
-            (isinstance(occ, list) and (len(occ) > 0)) or isinstance(occ, np.ndarray)
-        ):
+        if not (isinstance(occ, Iterable) and (len(occ) > 0)):
             self.occ = np.zeros(len(self.ads_coords), dtype=int)
         else:
             assert len(occ) == len(self.ads_coords)
             self.occ = np.array(occ)
-        logger.info("initial state is %s", self.occ)
+        logger.info("Initial state is %s", self.occ)
 
         # calculate from real_atoms and occ
         self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
-        logger.info("number of pristine atoms is %s", self.num_pristine_atoms)
+        logger.info("Number of pristine atoms is %s", self.num_pristine_atoms)
 
         # setting tags according to Z coordinate (surface will be tagged 1, with tag increasing layerwise downwards)
         # TODO can move to a helper function to set constraints
@@ -192,7 +189,7 @@ class SurfaceSystem:
                 )
             # set constraints according to surface depth
             surface_mask = np.isin(
-                self.real_atoms.get_tags(), list(range(1, self.surface_depth + 1))
+                self.real_atoms.get_tags(), list(range(1, surface_depth + 1))
             )
             self.surface_idx = np.where(surface_mask)[0]
             self.bulk_idx = np.where(~surface_mask)[0]
@@ -220,7 +217,7 @@ class SurfaceSystem:
             virtual_atom_str (str, optional): The string representation of the virtual atom. Defaults to "X".
         """
         logger.info("initializing %s virtual atoms", len(self.ads_coords))
-        self.all_atoms = copy.deepcopy(self.real_atoms)
+        self.all_atoms = self.real_atoms.copy()
         for site_idx in range(len(self.ads_coords)):
             virtual_adsorbate = ase.Atoms(
                 virtual_atom_str, positions=[self.ads_coords[site_idx]]

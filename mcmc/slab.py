@@ -18,45 +18,45 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: deprecate if not needed
-def initialize_slab(
-    alat: float,
-    elem: str = "Cu",
-    vacuum: float = 15.0,
-    miller: tuple[int] = (1, 0, 0),
-    termination: int = 0,
-    orthogonal: bool = False,
-    size: tuple[int] = (4, 4, 4),
-    **kwargs,
-) -> ase.Atoms:
-    """Creates the slab structure using ASE.
+# def initialize_slab(
+#     alat: float,
+#     elem: str = "Cu",
+#     vacuum: float = 15.0,
+#     miller: tuple[int] = (1, 0, 0),
+#     termination: int = 0,
+#     orthogonal: bool = False,
+#     size: tuple[int] = (4, 4, 4),
+#     **kwargs,
+# ) -> ase.Atoms:
+#     """Creates the slab structure using ASE.
 
-    Args:
-        alat (float): The lattice constant in angstroms.
-        elem (str): The element to use.
-        vacuum (float): The vacuum thickness.
-        miller (tuple): The Miller indices.
-        termination (int): The termination.
-        orthogonal (bool): Whether to use orthogonal coordinates.
-        size (tuple): The size of the slab in each dimension.
+#     Args:
+#         alat (float): The lattice constant in angstroms.
+#         elem (str): The element to use.
+#         vacuum (float): The vacuum thickness.
+#         miller (tuple): The Miller indices.
+#         termination (int): The termination.
+#         orthogonal (bool): Whether to use orthogonal coordinates.
+#         size (tuple): The size of the slab in each dimension.
 
-    Returns:
-        ase.Atoms: The slab structure.
-    """
-    a1 = bulk(elem, "fcc", a=alat)
-    write(f"{elem}_a1_bulk.cif", a1)
-    catkit_slab = catkit.build.surface(
-        a1,
-        size=size,
-        miller=miller,
-        termination=termination,
-        fixed=0,
-        vacuum=vacuum,
-        orthogonal=orthogonal,
-        **kwargs,
-    )
+#     Returns:
+#         ase.Atoms: The slab structure.
+#     """
+#     a1 = bulk(elem, "fcc", a=alat)
+#     write(f"{elem}_a1_bulk.cif", a1)
+#     catkit_slab = catkit.build.surface(
+#         a1,
+#         size=size,
+#         miller=miller,
+#         termination=termination,
+#         fixed=0,
+#         vacuum=vacuum,
+#         orthogonal=orthogonal,
+#         **kwargs,
+#     )
 
-    write(f"{elem}_pristine_slab.cif", catkit_slab)
-    return catkit_slab
+#     write(f"{elem}_pristine_slab.cif", catkit_slab)
+#     return catkit_slab
 
 
 # TODO move prepare_canonical to here
