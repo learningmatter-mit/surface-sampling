@@ -1,5 +1,7 @@
+"""Miscellaneous utility functions for the MCMC workflow."""
+
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +16,7 @@ DPI = 200
 
 
 def get_atoms_batch(
-    data: Union[dict, Atoms],
+    data: dict | Atoms,
     nff_cutoff: float,
     device: str = "cpu",
     **kwargs,
@@ -25,6 +27,7 @@ def get_atoms_batch(
         data (Union[dict, Atoms]): Dictionary containing the properties of the atoms
         nff_cutoff (float): Neighbor cutoff for the NFF model
         device (str, optional): cpu or cuda device. Defaults to 'cpu'.
+        **kwargs: Additional keyword arguments.
 
     Returns:
         AtomsBatch
@@ -53,15 +56,14 @@ def get_atoms_batch(
     return atoms_batch
 
 
-def filter_distances(
-    slab: Atoms, ads: Iterable = ("O"), cutoff_distance: float = 1.5
-) -> bool:
+def filter_distances(slab: Atoms, ads: Iterable = ("O"), cutoff_distance: float = 1.5) -> bool:
     """This function filters out slabs that have atoms too close to each other based on a
     specified cutoff distance.
 
     Args:
         slab (Atoms): The slab structure to check for distances.
-        ads (Iterable, optional): The adsorbate atom types in the slab to check for. Defaults to ("O").
+        ads (Iterable, optional): The adsorbate atom types in the slab to check for. Defaults to
+            ("O").
         cutoff_distance (float, optional): The cutoff distance to check for. Defaults to 1.5.
 
     Returns:
@@ -69,30 +71,24 @@ def filter_distances(
     """
     # Checks distances of all adsorbates are greater than cutoff
     ads_arr = np.isin(slab.get_chemical_symbols(), ads)
-    unique_dists = np.unique(
-        np.triu(slab.get_all_distances(mic=True)[ads_arr][:, ads_arr])
-    )
+    unique_dists = np.unique(np.triu(slab.get_all_distances(mic=True)[ads_arr][:, ads_arr]))
     # Get upper triangular matrix of ads dist
-    if any(unique_dists[(unique_dists > 0) & (unique_dists <= cutoff_distance)]):
-        return False  # Gail because atoms are too close
-    return True
+    return not any(unique_dists[(unique_dists > 0) & (unique_dists <= cutoff_distance)])
 
 
-def get_cluster_centers(
-    points: np.ndarray, n_clusters: int
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Peforms hierarchical clustering on a set of points and returns the centers of the resulting clusters.
+def get_cluster_centers(points: np.ndarray, n_clusters: int) -> tuple[np.ndarray, np.ndarray]:
+    """Peforms hierarchical clustering on a set of points and returns the centers of the resulting
+    clusters.
 
     Args:
-        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to cluster.
+        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to
+            cluster.
         n_clusters (int): The number of clusters to create.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: A tuple containing the centers of the resulting clusters and the
-        cluster labels shape for each point.
+        tuple[np.ndarray, np.ndarray]: A tuple containing the centers of the resulting clusters and
+        the cluster labels shape for each point.
     """
-
     # Do hierarchical clustering
     Z = linkage(points, "ward")
 
@@ -127,12 +123,16 @@ def find_closest_points_indices(
     """Finds the index of the point in each cluster that is closest to the center of the cluster.
 
     Args:
-        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to cluster.
-        centers (np.ndarray): Numpy array of shape (n_clusters, n_dimensions) containing the centers of the clusters.
-        labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each point.
+        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to
+            cluster.
+        centers (np.ndarray): Numpy array of shape (n_clusters, n_dimensions) containing the centers
+            of the clusters.
+        labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each
+            point.
 
     Returns:
-        np.ndarray: Numpy array of shape (n_clusters,) with the index of the closest point to the centroid in each cluster.
+        np.ndarray: Numpy array of shape (n_clusters,) with the index of the closest point to the
+            centroid in each cluster.
     """
     closest_points_indices = []
     for i in range(1, len(centers) + 1):
@@ -157,16 +157,17 @@ def plot_clustering_results(
     n_clusters: int,
     labels: np.ndarray,
     closest_points_indices: np.ndarray,
-    save_folder: Union[Path, str] = ".",
+    save_folder: Path | str = ".",
 ) -> Figure:
     """Plot the clustering results.
 
     Args:
         points (np.ndarray): 2D numpy array of shape (n_points, 2) containing the points to cluster.
         n_clusters (int): Total number of calculated clusters.
-        labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each point.
-        closest_points_indices (np.ndarray): Numpy array of shape (n_clusters,) with the index of the closest point
-            to the centroid in each cluster.
+        labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each
+            point.
+        closest_points_indices (np.ndarray): Numpy array of shape (n_clusters,) with the index of
+            the closest point to the centroid in each cluster.
         save_folder (str, optional): Folder to save the plot in. Defaults to ".".
 
     Returns:
@@ -239,14 +240,11 @@ def compute_distance_weight_matrix(
     Returns:
         np.ndarray: The distance weight matrix.
     """
-
     # Compute pairwise distance matrix
     ads_coord_distances = distance.cdist(ads_coords, ads_coords, "euclidean")
 
     # Compute distance decay matrix using softmax
-    distance_weight_matrix = softmax(
-        -ads_coord_distances / distance_decay_factor, axis=1
-    )
+    distance_weight_matrix = softmax(-ads_coord_distances / distance_decay_factor, axis=1)
 
     assert np.allclose(np.sum(distance_weight_matrix, axis=1), 1.0)
 
@@ -266,7 +264,7 @@ def plot_distance_weight_matrix(
         Figure: The figure object.
     """ ""
     # Define colors
-    colors = ["b", "g", "r", "c", "m", "y", "k"]
+    # colors = ["b", "g", "r", "c", "m", "y", "k"]
 
     # Create a larger plot
     fig, ax = plt.subplots(figsize=(10, 7), dpi=DPI)
@@ -275,7 +273,7 @@ def plot_distance_weight_matrix(
     img = ax.imshow(distance_weight_matrix, cmap="hot", interpolation="nearest")
 
     # Add a colorbar to the figure to show how colors correspond to values
-    cb = plt.colorbar(img, ax=ax)
+    plt.colorbar(img, ax=ax)
 
     ax.set_xlabel("Dimension 1", fontsize=14)
     ax.set_xlabel("Dimension 2", fontsize=14)
@@ -309,13 +307,12 @@ def plot_decay_curve(decay_factor: float, save_folder: str = ".") -> Figure:
 
 def plot_specific_weights(
     coords: np.ndarray,
-    weights: Union[list, np.ndarray],
+    weights: list | np.ndarray,
     site_idx: int,
-    save_folder: Union[Path, str] = ".",
+    save_folder: Path | str = ".",
     run_iter: int = 0,
 ) -> Figure:
-    """
-    Plot weights of the adsorption sites on the lattice.
+    """Plot weights of the adsorption sites on the lattice.
 
     Args:
         coords (np.ndarray): The coordinates of the adsorption sites.
@@ -351,13 +348,11 @@ def plot_specific_weights(
         s=200,
     )
     # Add a colorbar to the figure to show how colors correspond to values
-    cb = plt.colorbar(scatter, ax=ax)
+    plt.colorbar(scatter, ax=ax)
 
     ax.grid(True)
     ax.set_xlabel("Dimension 1", fontsize=14)
     ax.set_ylabel("Dimension 2", fontsize=14)
-    ax.set_title(
-        "2D representation of adsorption sites color-coded by weights", fontsize=16
-    )
+    ax.set_title("2D representation of adsorption sites color-coded by weights", fontsize=16)
     plt.savefig(f"{save_folder}/specific_weights_on_lattice_iter_{run_iter:06}.png")
     return fig

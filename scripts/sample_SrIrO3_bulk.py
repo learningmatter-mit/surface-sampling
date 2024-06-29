@@ -1,3 +1,5 @@
+"""Script to sample SrIrO3 bulk system using VSSR-MC."""
+
 import argparse
 import json
 import logging
@@ -5,7 +7,6 @@ import pickle
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
-from typing import List, Union
 
 from nff.io.ase_calcs import NeuralFF
 from nff.nn.models.chgnet import CHGNetNFF
@@ -33,7 +34,7 @@ def parse_args():
         "--save_folder",
         type=Path,
         default="./",
-        help="Folder to save cut surfaces.",
+        help="Folder to save sampled surfaces.",
     )
     parser.add_argument(
         "--nnids",
@@ -52,18 +53,12 @@ def parse_args():
     parser.add_argument("--sweeps", type=int, default=100, help="MCMC sweeps")
     parser.add_argument("--sweep_size", type=int, default=50, help="MCMC sweep size")
     parser.add_argument("--temp", type=float, default=1.0, help="temperature in kbT")
-    parser.add_argument(
-        "--relax", action="store_true", help="perform relaxation for the steps"
-    )
-    parser.add_argument(
-        "--relax_steps", type=int, default=5, help="max relaxation steps"
-    )
+    parser.add_argument("--relax", action="store_true", help="perform relaxation for the steps")
+    parser.add_argument("--relax_steps", type=int, default=5, help="max relaxation steps")
     parser.add_argument(
         "--record_interval", type=int, default=5, help="record interval for relaxation"
     )
-    parser.add_argument(
-        "--offset", action="store_true", help="whether to use energy offsets"
-    )
+    parser.add_argument("--offset", action="store_true", help="whether to use energy offsets")
     parser.add_argument(
         "--offset_data",
         type=str,
@@ -76,15 +71,14 @@ def parse_args():
         help="device to use for calculations",
     )
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(
-    starting_structure: Union[Path, str],
+    starting_structure: Path | str,
     save_folder: Path,
-    nnids: List[int],
-    chem_pot: List[float],
+    nnids: list[int],
+    chem_pot: list[float],
     sweeps: int,
     sweep_size: int,
     temp: float,
@@ -98,16 +92,30 @@ def main(
     """Perform VSSR-MC sampling for SrIrO3 bulk system.
 
     Args:
-        args (argparse.Namespace): command line arguments
+        starting_structure (Path | str): path to the starting structure
+        save_folder (Path): Folder to save sampled surfaces.
+        nnids (list[int]): ids of the nnpotentials to use
+        chem_pot (list[float]): chemical potential for each element
+        sweeps (int): MCMC sweeps
+        sweep_size (int): MCMC steps (iterations) per sweep
+        temp (float): temperature in kbT
+        relax (bool): perform relaxation for the steps
+        offset_data_path (str): path to the offset data
+        relax_steps (int, optional): max relaxation steps. Defaults to 20.
+        record_interval (int, optional): save interval for relaxation. Defaults to False.
+        offset (bool, optional): whether to use energy offsets. Defaults to False.
+        device (str, optional): device to use for calculations. Defaults to "cuda".
     """
-
     save_path = Path(save_folder)
     save_path.mkdir(parents=True, exist_ok=True)
 
-    if device == "cuda":
-        DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
-    else:
-        DEVICE = "cpu"
+    DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}" if device == "cuda" else "cpu"
+    try:
+        with open(offset_data_path, "r") as f:
+            offset_data = json.load(f)
+    except FileNotFoundError as e:
+        logger.error("Could not find offset data at %s", offset_data_path)
+        raise e
 
     system_settings = {
         "surface_name": "SrIrO3_bulk",
@@ -132,7 +140,7 @@ def main(
             "Ir": chem_pot[1],
             "O": chem_pot[2],
         },
-        "offset_data": json.load(open(offset_data_path, "r")),
+        "offset_data": offset_data,
         "optimizer": "BFGS",
         "relax_atoms": relax,
         "relax_steps": relax_steps,
@@ -168,7 +176,7 @@ def main(
 
     # Initialize SurfaceSystem (actually bulk system)
     ads_positions = cubic_cell_2x2x2.get_positions()
-    ads_idx = [i for i in range(len(ads_positions))]
+    ads_idx = list(range(len(ads_positions)))
 
     # remove the first ads site due to 0 index
     # 0 index will always be thought of as being empty
@@ -199,8 +207,8 @@ def main(
 
     bulk = SurfaceSystem(
         slab_batch,
-        ads_positions,
-        nff_surf_calc,
+        calc=nff_surf_calc,
+        ads_coords=ads_positions,
         occ=ads_idx,
         system_settings=system_settings,
     )
@@ -257,9 +265,7 @@ def main(
 
     # Flatten list of lists
     traj_structures = [item for sublist in traj_structures for item in sublist]
-    print(
-        f"saving all structures in relaxation paths with length {len(traj_structures)}"
-    )
+    print(f"saving all structures in relaxation paths with length {len(traj_structures)}")
 
     with open(f"{mcmc.run_folder}/relax_traj_{len(traj_structures)}.pkl", "wb") as f:
         pickle.dump(traj_structures, f)

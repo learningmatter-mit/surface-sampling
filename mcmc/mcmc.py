@@ -1,4 +1,4 @@
-"""Performs sampling of surface reconstructions using an MCMC-based algorithm"""
+"""Performs sampling of surface reconstructions using an MCMC-based algorithm."""
 
 import logging
 import os
@@ -16,7 +16,7 @@ from mcmc.events.criterion import (
 from mcmc.events.event import Change, Exchange
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
 from mcmc.system import SurfaceSystem
-from mcmc.utils import create_anneal_schedule, setup_folders, setup_logger
+from mcmc.utils import create_anneal_schedule, setup_folders
 from mcmc.utils.misc import (
     find_closest_points_indices,
     get_cluster_centers,
@@ -74,17 +74,43 @@ class MCMC:
         num_ads_atoms=0,
         testing=False,
         adsorbates=None,
-        relax=False,
         filter_distance: float = 0.0,
         **kwargs,
     ) -> None:
+        """Initialize the MCMC class.
+
+        Args:
+            canonical (bool, optional): If True, perform canonical sampling. Defaults to False.
+            num_ads_atoms (int, optional): The number of adsorbed atoms. Defaults to 0.
+            testing (bool, optional): If True, perform testing. Defaults to False.
+            adsorbates (list, optional): The list of adsorbates. Defaults to None.
+            filter_distance (float, optional): The distance for filtering. Defaults to 0.0.
+            **kwargs: Additional keyword arguments.
+
+        Attributes:
+            canonical (bool): If True, perform canonical sampling.
+            num_ads_atoms (int): The number of adsorbed atoms.
+            testing (bool): If True, perform testing.
+            adsorbates (list): The list of adsorbates.
+            filter_distance (float): The distance for filtering.
+            kwargs: Additional keyword arguments.
+            surface: The surface system.
+            total_sweeps (int): The total number of sweeps.
+            sweep_size (int): The number of steps to perform in each sweep.
+            temp (float): The temperature parameter used in the Metropolis-Hastings algorithm for MC
+                simulations.
+            alpha (float): The alpha parameter used in the annealing schedule.
+            run_folder (str): The folder in which to save the results of the simulation.
+            curr_energy (float): The energy of the current state before attempting to change it.
+
+        Raises:
+            AssertionError: If canonical sampling is selected but the number of adsorbed atoms is
+            fewer than 0.
+        """
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms  # TODO can be (re)moved
         self.testing = testing
         self.adsorbates = adsorbates
-        self.relax = (
-            relax  # TODO remove after writing the copy methods for SurfaceSystem
-        )
         self.filter_distance = filter_distance
         self.kwargs = kwargs
 
@@ -111,20 +137,20 @@ class MCMC:
         anneal_schedule=None,
         multiple_anneal=False,
     ) -> np.ndarray:
-        # TODO update with logger
-        """Initialize the MCMC simulation by setting up the run folder, preparing the canonical slab, and creating the
-        annealing schedule.
+        """Initialize the MCMC simulation by setting up the run folder, preparing the canonical
+        slabs, and creating the annealing schedule.
 
         Args:
-            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to False.
+            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to
+                False.
             perform_annealing (bool, optional): If True, perform annealing. Defaults to False.
             anneal_schedule (list, optional): The annealing schedule. Defaults to None.
-            multiple_anneal (bool, optional): If True, perform multiple annealing. Defaults to False.
+            multiple_anneal (bool, optional): If True, perform multiple annealing. Defaults to
+                False.
 
         Returns:
             np.ndarray: The annealing schedule.
         """
-
         if not self.run_folder:
             self.run_folder = setup_folders(
                 self.surface.surface_name,
@@ -165,13 +191,14 @@ class MCMC:
         """Alias for `mcmc_run` function.
 
         Args:
-            surface (SurfaceSystem): The surface system on which the MCMC simulation is to be performed.
+            surface (SurfaceSystem): The surface system on which the MCMC simulation is to be
+            performed.
         """
         self.mcmc_run(surface)
 
     def get_initial_energy(self):
-        """Calculate the energy of the initial surface structure. If the calculator is not set, energy will be
-        set to 0.
+        """Calculate the energy of the initial surface structure. If the calculator is not set,
+        energy will be set to 0.
 
         Returns:
             float: The energy of the initial surface structure.
@@ -184,11 +211,12 @@ class MCMC:
 
     # TODO: refactor out, might take some effort
     def prepare_canonical(self, even_adsorption_sites: bool = False):
-        """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the desired number of
-        adsorbed atoms are obtained.
+        """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the
+        desired number of adsorbed atoms are obtained.
 
         Args:
-            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to False.
+            even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to
+            False.
 
         Raises:
             AssertionError: If the number of adsorbed atoms is less than 0.
@@ -203,9 +231,7 @@ class MCMC:
             centers, labels = get_cluster_centers(
                 self.surface.ads_coords[:, :2], self.num_ads_atoms
             )
-            sites_idx = find_closest_points_indices(
-                self.surface.ads_coords[:, :2], centers, labels
-            )
+            sites_idx = find_closest_points_indices(self.surface.ads_coords[:, :2], centers, labels)
             plot_clustering_results(
                 self.surface.ads_coords,
                 self.num_ads_atoms,
@@ -223,15 +249,9 @@ class MCMC:
             # perform semi-grand canonical until num_ads_atoms are obtained
             while self.surface.num_adsorbates < self.num_ads_atoms:
                 self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
-                # site_idx = next(site_iterator)
-                # self.curr_energy, _ = self.change_site(
-                #     prev_energy=self.curr_energy, site_idx=site_idx
-                # )
 
         self.surface.real_atoms.write(
-            os.path.join(
-                self.run_folder, f"{self.surface.surface_name}_canonical_init.cif"
-            )
+            os.path.join(self.run_folder, f"{self.surface.surface_name}_canonical_init.cif")
         )
 
     # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
@@ -242,15 +262,16 @@ class MCMC:
         Parameters
         ----------
         prev_energy : float, optional
-            The energy of the current state before attempting to change it. If it is not provided and the
-        `testing` flag is not set, it will be calculated using the `slab_energy` function.
+            The energy of the current state before attempting to change it. If it is not provided
+            and the `testing` flag is not set, it will be calculated using the `slab_energy`
+            function.
         iter_num : int, optional
             An integer representing the current iteration number of the function.
 
-        Returns
+        Returns:
         -------
-            the energy of the new slab and a boolean value indicating whether the proposed change was
-        accepted or not.
+            the energy of the new slab and a boolean value indicating whether the proposed change
+            was accepted or not.
 
         """
         if iter_num % self.sweep_size == 0:
@@ -265,9 +286,7 @@ class MCMC:
         proposal = SwitchProposal(
             system=self.surface,
             adsorbate_list=self.adsorbates.copy(),
-            require_per_atom_energies=self.kwargs.get(
-                "require_per_atom_energies", False
-            ),
+            require_per_atom_energies=self.kwargs.get("require_per_atom_energies", False),
             require_distance_decay=self.kwargs.get("require_distance_decay", False),
             temp=self.temp,
             run_folder=self.run_folder,
@@ -294,12 +313,11 @@ class MCMC:
         energy = self.surface.results["surface_energy"]
         return energy, accept
 
-    def change_site(
-        self, prev_energy: float = 0, iter_num: int = 1, site_idx: int = None
-    ):
-        """Performs a semigrand canonical sampling iteration. It randomly chooses a site to change identity in a slab, adds or removes an atom from the site,
-        optionally performs relaxation, calculates the energy of the new slab, and accepts or rejects the change based
-        on the Boltzmann-weighted energy difference, chemical potential change, and temperature.
+    def change_site(self, prev_energy: float = 0, iter_num: int = 1, site_idx: int | None = None):
+        """Performs a semigrand canonical sampling iteration. It randomly chooses a site to change
+        identity in a slab, adds or removes an atom from the site, optionally performs relaxation,
+        calculates the energy of the new slab, and accepts or rejects the change based on the
+        Boltzmann-weighted energy difference, chemical potential change, and temperature.
 
         Parameters
         ----------
@@ -310,11 +328,10 @@ class MCMC:
         site_idx : int, optional
             Specify the index of the site to switch.
 
-        Returns
+        Returns:
         -------
-            the energy of the new slab and a boolean value indicating whether the proposed change was
-        accepted or not.
-
+            the energy of the new slab and a boolean value indicating whether the proposed change
+            was accepted or not.
         """
         logger.debug("\n we are at iter %s", iter_num)
         if not prev_energy and not self.testing:
@@ -327,9 +344,7 @@ class MCMC:
         )
 
         if self.filter_distance:
-            criterion = DistanceCriterion(
-                filter_distance=self.kwargs["filter_distance"]
-            )
+            criterion = DistanceCriterion(filter_distance=self.kwargs["filter_distance"])
             logger.debug("Using distance filter")
 
         elif self.testing:
@@ -353,7 +368,8 @@ class MCMC:
             i (int, optional): The sweep number. Defaults to 0.
 
         Returns:
-            dict: A dictionary containing the history, trajectory, energy, adsorption count, and acceptance rate.
+            dict: A dictionary containing the history, trajectory, energy, adsorption count, and
+                acceptance rate.
         """
         num_accept = 0
         logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
@@ -372,23 +388,16 @@ class MCMC:
 
         # save structure and traj for easy viewing
         self.surface.save_structures(sweep_num=i + 1, save_folder=self.run_folder)
-        # surface = self.surface.copy_without_calc()
-        # BUG: not working for example.ipynb `TypeError: cannot pickle '_thread.lock' object`
-        # TODO fix
-        surface = (
-            self.surface.relaxed_atoms.copy()
-            if self.relax
-            else self.surface.real_atoms.copy()
-        )
 
-        result = {
+        surface = self.surface.copy(copy_calc=False)
+        surface.unset_calc()
+        return {
             "history": surface,
             "trajectory": self.surface.relax_traj,
             "energy": self.surface.get_surface_energy(),
             "adsorption_count": self.surface.num_adsorbates,
             "acceptance_rate": num_accept / self.sweep_size,
         }
-        return result
 
     def mcmc_run(
         self,
@@ -399,37 +408,49 @@ class MCMC:
         perform_annealing=False,
         alpha: float = 0.9,
         multiple_anneal: bool = False,
-        anneal_schedule: list = None,
-        run_folder: str = None,
+        anneal_schedule: list | None = None,
+        run_folder: str | None = None,
         starting_iteration: list = 0,
         even_adsorption_sites: bool = False,
         **kwargs,
-    ):
-        # TODO separate out annealing schedule
+    ) -> dict:
         """This function runs an MC simulation for a given number of sweeps and temperature, and
         returns the history of the simulation along with summary statistics.
 
-        Parameters
-        ----------
-        num_sweeps : int, optional
-            The number of MCMC sweeps to perform.
-        temp : float, optional
-            The temperature parameter is used in the Metropolis-Hastings algorithm for MC simulations.
-            It controls the probability of accepting a proposed move during the simulation. A higher temperature
-            leads to a higher probability of accepting a move, while a lower temperature leads to a lower probability
-            of accepting a move.
-        alpha : float, optional
-            The alpha parameter is a value between 0 and 1 that determines the annealing rate. A higher
-            alpha results in a slower annealing rate, while a lower alpha results in a faster annealing rate.
-        surface : SurfaceSystem
-            The `surface` is the starting surface structure on which the MC simulation is
-            being performed.
+        Args:
+            surface (SurfaceSystem): The surface system on which the MCMC simulation is to be
+                performed.
+            total_sweeps (int, optional): The number of MCMC sweeps to perform. Defaults to 800.
+            num_sweeps : int, optional
+                The number of MCMC sweeps to perform.
+            sweep_size : int, optional
+                The number of steps to perform in each sweep.
+            start_temp : float, optional
+                The temperature parameter is used in the Metropolis-Hastings algorithm for MC
+                simulations. It controls the probability of accepting a proposed move during the
+                simulation. A higher temperature leads to a higher probability of accepting a move,
+                while a lower temperature leads to a lower probability of accepting a move.
+            perform_annealing : bool, optional
+                If True, perform annealing. Defaults to False.
+            alpha : float, optional
+                The alpha parameter is a value between 0 and 1 that determines the annealing rate.
+                A higher alpha results in a slower annealing rate, while a lower alpha results in
+                a faster annealing rate.
+            multiple_anneal : bool, optional
+                If True, perform multiple annealing. Defaults to False.
+            anneal_schedule : list, optional
+                The annealing schedule. Defaults to None.
+            run_folder : str, optional
+                The folder in which to save the results of the simulation. Defaults to None.
+            starting_iteration : list, optional
+                The starting iteration number of the simulation. Defaults to 0.
+            even_adsorption_sites : bool, optional
+                If True, evenly adsorb the sites. Defaults to False.
+            **kwargs : dict, optional
 
-        Returns
-        -------
-            a tuple containing `self.history`, `self.energy_hist`, `self.frac_accept_hist`,
-        `self.adsorption_count_hist`, and `self.run_folder`.
-
+        Returns:
+            dict: A dictionary containing the history, trajectory, energy, adsorption count, and
+                acceptance rate.
         """
         logger.info(
             "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f",
@@ -441,11 +462,9 @@ class MCMC:
         if run_folder:
             self.run_folder = run_folder
 
-        # TODO: add logger, reduce the number of arguments
+        # TODO: add logger
         self.surface = surface
-        logger.info(
-            "There are %d atoms in pristine slab", self.surface.num_pristine_atoms
-        )
+        logger.info("There are %d atoms in pristine slab", self.surface.num_pristine_atoms)
         self.curr_energy = self.get_initial_energy()
         logger.info("Initial energy is %.3f", self.curr_energy)
 
@@ -459,9 +478,7 @@ class MCMC:
         )
 
         logger.info("Starting with iteration %d", starting_iteration)
-        logger.info(
-            "Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list]
-        )
+        logger.info("Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list])
 
         # perform MC sweeps
         results = defaultdict(list)  # TODO: make a dataclass

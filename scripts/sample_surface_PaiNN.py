@@ -1,3 +1,5 @@
+"""Script to sample SrTiO3 surface using VSSR-MC."""
+
 import argparse
 import json
 import logging
@@ -5,10 +7,8 @@ import pickle
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
-from typing import List, Union
 
 import numpy as np
-import torch
 from ase.constraints import FixAtoms
 from nff.io.ase_calcs import NeuralFF
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
@@ -68,18 +68,12 @@ def parse_args():
         help="annealing parameter, fraction to multiply with temperature",
     )
     parser.add_argument("--temp", type=float, default=1.0, help="temperature in kbT")
-    parser.add_argument(
-        "--relax", action="store_true", help="perform relaxation for the steps"
-    )
-    parser.add_argument(
-        "--relax_steps", type=int, default=5, help="max relaxation steps"
-    )
+    parser.add_argument("--relax", action="store_true", help="perform relaxation for the steps")
+    parser.add_argument("--relax_steps", type=int, default=5, help="max relaxation steps")
     parser.add_argument(
         "--record_interval", type=int, default=5, help="record interval for relaxation"
     )
-    parser.add_argument(
-        "--offset", action="store_true", help="whether to use energy offsets"
-    )
+    parser.add_argument("--offset", action="store_true", help="whether to use energy offsets")
     parser.add_argument(
         "--offset_data_path",
         type=str,
@@ -92,15 +86,14 @@ def parse_args():
         help="device to use for calculations",
     )
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(
     surface_name: str,
-    starting_structure_path: Union[Path, str],
-    model_paths: List[str],
-    chem_pot: List[float],
+    starting_structure_path: Path | str,
+    model_paths: list[str],
+    chem_pot: list[float],
     sweeps: int,
     sweep_size: int,
     alpha: float,
@@ -119,25 +112,30 @@ def main(
         surface_name (str): name of the surface
         starting_structure_path (Union[Path, str]): path to the starting structure
         model_paths (List[str]): paths to the models
-        save_folder (Path): Folder to output
         chem_pot (List[float]): chemical potential for each element
         sweeps (int): MCMC sweeps
         sweep_size (int): MCMC sweep size
         alpha (float): alpha for MCMC
         temp (float): temperature in kbT
         relax (bool): perform relaxation for the steps
-
-    Returns:
-        None
+        offset_data_path (str): path to the offset data
+        relax_steps (int, optional): max relaxation steps. Defaults to 20.
+        record_interval (int, optional): save interval for relaxation. Defaults to False.
+        offset (bool, optional): whether to use energy offsets. Defaults to False.
+        device (str, optional): device to use for calculations. Defaults to "cuda".
+        save_folder (Path): Folder to output
     """
-
     save_path = Path(save_folder)
     save_path.mkdir(parents=True, exist_ok=True)
 
-    if device == "cuda":
-        DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
-    else:
-        DEVICE = "cpu"
+    DEVICE = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}" if device == "cuda" else "cpu"
+
+    try:
+        with open(offset_data_path, "r") as f:
+            offset_data = json.load(f)
+    except FileNotFoundError as e:
+        logger.error("Could not find offset data at %s", offset_data_path)
+        raise e
 
     with open(starting_structure_path, "rb") as f:
         starting_slab = pickle.load(f)
@@ -166,12 +164,12 @@ def main(
     calc_settings = {
         "calc_name": "NFF",
         "optimizer": "FIRE",
-        "chem_pots": {elem: chem_pot for elem, chem_pot in zip(elements, chem_pot)},
+        "chem_pots": dict(zip(elements, chem_pot, strict=False)),
         "relax_atoms": relax,
         "relax_steps": relax_steps,
         "record_interval": record_interval,  # record structure every n steps
         "offset": offset,
-        "offset_data": json.load(open(offset_data_path, "r")),
+        "offset_data": offset_data,
     }
 
     # Obtain adsorption sites
@@ -242,7 +240,7 @@ def main(
     slab_batch.set_constraint(c)
 
     surface = SurfaceSystem(
-        slab_batch, ads_positions, nff_surf_calc, system_settings=system_settings
+        slab_batch, ads_coords=ads_positions, calc=nff_surf_calc, system_settings=system_settings
     )
     starting_atoms_path = save_path / "all_virtual_ads.cif"
     print(f"Saving surface with virtual atoms to {starting_atoms_path}")
@@ -301,9 +299,7 @@ def main(
 
     # Flatten list of lists
     traj_structures = [item for sublist in traj_structures for item in sublist]
-    print(
-        f"saving all structures in relaxation paths with length {len(traj_structures)}"
-    )
+    print(f"saving all structures in relaxation paths with length {len(traj_structures)}")
 
     with open(f"{mcmc.run_folder}/relax_traj_{len(traj_structures)}.pkl", "wb") as f:
         pickle.dump(traj_structures, f)

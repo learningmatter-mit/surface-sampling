@@ -1,4 +1,5 @@
-import logging
+"""Set up folders for simulation depending on whether it's semi-grand canonical or canonical."""
+
 import os
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 def setup_folders(
     surface_name: str,
     canonical: bool = False,
-    run_folder: str = None,
+    run_folder: str | None = None,
     total_sweeps: int = 0,
     start_temp: float = 1.0,
     alpha: float = 1.0,
@@ -40,31 +41,3 @@ def setup_folders(
     Path(run_folder).mkdir(parents=True, exist_ok=False)
 
     return run_folder
-
-
-# TODO logger currently in testing phase
-def setup_logger(name, log_file: str, level: int = logging.INFO) -> logging.Logger:
-    """Set up a logger.
-
-    Args:
-        name (str): Name of the logger.
-        log_file (str): Path to the log file.
-        level (int, optional): Logging level. Defaults to logging.INFO.
-
-    Returns:
-        logging.Logger: Logger object.
-    """
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s | %(levelname)s:%(message)s", "%H:%M:%S"
-    )
-    # log to file
-    file_handler = logging.FileHandler(log_file, mode="w")
-    file_handler.setFormatter(formatter)
-    # log to console
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    return logger

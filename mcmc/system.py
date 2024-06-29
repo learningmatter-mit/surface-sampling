@@ -1,21 +1,24 @@
+"""Module to represent a surface system with adsorption sites."""
+
 import copy
 import functools
 import logging
 import os
-import pickle as pkl
 from collections.abc import Iterable
-from typing import Dict, List, Union
+from typing import Self
 
 import ase
 import numpy as np
 from ase import io
 from ase.calculators.calculator import Calculator, PropertyNotImplementedError
-from ase.constraints import FixAtoms
+from ase.constraints import FixAtoms, FixConstraint
 from ase.io.trajectory import TrajectoryWriter
 from catkit.gen.utils import get_unique_coordinates
+from nff.io import AtomsBatch
 from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.core import Structure
-from typing_extensions import Self
+
+from mcmc.utils import SilenceLogger
 
 logger = logging.getLogger(__name__)
 file_dir = os.path.dirname(__file__)
@@ -34,89 +37,116 @@ DEFAULT_SETTINGS = {
 
 
 class SurfaceSystem:
+    """Class to represent surface atoms and adsorption sites."""
+
     def __init__(
         self,
         atoms: ase.Atoms,
-        ads_coords: List,
+        relaxed_atoms: ase.Atoms = None,
         calc: Calculator = None,
-        occ: List = None,
-        system_settings: Dict = None,
+        ads_coords: list | None = None,
+        occ: list | None = None,
+        system_settings: dict | None = None,
+        calc_settings: dict | None = None,
         distance_weight_matrix: np.ndarray = None,
-        default_io_path: str = ".",
+        save_folder: str = ".",
     ) -> None:
-        """Initialize the SurfaceSystem object that encompasses a material surface and adsorption sites.
+        """Initialize the SurfaceSystem object that encompasses a material surface and adsorption
+        sites.
 
         Args:
             atoms (ase.Atoms): The atoms object representing the surface.
-            ads_coords (List): The coordinates of the virtual adsorption sites.
+            relaxed_atoms (ase.Atoms, optional): The relaxed atoms object. Defaults to None.
             calc (Calculator, optional): ASE-style Calculator. Defaults to None.
-            occ (List, optional): The index of the adsorbed atom in the slab at each adsorption site. Defaults to None.
+            ads_coords (list, optional): The coordinates of the virtual adsorption sites.
+            occ (list, optional): Index of the adsorbed atom in the slab at each adsorption
+                site. Empty sites are denoted by 0. Defaults to None.
             system_settings (Dict, optional): Settings for surface system. Defaults to None.
-            distance_weight_matrix (np.ndarray, optional): The distance weight matrix with size (n, n) where n is the
-                number of ads sites. Defaults to None.
-            default_io_path (str, optional): The default path to save the structures. Defaults to ".".
+            calc_settings (Dict, optional): Settings for the calculator. Defaults to None.
+            distance_weight_matrix (np.ndarray, optional): Distance weight matrix with size
+                (n, n) where n is the number of ads sites. Defaults to None.
+            save_folder (str, optional): The default path to save the structures. Defaults to ".".
 
-        TODO: add Attributes once refactored
+        Attributes:
+            system_settings (dict): Settings for the surface system.
+            calc_settings (dict): Settings for the calculator.
+            surface_name (str): The name of the surface.
+            surface_depth (int): Depth of the surface used to determine atoms that can relax.
+            relax_atoms (bool): Whether to relax the surface.
+            all_atoms (ase.Atoms): Atoms object representing the surface with virtual
+                adsorption sites indicated by 'X'.
+            real_atoms (ase.Atoms): Surface with physical atoms only.
+            relaxed_atoms (ase.Atoms): Relaxed surface with physical atoms only.
+            num_pristine_atoms (int): Number of pristine atoms in the surface.
+            calc (Calculator): ASE-style Calculator.
+            relax_traj (list): Trajectory of the relaxation.
+            results (dict): Results of the calculations.
+            _states (dict): Saved states of the SurfaceSystem object.
+            constraints (list): Constraints on the surface.
+            surface_area (float): Surface area. Not currently used.
+            surface_idx (list): Indices of the surface atoms.
+            bulk_idx (list): Indices of the bulk atoms.
+            ads_idx (list): Indices of the adsorbate atoms.
+            ads_coords (list): Coordinates of the virtual adsorption sites.
+            occ (list): Index of the adsorbed atom in the slab at each adsorption site.
+            distance_weight_matrix (np.ndarray): Distance weight matrix.
+            save_folder (str): Default path to save the structures.
+
+        Raises:
+            ValueError: If no relaxed atoms are available
         """
-
-        # TODO the procedure is to go from all_atoms to real_atoms and relaxed_atoms
-        # but for now, we only have the real_atoms and relaxed_atoms to maintain compatibility
-        # with ASE
-        self.all_atoms = None
-        # self.real_atoms = self.all_atoms.copy()
+        # TODO the procedure is to go from all_atoms (with X denoting an empty site) to real_atoms
+        # and relaxed_atoms but for now, we only have the real_atoms and relaxed_atoms to maintain
+        # compatibility with ASE
         self.system_settings = system_settings or DEFAULT_SETTINGS
-        self.calc_settings = calc.parameters.copy() if calc else {}
-
-        self.surface_name = self.system_settings.get(
-            "surface_name", atoms.get_chemical_formula()
-        )
+        if calc_settings:
+            self.calc_settings = calc_settings
+        elif calc:
+            self.calc_settings = calc.parameters.copy()
+        else:
+            self.calc_settings = {}
+        self.surface_name = self.system_settings.get("surface_name", atoms.get_chemical_formula())
         self.surface_depth = self.system_settings.get("surface_depth", None)
-        self.real_atoms = None
-        self.num_pristine_atoms = 0
-        self.calc = calc
-        self.relax_traj = []
-        self.relaxed_atoms = None
-        self.relax_atoms = self.calc_settings.get(
-            "relax_atoms", False
-        )  # whether to relax surface
+        self.relax_atoms = self.calc_settings.get("relax_atoms", False)  # whether to relax surface
 
-        # TODO: before relaxing atoms, save the current unrelaxed state
-        # compare real_atoms with unrelaxed_atoms before deciding to relax
+        # initialize attributes
+        self.all_atoms = None
+        self.real_atoms = None
+        self.relaxed_atoms = None
+        self.num_pristine_atoms = 0
+        self.calc = None
+        self.relax_traj = []
         self.results = {}
         self._states = {}
         self.constraints = []
         self.surface_area = 0.0  # unused
-
         self.surface_idx = []
         self.bulk_idx = []
         self.ads_idx = []
         self.ads_coords = []
         self.occ = []
         self.distance_weight_matrix = distance_weight_matrix
-
-        self.default_io_path = default_io_path
+        self.save_folder = save_folder
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
-        self.initialize(atoms, ads_coords, calc, occ, self.surface_depth)
+        self.initialize(
+            atoms, calc=calc, ads_coords=ads_coords, occ=occ, relaxed_atoms=relaxed_atoms
+        )
 
     def save_state(self, key: str) -> None:
-        """Save the state of the SurfaceSystem object.
+        """Save the state of the SurfaceSystem ject.
 
         Args:
             key (str): The key to save the state as.
         """
-        self.real_atoms.calc = None
-        if self.relax_atoms:
-            self.relaxed_atoms.calc = None
+        calc = self.unset_calc()
         self._states[key] = {
             "real_atoms": self.real_atoms.copy(),
             "relaxed_atoms": self.relaxed_atoms.copy() if self.relaxed_atoms else None,
             "occupation": self.occ.copy(),
             "results": self.results.copy(),
         }
-        self.real_atoms.calc = self.calc
-        if self.relax_atoms:
-            self.relaxed_atoms.calc = self.calc
+        self.set_calc(calc)
 
     def restore_state(self, key: str) -> None:
         """Restore the state of the SurfaceSystem object.
@@ -132,36 +162,38 @@ class SurfaceSystem:
             raise ValueError(f"Cannot restore: No state available for key '{key}'.")
 
         self.real_atoms = state["real_atoms"]
-        self.real_atoms.calc = self.calc
         if self.relax_atoms:
             self.relaxed_atoms = state["relaxed_atoms"]
-            self.relaxed_atoms.calc = self.calc
+        self.set_calc(self.calc)
         self.occ = state["occupation"]
         self.results = state["results"]
 
     def initialize(
         self,
         atoms: ase.Atoms,
-        ads_coords: List,
         calc: Calculator = None,
-        occ: List = None,
-        surface_depth: int = None,
+        ads_coords: list | None = None,
+        occ: list | None = None,
+        relaxed_atoms: ase.Atoms = None,
     ) -> None:
         """Initialize the SurfaceSystem object.
 
         Args:
             atoms (ase.Atoms): The atoms object representing the surface.
-            ads_coords (List): The coordinates of the virtual adsorption sites.
+            ads_coords (list): The coordinates of the virtual adsorption sites.
             calc (Calculator, optional): The calculator object to use. Defaults to None.
-            occ (List, optional): The index of the adsorbed atom at each adsorption site. Defaults to None.
-            surface_depth (int, optional): Number of slab layers to leave unconstrained, starting from highest z coord.
-                A layer is defined as a unique z-coordinate, if left blank will retain constraints from input slab.
+            relaxed_atoms (ase.Atoms, optional): The relaxed atoms object. Defaults to None.
+            occ (list, optional): The index of the adsorbed atom at each adsorption site.
                 Defaults to None.
         """
         self.real_atoms = atoms.copy()
-        self.ads_coords = np.array(ads_coords)
-        self.calc = calc
-        self.real_atoms.calc = self.calc
+        self.relaxed_atoms = relaxed_atoms
+        self.set_calc(calc)
+        self.ads_coords = (
+            np.array(ads_coords)
+            if isinstance(ads_coords, Iterable)
+            else self.initialize_ads_positions()
+        )
         self.all_atoms = self.real_atoms.copy()
         self.initialize_virtual_atoms()
 
@@ -172,24 +204,74 @@ class SurfaceSystem:
             self.occ = np.array(occ)
         logger.info("Initial state is %s", self.occ)
 
-        # calculate from real_atoms and occ
         self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
         logger.info("Number of pristine atoms is %s", self.num_pristine_atoms)
 
-        # setting tags according to Z coordinate (surface will be tagged 1, with tag increasing layerwise downwards)
-        # TODO can move to a helper function to set constraints
+        constraints = self.initialize_constraints()
+        logger.info("Bulk indices are %s", self.bulk_idx)
+        logger.info("Surface indices are %s", self.surface_idx)
+        logger.info("Constraints are %s", constraints)
+
+        if self.relax_atoms:
+            if not isinstance(self.relaxed_atoms, ase.Atoms):
+                logger.info("Relaxing initialized surface")
+                self.relaxed_atoms, _ = self.relax_structure()
+            self.relaxed_atoms.set_constraint(constraints)
+
+    def initialize_ads_positions(self) -> np.ndarray:
+        """Initialize the adsorption sites.
+
+        Returns:
+            np.ndarray: The coordinates of the virtual adsorption sites.
+        """
+        site_finder = AdsorbateSiteFinder(self.pymatgen_struct)
+        logger.info("Initalizing adsorption sites with settings: %s", self.system_settings)
+        ads_site_type = self.system_settings.get("ads_site_type", "all")
+        ads_positions = site_finder.find_adsorption_sites(
+            put_inside=True,
+            symm_reduce=self.system_settings.get("symm_reduce", False),
+            near_reduce=self.system_settings.get("near_reduce", 0.01),
+            distance=self.system_settings.get("planar_distance", 2.0),
+            no_obtuse_hollow=self.system_settings.get("no_obtuse_hollow", True),
+        )[ads_site_type]
+        logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
+        return ads_positions
+
+    def initialize_virtual_atoms(self, virtual_atom_str: str = "X") -> None:
+        """Initialize virtual atoms on the surface.
+
+        Args:
+            virtual_atom_str (str, optional): The string representation of the virtual atom.
+                Defaults to "X".
+        """
+        logger.info("Initializing %s virtual atoms", len(self.ads_coords))
+        self.all_atoms = self.real_atoms.copy()
+        for _, ads_coord in enumerate(self.ads_coords):
+            virtual_adsorbate = ase.Atoms(virtual_atom_str, positions=[ads_coord])
+            self.all_atoms += virtual_adsorbate
+
+    def initialize_constraints(self) -> FixConstraint:
+        """Initialize constraints on the surface. If surface_depth is set, set tags according to
+        Z coordinate. Surface will be tagged 1, with tag increasing layerwise downwards until the
+        surface_depth is reached. All atoms with tags greater than surface_depth will be bulk and
+        thus fixed.
+
+        Returns:
+            FixConstraint: The constraints on the surface.
+        """
         get_unique_coordinates(self.real_atoms, tag=True)
-        if surface_depth is not None:
+        if self.surface_depth is not None:
             # clear existing constraints
             self.real_atoms.constraints = []
             # check valid surface_depth
-            if surface_depth > max(self.real_atoms.get_tags()):
+            if self.surface_depth > max(self.real_atoms.get_tags()):
                 logger.warning(
-                    "Surface depth exceeds number of unique z-coordinates in system, all atoms will be unconstrained."
+                    "Surface depth exceeds number of unique z-coordinates in system, all atoms will"
+                    " be unconstrained."
                 )
             # set constraints according to surface depth
             surface_mask = np.isin(
-                self.real_atoms.get_tags(), list(range(1, surface_depth + 1))
+                self.real_atoms.get_tags(), list(range(1, self.surface_depth + 1))
             )
             self.surface_idx = np.where(surface_mask)[0]
             self.bulk_idx = np.where(~surface_mask)[0]
@@ -198,51 +280,9 @@ class SurfaceSystem:
         else:
             # extract constraints for application to relaxed slab
             constraints = self.real_atoms.constraints
-            self.bulk_idx = (
-                [] if not constraints else constraints[0].todict()["kwargs"]["indices"]
-            )
-            self.surface_idx = [i for i in range(len(atoms)) if i not in self.bulk_idx]
-        logger.info("bulk indices are %s", self.bulk_idx)
-        logger.info("surface indices are %s", self.surface_idx)
-        logger.info("constraints are %s", constraints)
-
-        if self.relax_atoms:
-            self.relaxed_atoms, _ = self.relax_structure()
-            self.relaxed_atoms.set_constraint(constraints)
-
-    def initialize_virtual_atoms(self, virtual_atom_str: str = "X") -> None:
-        """Initialize virtual atoms on the surface.
-
-        Args:
-            virtual_atom_str (str, optional): The string representation of the virtual atom. Defaults to "X".
-        """
-        logger.info("initializing %s virtual atoms", len(self.ads_coords))
-        self.all_atoms = self.real_atoms.copy()
-        for site_idx in range(len(self.ads_coords)):
-            virtual_adsorbate = ase.Atoms(
-                virtual_atom_str, positions=[self.ads_coords[site_idx]]
-            )
-            self.all_atoms += virtual_adsorbate
-
-    def initialize_ads_positions(self, ads_coords: List) -> None:
-        # TODO: add ase positions here as an option if not too difficult
-        # TODO: currently this method doesn't make sense
-        """Initialize the adsorption sites.
-
-        Args:
-            ads_coords (List): The coordinates of the virtual adsorption sites.
-        """
-        site_finder = AdsorbateSiteFinder(self.pymatgen_struct)
-
-        ads_positions = site_finder.find_adsorption_sites(
-            put_inside=True,
-            symm_reduce=False,
-            near_reduce=self.system_settings["near_reduce"],
-            distance=self.system_settings["planar_distance"],
-            no_obtuse_hollow=self.system_settings["no_obtuse_hollow"],
-        )[
-            "all"
-        ]  # TODO: make this better
+            self.bulk_idx = [] if not constraints else constraints[0].todict()["kwargs"]["indices"]
+            self.surface_idx = [i for i in range(len(self.real_atoms)) if i not in self.bulk_idx]
+        return constraints
 
     @property
     def adsorbate_idx(self) -> np.ndarray:
@@ -288,16 +328,17 @@ class SurfaceSystem:
         Returns:
             pymatgen.Structure: The pymatgen structure object.
         """
-        return Structure.from_ase(self.real_atoms)
+        return Structure.from_ase_atoms(self.real_atoms)
 
-    def relax_structure(self, **kwargs) -> tuple[ase.Atoms, float]:
+    def relax_structure(self, **kwargs) -> tuple[ase.Atoms, float | list[float]]:
         """Relax the surface structure.
 
         Args:
             **kwargs: Additional keyword arguments to pass to the calculator.
 
         Returns:
-            Tuple[ase.Atoms, Union[float, List[float]]]: The relaxed surface structure and the potential energy of the system.
+            Tuple[ase.Atoms, float | list[float]]: The relaxed surface structure and the potential
+                energy of the system.
         """
         # have to import here to avoid circular imports
         from mcmc.energy import optimize_slab
@@ -311,7 +352,6 @@ class SurfaceSystem:
             self.save_structures(
                 energy_oob=True,
             )
-            # TODO fix default_io_path
         return relaxed_slab, energy
 
     @staticmethod
@@ -323,7 +363,7 @@ class SurfaceSystem:
             prop (str): The property to update in the results dictionary.
 
         Returns:
-            Union[Callable, Callable]: The decorated function or the decorator.
+            Callable: The decorated function or the decorator.
         """
 
         def decorator_update_results(func):
@@ -337,8 +377,7 @@ class SurfaceSystem:
 
         if _func is None:
             return decorator_update_results
-        else:
-            return decorator_update_results(_func)
+        return decorator_update_results(_func)
 
     @update_results(prop="energy")
     def get_relaxed_energy(self, recalculate=False, **kwargs) -> float:
@@ -371,19 +410,18 @@ class SurfaceSystem:
         return self.real_atoms.get_potential_energy()
 
     @update_results(prop="energy")
-    def get_potential_energy(self, **kwargs) -> Union[float, List[float]]:
+    def get_potential_energy(self, **kwargs) -> float | list[float]:
         """Get the potential energy of the system, relaxed or unrelaxed.
 
         Args:
             **kwargs: Additional keyword arguments to pass to the calculator.
 
         Returns:
-            Union[float, List[float]]: The relaxed or unrelaxed potential energy of the system.
+            float | list[float]: The relaxed or unrelaxed potential energy of the system.
         """
         if self.relax_atoms:
             return self.get_relaxed_energy(**kwargs)
-        else:
-            return self.get_unrelaxed_energy(**kwargs)
+        return self.get_unrelaxed_energy(**kwargs)
 
     @update_results(prop="surface_energy")
     def get_surface_energy(self, recalculate: bool = False, **kwargs) -> float:
@@ -396,7 +434,6 @@ class SurfaceSystem:
         Returns:
             float: The surface energy of the system.
         """
-
         if self.calc is None:
             raise RuntimeError("SurfaceSystem object has no calculator.")
         if "surface_energy" not in self.calc.implemented_properties:
@@ -405,38 +442,30 @@ class SurfaceSystem:
         if self.relax_atoms:
             if self.relaxed_atoms is None or recalculate:
                 _, raw_energy = self.relax_structure(**kwargs)
-            return self.calc.get_property(
-                "surface_energy", atoms=self.relaxed_atoms, **kwargs
-            )
+            return self.calc.get_property("surface_energy", atoms=self.relaxed_atoms, **kwargs)
         return self.calc.get_property("surface_energy", atoms=self.real_atoms, **kwargs)
 
     @update_results(prop="forces")
-    def get_forces(self, **kwargs) -> Union[np.ndarray, List]:
+    def get_forces(self, **kwargs) -> np.ndarray | list:
         """Get the forces acting on the atoms.
 
         Args:
             **kwargs: Additional keyword arguments to pass to the calculator.
 
         Returns:
-            Union[np.ndarray, List]: The forces acting on the atoms.
+            np.ndarray | list: The forces acting on the atoms.
         """
-        if self.relax_atoms:
-            atoms = self.relaxed_atoms
-        else:
-            atoms = self.real_atoms
+        atoms = self.relaxed_atoms if self.relaxed_atoms else self.real_atoms
         try:
             return atoms.get_forces()
         except PropertyNotImplementedError:
             return np.zeros((len(atoms), 3))
 
-    def __len__(self) -> int:
-        return len(self.real_atoms)
-
     def save_structures(
         self,
         sweep_num: int = 0,
         energy_oob: bool = False,
-        save_folder: str = None,
+        save_folder: str | None = None,
     ) -> None:
         """Saves structures for easy viewing.
 
@@ -452,11 +481,11 @@ class SurfaceSystem:
         energy = float(
             self.get_surface_energy(recalculate=False)
         )  # correct structure would be restored
-        logger.info("optim structure has Energy = %.3f", energy)
+        logger.info("Optimized structure has Energy = %.3f", energy)
 
         oob_str = "oob" if energy_oob else "inb"
         if not save_folder:
-            save_folder = self.default_io_path
+            save_folder = self.save_folder
 
         # save cifs for unrelaxed and relaxed slabs (if relaxed)
         io.write(
@@ -505,25 +534,103 @@ class SurfaceSystem:
 
         return calc
 
-    def copy(self) -> Self:
+    def copy(self, copy_calc=False) -> Self:
         """Create a copy of the SurfaceSystem object.
 
         Returns:
             SurfaceSystem: The copied SurfaceSystem object.
         """
-        copy_obj = self.copy_without_calc()
-        copy_obj.set_calc(self.calc)
-
-        return copy_obj
-
-    def copy_without_calc(self) -> Self:
-        """Create a copy of the SurfaceSystem object without the calculator.
-
-        Returns:
-            SurfaceSystem: The copied SurfaceSystem object without the calculator.
-        """
         calc = self.unset_calc()
-        copy_obj = copy.deepcopy(self)
+
+        with SilenceLogger():
+            copy_obj = self.__class__(
+                atoms=self.real_atoms,
+                relaxed_atoms=self.relaxed_atoms,
+                calc=None,
+                ads_coords=self.ads_coords,
+                occ=self.occ,
+                system_settings=self.system_settings,
+                calc_settings=self.calc_settings,
+                distance_weight_matrix=self.distance_weight_matrix,
+                save_folder=self.save_folder,
+            )
+
+        if copy_calc:
+            copied_calc = copy.deepcopy(calc)
+            copy_obj.set_calc(copied_calc)
+        else:
+            copy_obj.set_calc(calc)
         self.set_calc(calc)
 
         return copy_obj
+
+    def todict(self) -> dict:
+        """Return the SurfaceSystem object as a dictionary.
+
+        Returns:
+            dict: The SurfaceSystem object as a dictionary.
+        """
+        return {
+            "real_atoms": self.real_atoms.todict(),
+            "relaxed_atoms": self.relaxed_atoms.todict() if self.relaxed_atoms else None,
+            "calc": None,  # not implemented
+            "ads_coords": self.ads_coords,
+            "occ": self.occ,
+            "system_settings": self.system_settings,
+            "calc_settings": self.calc_settings,
+            "distance_weight_matrix": self.distance_weight_matrix,
+            "save_folder": self.save_folder,
+        }
+
+    @classmethod
+    def fromdict(cls, dct) -> Self:
+        """Rebuild SurfaceSystem object from a dictionary representation (todict).
+
+        Args:
+            dct (dict): dictionary representation of the object.
+
+        Returns:
+            SurfaceSystem: The SurfaceSystem object created from dict.
+        """
+        real_atoms = AtomsBatch.fromdict(
+            dct["real_atoms"]
+        )  # what if ase.Atoms was the original object?
+        relaxed_atoms = AtomsBatch.fromdict(dct["relaxed_atoms"]) if dct["relaxed_atoms"] else None
+        calc = dct["calc"]
+        ads_coords = dct["ads_coords"]
+        occ = dct["occ"]
+        system_settings = dct["system_settings"]
+        calc_settings = dct["calc_settings"]
+        distance_weight_matrix = dct["distance_weight_matrix"]
+        save_folder = dct["save_folder"]
+
+        return cls(
+            real_atoms,
+            relaxed_atoms=relaxed_atoms,
+            calc=calc,
+            ads_coords=ads_coords,
+            occ=occ,
+            system_settings=system_settings,
+            calc_settings=calc_settings,
+            distance_weight_matrix=distance_weight_matrix,
+            save_folder=save_folder,
+        )
+
+    def __len__(self) -> int:
+        """Return the number of atoms in the SurfaceSystem object.
+
+        Returns:
+            int: The number of atoms in the SurfaceSystem object.
+        """
+        return len(self.real_atoms)
+
+    def __repr__(self) -> str:
+        """Return the string representation of the SurfaceSystem object.
+
+        Returns:
+            str: The string representation of the SurfaceSystem object.
+        """
+        return (
+            f"SurfaceSystem({self.real_atoms.get_chemical_formula()} with {len(self.ads_coords)}"
+            " adsorption sites)"
+        )
