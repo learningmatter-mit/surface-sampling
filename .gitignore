@@ -14,6 +14,7 @@
 *.lammps
 __pycache__/
 *tmp_files/*
+*.egg-info/
 
 # test file should still be committed
 !tests/data/**.pkl
