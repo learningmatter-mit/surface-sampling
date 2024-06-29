@@ -36,12 +36,7 @@ def test_Au_energy(required_energy):
     num_ads_atoms = 4 + 2  # for canonical runs
 
     # define settings
-    calc_settings = {
-        "calc_name": "eam",
-        "optimizer": "FIRE",
-        "chem_pots": {"Au": 0.0},  # eV. arbitrary value
-        "relax_atoms": False,
-    }
+    calc_settings = {"pair_style": "eam", "pair_coeff": ["* * Au_u3.eam"]}
 
     system_settings = {
         "surface_name": surface_name,
@@ -60,9 +55,6 @@ def test_Au_energy(required_energy):
         "run_folder": run_folder,
     }
 
-    # use LAMMPS
-    parameters = {"pair_style": "eam", "pair_coeff": ["* * Au_u3.eam"]}
-
     # set up the LAMMPS calculator
     potential_file = Path(os.environ["LAMMPS_POTENTIALS"]) / "Au_u3.eam"
     lammps_surf_calc = LAMMPSRunSurfCalc(
@@ -71,7 +63,7 @@ def test_Au_energy(required_energy):
         keep_alive=False,
         tmp_dir=Path.home() / "vssr_tmp_files",
     )
-    lammps_surf_calc.set(**parameters)
+    lammps_surf_calc.set(**calc_settings)
 
     # initialize SurfaceSystem
     surface = SurfaceSystem(
@@ -83,10 +75,7 @@ def test_Au_energy(required_energy):
     )
 
     # start MCMC
-    mcmc = MCMC(
-        **sampling_settings,
-        relax=calc_settings["relax_atoms"],
-    )
+    mcmc = MCMC(**sampling_settings)
     results = mcmc.mcmc_run(
         surface=surface,
         **sampling_settings,
