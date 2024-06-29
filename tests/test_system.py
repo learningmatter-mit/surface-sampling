@@ -36,6 +36,29 @@ def surface_system():
     )
 
 
+@pytest.fixture()
+def surface_system():
+    """Create a dummy SurfaceSystem object for testing."""
+    atoms = Atoms(symbols=["Ga", "As"], positions=[(0, 0, 0), (0, 0, 3)])
+    ads_coords = [(0, 0, 2), (0, 0, 3)]
+    calc = Calculator()
+    occ = [0, 1]
+    system_settings = {"surface_depth": None}
+    calc_settings = {"relax_atoms": False, "optimizer": "BFGS"}
+    distance_weight_matrix = scipy.special.softmax(
+        scipy.spatial.distance_matrix(atoms.get_positions(), atoms.get_positions()) / 2.35, axis=1
+    )
+    return SurfaceSystem(
+        atoms,
+        calc=calc,
+        ads_coords=ads_coords,
+        occ=occ,
+        system_settings=system_settings,
+        calc_settings=calc_settings,
+        distance_weight_matrix=distance_weight_matrix,
+    )
+
+
 class TestCalculator(Calculator):
     """Test Calculator class."""
 
