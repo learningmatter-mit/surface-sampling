@@ -121,7 +121,6 @@ class MCMC:
         self.temp = 1.0
         self.alpha = 1.0
         self.run_folder = ""
-        self.curr_energy = 0  # TODO: move to elsewhere or exclude
 
         if self.canonical:
             # perform canonical runs
@@ -241,30 +240,24 @@ class MCMC:
             )
 
             for site_idx in sites_idx:
-                self.curr_energy, _ = self.change_site(
-                    prev_energy=self.curr_energy, site_idx=site_idx
-                )
+                self.change_site(site_idx=site_idx)
         else:
             logger.info("randomly adsorbing sites")
             # perform semi-grand canonical until num_ads_atoms are obtained
             while self.surface.num_adsorbates < self.num_ads_atoms:
-                self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
+                self.change_site()
 
         self.surface.real_atoms.write(
             os.path.join(self.run_folder, f"{self.surface.surface_name}_canonical_init.cif")
         )
 
     # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
-    def change_site_canonical(self, prev_energy: float = 0, iter_num: int = 1):
+    def change_site_canonical(self, iter_num: int = 1):
         """This function performs a canonical sampling step. It switches the adsorption sites of two
         adsorbates and checks if the change is energetically favorable.
 
         Parameters
         ----------
-        prev_energy : float, optional
-            The energy of the current state before attempting to change it. If it is not provided
-            and the `testing` flag is not set, it will be calculated using the `slab_energy`
-            function.
         iter_num : int, optional
             An integer representing the current iteration number of the function.
 
@@ -279,9 +272,6 @@ class MCMC:
             plot_specific_distance_weights = True
         else:
             plot_specific_distance_weights = False
-
-        if not prev_energy and not self.testing:
-            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
 
         proposal = SwitchProposal(
             system=self.surface,
@@ -310,10 +300,9 @@ class MCMC:
         event = Exchange(self.surface, proposal, criterion)
 
         accept, self.surface = event.acceptance()
-        energy = self.surface.results["surface_energy"]
-        return energy, accept
+        return accept
 
-    def change_site(self, prev_energy: float = 0, iter_num: int = 1, site_idx: int | None = None):
+    def change_site(self, iter_num: int = 1, site_idx: int | None = None):
         """Performs a semigrand canonical sampling iteration. It randomly chooses a site to change
         identity in a slab, adds or removes an atom from the site, optionally performs relaxation,
         calculates the energy of the new slab, and accepts or rejects the change based on the
@@ -334,8 +323,6 @@ class MCMC:
             was accepted or not.
         """
         logger.debug("\n we are at iter %s", iter_num)
-        if not prev_energy and not self.testing:
-            prev_energy = float(self.surface.get_surface_energy(recalculate=True))
 
         proposal = ChangeProposal(
             system=self.surface,
@@ -358,8 +345,7 @@ class MCMC:
         event = Change(self.surface, proposal, criterion)
 
         accept, self.surface = event.acceptance()
-        energy = self.surface.results["surface_energy"]
-        return energy, accept
+        return accept
 
     def sweep(self, i: int = 0) -> dict:
         """Perform MC sweep.
@@ -377,13 +363,9 @@ class MCMC:
             run_idx = self.sweep_size * i + j + 1
             # TODO change to self.step()
             if self.canonical:
-                self.curr_energy, accept = self.change_site_canonical(
-                    prev_energy=self.curr_energy, iter_num=run_idx
-                )
+                accept = self.change_site_canonical(iter_num=run_idx)
             else:
-                self.curr_energy, accept = self.change_site(
-                    prev_energy=self.curr_energy, iter_num=run_idx
-                )
+                accept = self.change_site(iter_num=run_idx)
             num_accept += accept
 
         # save structure and traj for easy viewing
@@ -465,8 +447,6 @@ class MCMC:
         # TODO: add logger
         self.surface = surface
         logger.info("There are %d atoms in pristine slab", self.surface.num_pristine_atoms)
-        self.curr_energy = self.get_initial_energy()
-        logger.info("Initial energy is %.3f", self.curr_energy)
 
         self.total_sweeps = total_sweeps
         self.sweep_size = sweep_size
