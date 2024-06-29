@@ -1,3 +1,5 @@
+"""Regression test for the energy of the Au(110) surface."""
+
 import os
 import pickle as pkl
 from pathlib import Path
@@ -21,9 +23,12 @@ def test_Au_energy(required_energy):
     run_folder.mkdir(parents=True, exist_ok=True)
 
     # create slab and get proper ads sites
-    slab_pkl = open(current_dir / "data/Au_110_2x2_pristine_slab.pkl", "rb")
-
-    slab = pkl.load(slab_pkl)
+    try:
+        with open(current_dir / "data/Au_110_2x2_pristine_slab.pkl", "rb") as slab_pkl:
+            slab = pkl.load(slab_pkl)
+    except FileNotFoundError as e:
+        print("Could not find the Au(110) slab file")
+        raise e
 
     proper_adsorbed = read(current_dir / "data/Au_110_2x2_proper_adsorbed_slab.cif")
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
@@ -41,9 +46,6 @@ def test_Au_energy(required_energy):
     system_settings = {
         "surface_name": surface_name,
         "cutoff": 5.0,
-        "near_reduce": 0.01,
-        "planar_distance": 1.5,
-        "no_obtuse_hollow": True,
     }
 
     sampling_settings = {
@@ -74,10 +76,10 @@ def test_Au_energy(required_energy):
     # initialize SurfaceSystem
     surface = SurfaceSystem(
         slab,
-        ads_positions,
-        lammps_surf_calc,
+        ads_coords=ads_positions,
+        calc=lammps_surf_calc,
         system_settings=system_settings,
-        default_io_path=run_folder,
+        save_folder=run_folder,
     )
 
     # start MCMC

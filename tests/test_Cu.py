@@ -1,3 +1,5 @@
+"""Regression test for the energy of the Cu(100) surface."""
+
 import os
 from pathlib import Path
 
@@ -5,8 +7,6 @@ import catkit
 import numpy as np
 import pytest
 from ase.build import bulk
-from pymatgen.analysis.adsorption import AdsorbateSiteFinder
-from pymatgen.io.ase import AseAtomsAdaptor
 
 from mcmc import MCMC
 from mcmc.calculators import LAMMPSRunSurfCalc
@@ -47,7 +47,9 @@ def test_Cu_energy(required_energy):
         "cutoff": 5.0,
         "near_reduce": 0.01,
         "planar_distance": 1.5,
+        "symm_reduce": True,
         "no_obtuse_hollow": True,
+        "ads_site_type": "all",
     }
 
     sampling_settings = {
@@ -59,19 +61,6 @@ def test_Cu_energy(required_energy):
         "adsorbates": ["Cu"],
         "run_folder": run_folder,
     }
-
-    # get ads positions
-    pristine_slab = slab.copy()
-    pristine_pmg_slab = AseAtomsAdaptor.get_structure(pristine_slab)
-    site_finder = AdsorbateSiteFinder(pristine_pmg_slab)
-    ads_positions = site_finder.find_adsorption_sites(
-        put_inside=True,
-        symm_reduce=True,
-        near_reduce=system_settings["near_reduce"],
-        distance=system_settings["planar_distance"],
-        no_obtuse_hollow=system_settings["no_obtuse_hollow"],
-    )["all"]
-    print(f"adsorption coordinates are: {ads_positions[:5]}...")
 
     # use LAMMPS
     parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
@@ -89,10 +78,9 @@ def test_Cu_energy(required_energy):
     # initialize SurfaceSystem
     surface = SurfaceSystem(
         slab,
-        ads_positions,
-        lammps_surf_calc,
+        calc=lammps_surf_calc,
         system_settings=system_settings,
-        default_io_path=run_folder,
+        save_folder=run_folder,
     )
 
     # start MCMC
