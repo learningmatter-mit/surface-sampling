@@ -1,5 +1,6 @@
 """Regression test for the energy of the Cu(100) surface."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -11,8 +12,10 @@ from ase.build import bulk
 from mcmc import MCMC
 from mcmc.calculators import LAMMPSRunSurfCalc
 from mcmc.system import SurfaceSystem
+from mcmc.utils import setup_logger
 
 current_dir = Path(__file__).parent
+logger = setup_logger("mcmc", current_dir / "mc.log", logging.INFO)
 
 
 @pytest.mark.parametrize("required_energy", [-25.2893])

@@ -38,6 +38,6 @@ def setup_folders(
     else:
         run_folder = run_folder_path / (run_folder_base + "_semigrand")
 
-    Path(run_folder).mkdir(parents=True, exist_ok=False)
+    run_folder.mkdir(parents=True, exist_ok=False)
 
     return run_folder

@@ -23,11 +23,6 @@ from mcmc.utils.misc import (
     plot_clustering_results,
 )
 
-logger = logging.getLogger(__name__)
-file_dir = os.path.dirname(__file__)
-
-ENERGY_DIFF_LIMIT = 1e3  # in eV
-
 # TODO: idea of final code
 # class MCMCSampling:
 #     def __init__(self) -> None:
@@ -70,20 +65,20 @@ class MCMC:
 
     def __init__(
         self,
+        adsorbates=None,
         canonical=False,
         num_ads_atoms=0,
         testing=False,
-        adsorbates=None,
         filter_distance: float = 0.0,
         **kwargs,
     ) -> None:
         """Initialize the MCMC class.
 
         Args:
+            adsorbates (list, optional): The list of adsorbates. Defaults to None.
             canonical (bool, optional): If True, perform canonical sampling. Defaults to False.
             num_ads_atoms (int, optional): The number of adsorbed atoms. Defaults to 0.
             testing (bool, optional): If True, perform testing. Defaults to False.
-            adsorbates (list, optional): The list of adsorbates. Defaults to None.
             filter_distance (float, optional): The distance for filtering. Defaults to 0.0.
             **kwargs: Additional keyword arguments.
 
@@ -99,18 +94,18 @@ class MCMC:
             sweep_size (int): The number of steps to perform in each sweep.
             temp (float): The temperature parameter used in the Metropolis-Hastings algorithm for MC
                 simulations.
+            logger (logging.Logger): The logger object.
             alpha (float): The alpha parameter used in the annealing schedule.
             run_folder (str): The folder in which to save the results of the simulation.
-            curr_energy (float): The energy of the current state before attempting to change it.
 
         Raises:
             AssertionError: If canonical sampling is selected but the number of adsorbed atoms is
             fewer than 0.
         """
+        self.adsorbates = adsorbates
         self.canonical = canonical
         self.num_ads_atoms = num_ads_atoms  # TODO can be (re)moved
         self.testing = testing
-        self.adsorbates = adsorbates
         self.filter_distance = filter_distance
         self.kwargs = kwargs
 
@@ -120,6 +115,7 @@ class MCMC:
         self.sweep_size = 100
         self.temp = 1.0
         self.alpha = 1.0
+        self.logger = None
         self.run_folder = ""
 
         if self.canonical:
@@ -132,9 +128,10 @@ class MCMC:
     def initialize(
         self,
         even_adsorption_sites: bool = False,
-        perform_annealing=False,
-        anneal_schedule=None,
-        multiple_anneal=False,
+        perform_annealing: bool = False,
+        anneal_schedule: list | np.ndarray = None,
+        multiple_anneal: bool = False,
+        run_folder: Path | str | None = None,
     ) -> np.ndarray:
         """Initialize the MCMC simulation by setting up the run folder, preparing the canonical
         slabs, and creating the annealing schedule.
@@ -143,14 +140,16 @@ class MCMC:
             even_adsorption_sites (bool, optional): If True, evenly adsorb the sites. Defaults to
                 False.
             perform_annealing (bool, optional): If True, perform annealing. Defaults to False.
-            anneal_schedule (list, optional): The annealing schedule. Defaults to None.
+            anneal_schedule (list | np.ndarray, optional): The annealing schedule. Defaults to None.
             multiple_anneal (bool, optional): If True, perform multiple annealing. Defaults to
                 False.
+            run_folder (Path | str | None, optional): The folder in which to save the results of the
+                simulation. Defaults to None.
 
         Returns:
             np.ndarray: The annealing schedule.
         """
-        if not self.run_folder:
+        if not run_folder:
             self.run_folder = setup_folders(
                 self.surface.surface_name,
                 canonical=self.canonical,
@@ -158,16 +157,11 @@ class MCMC:
                 start_temp=self.temp,
                 alpha=self.alpha,
             )
-            logger.info("Generating run folder %s", self.run_folder)
         else:
-            logger.info("Using user specified run folder %s", self.run_folder)
+            self.run_folder = run_folder
 
+        self.logger.info("Using run folder %s", self.run_folder)
         Path(self.run_folder).mkdir(parents=True, exist_ok=True)
-
-        # if not self.logger:
-        # self.logger = setup_logger(
-        #     __name__, f"{self.run_folder}/mc.log", level=logging.INFO
-        # )
 
         if self.canonical:
             self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
@@ -195,19 +189,6 @@ class MCMC:
         """
         self.mcmc_run(surface)
 
-    def get_initial_energy(self):
-        """Calculate the energy of the initial surface structure. If the calculator is not set,
-        energy will be set to 0.
-
-        Returns:
-            float: The energy of the initial surface structure.
-        """
-        try:
-            energy = float(self.surface.get_surface_energy(recalculate=True))
-        except RuntimeError:
-            energy = 0  # Calculator does not exist
-        return energy
-
     # TODO: refactor out, might take some effort
     def prepare_canonical(self, even_adsorption_sites: bool = False):
         """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the
@@ -225,7 +206,7 @@ class MCMC:
         ), "for canonical runs, need number of adsorbed atoms greater than 0"
 
         if even_adsorption_sites:
-            logger.info("evenly adsorbing sites")
+            self.logger.info("evenly adsorbing sites")
             # Do clustering
             centers, labels = get_cluster_centers(
                 self.surface.ads_coords[:, :2], self.num_ads_atoms
@@ -242,7 +223,7 @@ class MCMC:
             for site_idx in sites_idx:
                 self.change_site(site_idx=site_idx)
         else:
-            logger.info("randomly adsorbing sites")
+            self.logger.info("randomly adsorbing sites")
             # perform semi-grand canonical until num_ads_atoms are obtained
             while self.surface.num_adsorbates < self.num_ads_atoms:
                 self.change_site()
@@ -268,7 +249,7 @@ class MCMC:
 
         """
         if iter_num % self.sweep_size == 0:
-            logger.info("At iter %s", iter_num)
+            self.logger.info("At iter %s", iter_num)
             plot_specific_distance_weights = True
         else:
             plot_specific_distance_weights = False
@@ -283,19 +264,19 @@ class MCMC:
             plot_specific_distance_weights=plot_specific_distance_weights,
             run_iter=iter_num,
         )
-        logger.debug("\n we are at iter %s", iter)
+        self.logger.debug("\n we are at iter %s", iter_num)
 
         if self.filter_distance:
             criterion = DistanceCriterion(
                 filter_distance=self.kwargs["filter_distance"],
             )
-            logger.debug("Using distance filter")
+            self.logger.debug("Using distance filter")
         elif self.testing:
             criterion = TestingCriterion()
-            logger.debug("Using test criterion, always accept")
+            self.logger.debug("Using test criterion, always accept")
         else:
             criterion = MetropolisCriterion(self.temp)
-            logger.debug("Using Metropolis criterion")
+            self.logger.debug("Using Metropolis criterion")
 
         event = Exchange(self.surface, proposal, criterion)
 
@@ -322,7 +303,7 @@ class MCMC:
             the energy of the new slab and a boolean value indicating whether the proposed change
             was accepted or not.
         """
-        logger.debug("\n we are at iter %s", iter_num)
+        self.logger.debug("\n we are at iter %s", iter_num)
 
         proposal = ChangeProposal(
             system=self.surface,
@@ -332,15 +313,15 @@ class MCMC:
 
         if self.filter_distance:
             criterion = DistanceCriterion(filter_distance=self.kwargs["filter_distance"])
-            logger.debug("Using distance filter")
+            self.logger.debug("Using distance filter")
 
         elif self.testing:
             criterion = TestingCriterion()
-            logger.debug("Using test criterion, always accept")
+            self.logger.debug("Using test criterion, always accept")
 
         else:
             criterion = MetropolisCriterion(self.temp)
-            logger.debug("Using Metropolis criterion")
+            self.logger.debug("Using Metropolis criterion")
 
         event = Change(self.surface, proposal, criterion)
 
@@ -358,7 +339,7 @@ class MCMC:
                 acceptance rate.
         """
         num_accept = 0
-        logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
+        self.logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
             # TODO change to self.step()
@@ -384,6 +365,7 @@ class MCMC:
     def mcmc_run(
         self,
         surface: SurfaceSystem,
+        logger: logging.Logger | None = None,
         total_sweeps: int = 800,
         sweep_size: int = 300,
         start_temp: float = 1.0,
@@ -402,6 +384,7 @@ class MCMC:
         Args:
             surface (SurfaceSystem): The surface system on which the MCMC simulation is to be
                 performed.
+            logger (logging.Logger, optional): The logger object. Defaults to None.
             total_sweeps (int, optional): The number of MCMC sweeps to perform. Defaults to 800.
             num_sweeps : int, optional
                 The number of MCMC sweeps to perform.
@@ -434,31 +417,29 @@ class MCMC:
             dict: A dictionary containing the history, trajectory, energy, adsorption count, and
                 acceptance rate.
         """
-        logger.info(
-            "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f",
-            total_sweeps,
-            sweep_size,
-            start_temp,
-        )
-
-        if run_folder:
-            self.run_folder = run_folder
-
-        # TODO: add logger
         self.surface = surface
-        logger.info("There are %d atoms in pristine slab", self.surface.num_pristine_atoms)
-
+        self.logger = logger or logging.getLogger(__name__)
         self.total_sweeps = total_sweeps
         self.sweep_size = sweep_size
         self.temp = start_temp
         self.alpha = alpha
 
         temp_list = self.initialize(
-            even_adsorption_sites, perform_annealing, anneal_schedule, multiple_anneal
+            even_adsorption_sites=even_adsorption_sites,
+            perform_annealing=perform_annealing,
+            anneal_schedule=anneal_schedule,
+            multiple_anneal=multiple_anneal,
+            run_folder=run_folder,
         )
-
-        logger.info("Starting with iteration %d", starting_iteration)
-        logger.info("Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list])
+        self.logger.info("There are %d atoms in pristine slab", self.surface.num_pristine_atoms)
+        self.logger.info(
+            "Running with num_sweeps = %d, sweep_size = %d, start_temp = %.3f",
+            total_sweeps,
+            sweep_size,
+            start_temp,
+        )
+        self.logger.info("Starting with iteration %d", starting_iteration)
+        self.logger.info("Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list])
 
         # perform MC sweeps
         results = defaultdict(list)  # TODO: make a dataclass

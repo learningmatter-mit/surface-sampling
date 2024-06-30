@@ -1,5 +1,7 @@
 """Test slab.py module."""
 
+import logging
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -27,6 +29,12 @@ def system():
     return SurfaceSystem(
         atoms, ads_coords=ads_coords, occ=occ, distance_weight_matrix=distance_weight_matrix
     )
+
+
+@pytest.fixture()
+def logger():
+    """Create a dummy logger object for testing."""
+    return logging.getLogger("test")
 
 
 def test_change_site_with_existing_adsorbate(system):
@@ -84,11 +92,7 @@ def test_compute_boltzmann_weights(system):
     temperature = 1.0
     curr_ads = get_adsorbate_indices(system)
 
-    weights = compute_boltzmann_weights(
-        system,
-        temperature=temperature,
-        curr_ads=curr_ads,
-    )
+    weights = compute_boltzmann_weights(system, temperature, curr_ads)
     # Perform assertions
     assert len(weights) == 3
     assert all(val > 0 for val in weights.values())

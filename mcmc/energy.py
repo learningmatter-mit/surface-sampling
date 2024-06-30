@@ -1,51 +1,42 @@
-import copy
-import json
-import logging
-import os
-from collections import Counter
+"""Methods to optimize a slab using ASE optimizers."""
 
-import ase
+import logging
+
 import numpy as np
 from ase.optimize import BFGS, FIRE
 from ase.optimize.bfgslinesearch import BFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
-from lammps import (
-    LMP_STYLE_ATOM,
-    LMP_STYLE_GLOBAL,
-    LMP_TYPE_SCALAR,
-    LMP_TYPE_VECTOR,
-    lammps,
-)
 from nff.io.ase import AtomsBatch
-from nff.utils.constants import EV_TO_KCAL_MOL, HARTREE_TO_KCAL_MOL
 
 from .dynamics import TrajectoryObserver
-from .system import SurfaceSystem
 from .utils.misc import get_atoms_batch
 
-HARTREE_TO_EV = HARTREE_TO_KCAL_MOL / EV_TO_KCAL_MOL
 # threshold for unrelaxed energy
 ENERGY_THRESHOLD = 1000  # eV
 MAX_FORCE_THRESHOLD = 1000  # eV/Angstrom
 
-logger = logging.getLogger(__name__)
 
+def optimize_slab(
+    slab,
+    optimizer: str = "FIRE",
+    save_traj: bool = True,
+    logger: logging.Logger | None = None,
+    **kwargs,
+) -> tuple:
+    """Run slab relaxation using ASE optimizers.
 
-def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
-    """Run relaxation for slab
+    Args:
+        slab (ase.Atoms): Surface slab
+        optimizer (str, optional): Optimizer to use, by default "FIRE"
+        save_traj (bool, optional): Save trajectory, by default True
+        logger (logging.Logger, optional): Logger object, by default None
+        **kwargs: Additional keyword arguments
 
-    Parameters
-    ----------
-    slab : ase.Atoms
-        Surface slab
-    optimizer : str, optional
-        Optimizer to use, by default "FIRE"
-
-    Returns
-    -------
-    ase.Atoms
-        Relaxed slab
+    Returns:
+        tuple: slab, trajectory, energy, energy_oob
     """
+    logger = logger or logging.getLogger(__name__)
+
     if "LAMMPS" in optimizer:
         calc_slab, energy, _ = slab.calc.run_lammps_opt(slab, run_dir=slab.calc.run_dir)
 
@@ -55,7 +46,6 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
                 nff_cutoff=slab.cutoff,
                 device=slab.device,
             )
-
         traj = None
 
     else:
@@ -68,45 +58,21 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
             Optimizer = SciPyFminCG
         else:
             Optimizer = FIRE
-        if type(slab) is AtomsBatch:
+        if isinstance(slab, AtomsBatch):
             slab.update_nbr_list(update_atoms=True)
-            calc_slab = copy.deepcopy(slab)
-        else:
-            calc_slab = slab.copy()
+        calc_slab = slab.copy()
         calc_slab.calc = slab.calc
-        if (
-            kwargs.get("folder_name", None)
-            and kwargs.get("iter", None)
-            and kwargs.get("save", False)
-        ):
-            # TODO: remove
-            # save every 10 steps
-            iter = int(kwargs.get("iter"))
-            # if iter % 10 == 0:
-            # save only when told to
-            # use BFGSLineSearch to ensure energy and forces go down
-            dyn = Optimizer(
-                calc_slab,
-                trajectory=os.path.join(
-                    kwargs["folder_name"],
-                    f"final_slab_traj_{iter:04}.traj",
-                ),
-            )
-        else:
-            dyn = Optimizer(calc_slab)
 
-        relax_steps = kwargs.get("relax_steps", 20)
-
+        dyn = Optimizer(calc_slab)
         if save_traj:
-            # add in hook to save the trajectory
+            # hook to save the trajectory
             obs = TrajectoryObserver(calc_slab)
-            # record_interval = int(relax_steps / 4)
             record_interval = kwargs.get("record_interval", 5)
             dyn.attach(obs, interval=record_interval)
-            # self.relaxed_atoms = relax_atoms(self.relaxed_atoms, **kwargs)
 
         # default steps is 20 and max forces are 0.01
         # TODO set up a config file to change this
+        relax_steps = kwargs.get("relax_steps", 20)
         dyn.run(steps=relax_steps, fmax=0.01)
 
         energy = float(calc_slab.get_potential_energy())
@@ -117,7 +83,6 @@ def optimize_slab(slab, optimizer="FIRE", save_traj=True, **kwargs):
                 "energies": obs.energies,
                 "forces": obs.forces,
             }
-
         else:
             traj = None
 

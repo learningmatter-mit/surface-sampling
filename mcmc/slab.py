@@ -1,62 +1,18 @@
+"""Functions for manipulating the surface system and adsorbates."""
+
 import itertools
 import logging
 import random
 from collections import Counter
-from typing import Union
 
 import ase
-import catkit
 import numpy as np
-from ase.build import bulk
-from ase.io import write
 from scipy.special import softmax
 
 from mcmc.system import SurfaceSystem
 from mcmc.utils.misc import plot_specific_weights
 
 logger = logging.getLogger(__name__)
-
-
-# TODO: deprecate if not needed
-# def initialize_slab(
-#     alat: float,
-#     elem: str = "Cu",
-#     vacuum: float = 15.0,
-#     miller: tuple[int] = (1, 0, 0),
-#     termination: int = 0,
-#     orthogonal: bool = False,
-#     size: tuple[int] = (4, 4, 4),
-#     **kwargs,
-# ) -> ase.Atoms:
-#     """Creates the slab structure using ASE.
-
-#     Args:
-#         alat (float): The lattice constant in angstroms.
-#         elem (str): The element to use.
-#         vacuum (float): The vacuum thickness.
-#         miller (tuple): The Miller indices.
-#         termination (int): The termination.
-#         orthogonal (bool): Whether to use orthogonal coordinates.
-#         size (tuple): The size of the slab in each dimension.
-
-#     Returns:
-#         ase.Atoms: The slab structure.
-#     """
-#     a1 = bulk(elem, "fcc", a=alat)
-#     write(f"{elem}_a1_bulk.cif", a1)
-#     catkit_slab = catkit.build.surface(
-#         a1,
-#         size=size,
-#         miller=miller,
-#         termination=termination,
-#         fixed=0,
-#         vacuum=vacuum,
-#         orthogonal=orthogonal,
-#         **kwargs,
-#     )
-
-#     write(f"{elem}_pristine_slab.cif", catkit_slab)
-#     return catkit_slab
 
 
 # TODO move prepare_canonical to here
@@ -136,11 +92,10 @@ def compute_boltzmann_weights(
     logger.debug("boltzmann weights are %s", boltzmann_weights)
 
     # create weight dict for each adsorbate except empty sites
-    weights = {
+    return {
         k: boltzmann_weights[surface.occ[v]] if k != "None" else np.ones_like(v)
         for k, v in curr_ads.items()
     }
-    return weights
 
 
 def get_complementary_idx_distance_decay(
@@ -217,7 +172,8 @@ def get_complementary_idx(
         run_iter (int): The iteration number.
 
     Returns:
-        Tuple[int, int, str, str]: A tuple containing the indices of the two sites and the elemental identities of the adsorbates.
+        Tuple[int, int, str, str]: A tuple containing the indices of the two sites and the
+            elemental identities of the adsorbates.
     """
     curr_ads = get_adsorbate_indices(surface)
     logger.debug("current ads %s", curr_ads)
@@ -253,10 +209,10 @@ def get_complementary_idx(
         )
     else:
         # get random idx belonging to those types
-        site1_idx, site2_idx = [
+        site1_idx, site2_idx = (
             random.choices(curr_ads[x], weights=w, k=1)[0]
-            for x, w in zip([type1, type2], [weights1, weights2])
-        ]
+            for x, w in zip([type1, type2], [weights1, weights2], strict=False)
+        )
 
     slab_idx_1, slab_idx_2 = surface.occ[site1_idx], surface.occ[site2_idx]
     logger.debug("type1 %s, type2 %s", type1, type2)
@@ -270,7 +226,9 @@ def get_complementary_idx(
 
 
 def change_site(
-    surface: SurfaceSystem, site_idx: int, end_ads: Union[str, ase.Atoms]
+    surface: SurfaceSystem,
+    site_idx: int,
+    end_ads: str | ase.Atoms,
 ) -> SurfaceSystem:
     """Change the adsorbate at a site to a new adsorbate.
 
@@ -308,9 +266,7 @@ def change_site(
     return surface
 
 
-def add_atom(
-    surface: SurfaceSystem, site_idx: int, adsorbate: Union[str, ase.Atoms]
-) -> SurfaceSystem:
+def add_atom(surface: SurfaceSystem, site_idx: int, adsorbate: str | ase.Atoms) -> SurfaceSystem:
     """Add an adsorbate at an empty site and updates the state.
 
     Args:
@@ -321,7 +277,6 @@ def add_atom(
     Returns:
         SurfaceSystem: The updated surface system
     """
-
     adsorbate_idx = len(surface)
     surface.occ[site_idx] = adsorbate_idx
     surface.real_atoms.append(adsorbate)
@@ -346,9 +301,7 @@ def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
     del surface.real_atoms[int(adsorbate_idx)]
 
     # lower the index for higher index items
-    surface.occ = np.where(
-        surface.occ >= int(adsorbate_idx), surface.occ - 1, surface.occ
-    )
+    surface.occ = np.where(surface.occ >= int(adsorbate_idx), surface.occ - 1, surface.occ)
     # remove negatives
     surface.occ = np.where(surface.occ < 0, 0, surface.occ)
 
@@ -357,9 +310,7 @@ def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
     return surface
 
 
-def count_adsorption_sites(
-    surface: SurfaceSystem, connectivity: Union[list, np.ndarray]
-) -> Counter:
+def count_adsorption_sites(surface: SurfaceSystem, connectivity: list | np.ndarray) -> Counter:
     """Count the number of adsorption sites with a given number of adsorbates.
 
     Args:

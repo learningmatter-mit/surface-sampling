@@ -3,7 +3,6 @@
 import logging
 
 
-# TODO logger currently in testing phase
 def setup_logger(name, log_file: str, level: int = logging.INFO) -> logging.Logger:
     """Set up a logger.
 
@@ -15,13 +14,16 @@ def setup_logger(name, log_file: str, level: int = logging.INFO) -> logging.Logg
     Returns:
         logging.Logger: Logger object.
     """
-    formatter = logging.Formatter("%(asctime)s - %(name)s | %(levelname)s:%(message)s", "%H:%M:%S")
+    formatter = logging.Formatter("%(asctime)s - %(name)s | %(levelname)s: %(message)s", "%H:%M:%S")
+
     # log to file
     file_handler = logging.FileHandler(log_file, mode="w")
     file_handler.setFormatter(formatter)
+
     # log to console
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.addHandler(file_handler)

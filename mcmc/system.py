@@ -3,7 +3,6 @@
 import copy
 import functools
 import logging
-import os
 from collections.abc import Iterable
 from typing import Self
 
@@ -19,9 +18,6 @@ from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.core import Structure
 
 from mcmc.utils import SilenceLogger
-
-logger = logging.getLogger(__name__)
-file_dir = os.path.dirname(__file__)
 
 DEFAULT_SETTINGS = {
     "planar_distance": 1.5,
@@ -49,6 +45,7 @@ class SurfaceSystem:
         system_settings: dict | None = None,
         calc_settings: dict | None = None,
         distance_weight_matrix: np.ndarray = None,
+        logger: logging.Logger | None = None,
         save_folder: str = ".",
     ) -> None:
         """Initialize the SurfaceSystem object that encompasses a material surface and adsorption
@@ -65,6 +62,7 @@ class SurfaceSystem:
             calc_settings (Dict, optional): Settings for the calculator. Defaults to None.
             distance_weight_matrix (np.ndarray, optional): Distance weight matrix with size
                 (n, n) where n is the number of ads sites. Defaults to None.
+            logger (logging.Logger, optional): Logger object. Defaults to None.
             save_folder (str, optional): The default path to save the structures. Defaults to ".".
 
         Attributes:
@@ -126,6 +124,7 @@ class SurfaceSystem:
         self.ads_coords = []
         self.occ = []
         self.distance_weight_matrix = distance_weight_matrix
+        self.logger = logger or logging.getLogger(__name__)
         self.save_folder = save_folder
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
@@ -202,19 +201,19 @@ class SurfaceSystem:
         else:
             assert len(occ) == len(self.ads_coords)
             self.occ = np.array(occ)
-        logger.info("Initial state is %s", self.occ)
+        self.logger.info("Initial state is %s", self.occ)
 
         self.num_pristine_atoms = len(self.real_atoms) - np.count_nonzero(self.occ)
-        logger.info("Number of pristine atoms is %s", self.num_pristine_atoms)
+        self.logger.info("Number of pristine atoms is %s", self.num_pristine_atoms)
 
         constraints = self.initialize_constraints()
-        logger.info("Bulk indices are %s", self.bulk_idx)
-        logger.info("Surface indices are %s", self.surface_idx)
-        logger.info("Constraints are %s", constraints)
+        self.logger.info("Bulk indices are %s", self.bulk_idx)
+        self.logger.info("Surface indices are %s", self.surface_idx)
+        self.logger.info("Constraints are %s", constraints)
 
         if self.relax_atoms:
             if not isinstance(self.relaxed_atoms, ase.Atoms):
-                logger.info("Relaxing initialized surface")
+                self.logger.info("Relaxing initialized surface")
                 self.relaxed_atoms, _ = self.relax_structure()
             self.relaxed_atoms.set_constraint(constraints)
 
@@ -225,7 +224,7 @@ class SurfaceSystem:
             np.ndarray: The coordinates of the virtual adsorption sites.
         """
         site_finder = AdsorbateSiteFinder(self.pymatgen_struct)
-        logger.info("Initalizing adsorption sites with settings: %s", self.system_settings)
+        self.logger.info("Initalizing adsorption sites with settings: %s", self.system_settings)
         ads_site_type = self.system_settings.get("ads_site_type", "all")
         ads_positions = site_finder.find_adsorption_sites(
             put_inside=True,
@@ -234,7 +233,7 @@ class SurfaceSystem:
             distance=self.system_settings.get("planar_distance", 2.0),
             no_obtuse_hollow=self.system_settings.get("no_obtuse_hollow", True),
         )[ads_site_type]
-        logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
+        self.logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
         return ads_positions
 
     def initialize_virtual_atoms(self, virtual_atom_str: str = "X") -> None:
@@ -244,7 +243,7 @@ class SurfaceSystem:
             virtual_atom_str (str, optional): The string representation of the virtual atom.
                 Defaults to "X".
         """
-        logger.info("Initializing %s virtual atoms", len(self.ads_coords))
+        self.logger.info("Initializing %s virtual atoms", len(self.ads_coords))
         self.all_atoms = self.real_atoms.copy()
         for _, ads_coord in enumerate(self.ads_coords):
             virtual_adsorbate = ase.Atoms(virtual_atom_str, positions=[ads_coord])
@@ -265,7 +264,7 @@ class SurfaceSystem:
             self.real_atoms.constraints = []
             # check valid surface_depth
             if self.surface_depth > max(self.real_atoms.get_tags()):
-                logger.warning(
+                self.logger.warning(
                     "Surface depth exceeds number of unique z-coordinates in system, all atoms will"
                     " be unconstrained."
                 )
@@ -343,6 +342,7 @@ class SurfaceSystem:
         # have to import here to avoid circular imports
         from mcmc.energy import optimize_slab
 
+        self.calc_settings.pop("logger", None)  # remove logger from calc_settings
         relaxed_slab, traj, energy, energy_oob = optimize_slab(
             self.real_atoms, **self.calc_settings, **kwargs
         )
@@ -481,7 +481,7 @@ class SurfaceSystem:
         energy = float(
             self.get_surface_energy(recalculate=False)
         )  # correct structure would be restored
-        logger.info("Optimized structure has Energy = %.3f", energy)
+        self.logger.info("Optimized structure has Energy = %.3f", energy)
 
         oob_str = "oob" if energy_oob else "inb"
         if not save_folder:
