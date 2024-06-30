@@ -2,11 +2,9 @@
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.figure import Figure
 
-DPI = 200
+from .plot import plot_anneal_schedule
 
 
 def create_anneal_schedule(
@@ -71,71 +69,3 @@ def create_anneal_schedule(
         with open(save_path / "anneal_schedule.csv", "w", encoding="utf-8") as f:
             f.write(",".join([str(temp) for temp in temp_list]))
     return temp_list
-
-
-def plot_anneal_schedule(
-    schedule: list,
-    save_folder: Path | str = ".",
-) -> Figure:
-    """Plot the annealing schedule.
-
-    Args:
-        schedule (list): List of temperatures for each MC sweep.
-        save_folder (Union[Path, str], optional): Folder to save the output in. Defaults to ".".
-
-    Returns:
-        Figure: Matplotlib figure object.
-    """
-    save_path = Path(save_folder)
-
-    fig, ax = plt.subplots(figsize=(10, 5), dpi=DPI)
-    ax.plot(schedule)
-    ax.set_xlabel("Sweep number", fontsize=14)
-    ax.set_ylabel("Temperature (kB T)", fontsize=14)
-    ax.set_title("Annealing schedule", fontsize=16)
-    plt.savefig(save_path / "anneal_schedule.png")
-    return fig
-
-
-# from pathlib import Path
-
-# from mcmc.system import SurfaceSystem
-# from mcmc.utils.clustering import find_closest_points_indices
-
-
-# def prepare_canonical(
-#     surface: SurfaceSystem,
-#     num_ads_atoms: int,
-#     even_adsorption_sites: bool = False,
-#     save_folder: str = None,
-# ):
-#     """This function prepares a canonical slab by performing semi-grand canonical adsorption runs
-#     until the desired number of adsorbed atoms are obtained.
-
-#     """
-#     assert num_ads_atoms > 0, "for canonical runs, need number of adsorbed atoms greater than 0"
-#     if not save_folder:
-#         save_folder = surface.save_folder
-#     if even_adsorption_sites:
-#         logger.info("evenly adsorbing sites")
-#         # Do clustering
-#         centers, labels = get_cluster_centers(surface.ads_coords[:, :2], num_ads_atoms)
-#         sites_idx = find_closest_points_indices(surface.ads_coords[:, :2], centers, labels)
-#         plot_clustering_results(
-#             surface.ads_coords,
-#             num_ads_atoms,
-#             labels,
-#             sites_idx,
-#             save_folder=save_folder,
-#         )
-
-#         for site_idx in sites_idx:
-#             self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy,
-# site_idx=site_idx)
-#     else:
-#         logger.info("randomly adsorbing sites")
-#         # perform semi-grand canonical until num_ads_atoms are obtained
-#         while len(self.surface) < self.num_pristine_atoms + self.num_ads_atoms:
-#             self.curr_energy, _ = self.change_site(prev_energy=self.curr_energy)
-
-#     surface.real_atoms.write(Path(save_folder) / f"{self.surface_name}_canonical_init.cif")

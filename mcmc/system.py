@@ -17,6 +17,7 @@ from nff.io import AtomsBatch
 from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.core import Structure
 
+from mcmc.dynamics import optimize_slab
 from mcmc.utils import SilenceLogger
 
 DEFAULT_SETTINGS = {
@@ -339,9 +340,6 @@ class SurfaceSystem:
             Tuple[ase.Atoms, float | list[float]]: The relaxed surface structure and the potential
                 energy of the system.
         """
-        # have to import here to avoid circular imports
-        from mcmc.energy import optimize_slab
-
         self.calc_settings.pop("logger", None)  # remove logger from calc_settings
         relaxed_slab, traj, energy, energy_oob = optimize_slab(
             self.real_atoms, **self.calc_settings, **kwargs

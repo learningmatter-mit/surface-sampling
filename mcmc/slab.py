@@ -10,12 +10,9 @@ import numpy as np
 from scipy.special import softmax
 
 from mcmc.system import SurfaceSystem
-from mcmc.utils.misc import plot_specific_weights
+from mcmc.utils.plot import plot_specific_weights
 
 logger = logging.getLogger(__name__)
-
-
-# TODO move prepare_canonical to here
 
 
 def get_adsorbate_indices(surface: SurfaceSystem) -> dict[str, list[int]]:
@@ -187,13 +184,6 @@ def get_complementary_idx(
     # Randomly pick two adsorbate types
     type1, type2 = choose_adsorbate_type(curr_ads)
     weights1, weights2 = weights[type1], weights[type2]
-    # Checking if the weights are valid, and if not, replace them with an array of ones.
-    # weights1 = (
-    #     weights[type1] if weights[type1].any() > 0 else np.ones(len(curr_ads[type1]))
-    # )
-    # weights2 = (
-    #     weights[type2] if weights[type2].any() > 0 else np.ones(len(curr_ads[type2]))
-    # )
 
     if require_distance_decay:
         site1_idx, site2_idx = get_complementary_idx_distance_decay(

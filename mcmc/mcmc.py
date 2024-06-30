@@ -1,7 +1,6 @@
 """Performs sampling of surface reconstructions using an MCMC-based algorithm."""
 
 import logging
-import os
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -20,44 +19,8 @@ from mcmc.utils import create_anneal_schedule, setup_folders
 from mcmc.utils.misc import (
     find_closest_points_indices,
     get_cluster_centers,
-    plot_clustering_results,
 )
-
-# TODO: idea of final code
-# class MCMCSampling:
-#     def __init__(self) -> None:
-#         ...
-#         self.surface = None
-
-#     def run(self, surface=None, nsteps: int = 100):
-#         ...
-#         if surface is None:
-#             surface = self.surface
-#         else:
-#             self.surface = surface
-
-#         if self.surface is None:
-#             raise ValueError("Surface not set")
-
-#         # run the MCMC sampling
-#         for i in range(nsteps):
-#             self.step()
-
-#     def step(self):
-#         event = self.event_generator.get_event(self.surface, **kwargs)
-
-#         accept = self.acceptance_criterion(event)
-
-#         # can do something like this
-#         log_dict = {
-#             "action": action,
-#             "probability": probability,
-#             "yesorno": yesorno,
-#             "Ef": Ef,
-#             "Ei": Ei,
-#             "N": N,
-#         }
-#         return log_dict
+from mcmc.utils.plot import plot_clustering_results
 
 
 class MCMC:
@@ -104,12 +67,12 @@ class MCMC:
         """
         self.adsorbates = adsorbates
         self.canonical = canonical
-        self.num_ads_atoms = num_ads_atoms  # TODO can be (re)moved
+        self.num_ads_atoms = num_ads_atoms
         self.testing = testing
         self.filter_distance = filter_distance
         self.kwargs = kwargs
 
-        # initialize here for subsequent runs
+        # Initialize here for subsequent runs
         self.surface = None
         self.total_sweeps = 100
         self.sweep_size = 100
@@ -119,8 +82,6 @@ class MCMC:
         self.run_folder = ""
 
         if self.canonical:
-            # perform canonical runs
-            # adsorb num_ads_atoms
             assert (
                 self.num_ads_atoms > 0
             ), "for canonical runs, need number of adsorbed atoms greater than 0"
@@ -158,10 +119,10 @@ class MCMC:
                 alpha=self.alpha,
             )
         else:
-            self.run_folder = run_folder
+            self.run_folder = Path(run_folder)
 
         self.logger.info("Using run folder %s", self.run_folder)
-        Path(self.run_folder).mkdir(parents=True, exist_ok=True)
+        self.run_folder.mkdir(parents=True, exist_ok=True)
 
         if self.canonical:
             self.prepare_canonical(even_adsorption_sites=even_adsorption_sites)
@@ -180,16 +141,19 @@ class MCMC:
             temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
         return temp_list
 
-    def run(self, surface: SurfaceSystem):
+    def run(self, surface: SurfaceSystem) -> dict:
         """Alias for `mcmc_run` function.
 
         Args:
             surface (SurfaceSystem): The surface system on which the MCMC simulation is to be
             performed.
-        """
-        self.mcmc_run(surface)
 
-    # TODO: refactor out, might take some effort
+        Returns:
+            dict: A dictionary containing the history, trajectory, energy, adsorption count, and
+                acceptance rate.
+        """
+        return self.mcmc_run(surface)
+
     def prepare_canonical(self, even_adsorption_sites: bool = False):
         """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the
         desired number of adsorbed atoms are obtained.
@@ -221,32 +185,26 @@ class MCMC:
             )
 
             for site_idx in sites_idx:
-                self.change_site(site_idx=site_idx)
+                self.step_semigrand(site_idx=site_idx)
         else:
             self.logger.info("randomly adsorbing sites")
-            # perform semi-grand canonical until num_ads_atoms are obtained
+            # Perform semi-grand canonical until num_ads_atoms are obtained
             while self.surface.num_adsorbates < self.num_ads_atoms:
-                self.change_site()
+                self.step_semigrand()
 
         self.surface.real_atoms.write(
-            os.path.join(self.run_folder, f"{self.surface.surface_name}_canonical_init.cif")
+            self.run_folder / f"{self.surface.surface_name}_canonical_init.cif"
         )
 
-    # TODO: merge change_site and change_site_canonical to step() with step_num or iter_num
-    def change_site_canonical(self, iter_num: int = 1):
-        """This function performs a canonical sampling step. It switches the adsorption sites of two
-        adsorbates and checks if the change is energetically favorable.
+    def step_canonical(self, iter_num: int = 1) -> bool:
+        """Performes canonical sampling. Switches the adsorption sites of two
+        adsorbates and calculates acceptance based on specified criterion.
 
-        Parameters
-        ----------
-        iter_num : int, optional
-            An integer representing the current iteration number of the function.
+        Args:
+            iter_num (int, optional): The iteration number of the simulation. Defaults to 1.
 
         Returns:
-        -------
-            the energy of the new slab and a boolean value indicating whether the proposed change
-            was accepted or not.
-
+            bool: Whether the proposed change was accepted or not.
         """
         if iter_num % self.sweep_size == 0:
             self.logger.info("At iter %s", iter_num)
@@ -283,25 +241,17 @@ class MCMC:
         accept, self.surface = event.acceptance()
         return accept
 
-    def change_site(self, iter_num: int = 1, site_idx: int | None = None):
+    def step_semigrand(self, iter_num: int = 1, site_idx: int | None = None) -> bool:
         """Performs a semigrand canonical sampling iteration. It randomly chooses a site to change
         identity in a slab, adds or removes an atom from the site, optionally performs relaxation,
-        calculates the energy of the new slab, and accepts or rejects the change based on the
-        Boltzmann-weighted energy difference, chemical potential change, and temperature.
+        calculates acceptance based on specified criterion.
 
-        Parameters
-        ----------
-        prev_energy : float, optional
-            the energy of the slab before the
-        iter_num : int, optional
-            The iteration number of the simulation.
-        site_idx : int, optional
-            Specify the index of the site to switch.
+        Args:
+            iter_num (int, optional): The iteration number of the simulation.
+            site_idx (int, optional): Specify the index of the site to switch.
 
         Returns:
-        -------
-            the energy of the new slab and a boolean value indicating whether the proposed change
-            was accepted or not.
+            bool: Whether the proposed change was accepted or not.
         """
         self.logger.debug("\n we are at iter %s", iter_num)
 
@@ -342,14 +292,13 @@ class MCMC:
         self.logger.info("In sweep %s out of %s", i + 1, self.total_sweeps)
         for j in range(self.sweep_size):
             run_idx = self.sweep_size * i + j + 1
-            # TODO change to self.step()
             if self.canonical:
-                accept = self.change_site_canonical(iter_num=run_idx)
+                accept = self.step_canonical(iter_num=run_idx)
             else:
-                accept = self.change_site(iter_num=run_idx)
+                accept = self.step_semigrand(iter_num=run_idx)
             num_accept += accept
 
-        # save structure and traj for easy viewing
+        # Save structure and traj for easy viewing
         self.surface.save_structures(sweep_num=i + 1, save_folder=self.run_folder)
 
         surface = self.surface.copy(copy_calc=False)
@@ -441,7 +390,7 @@ class MCMC:
         self.logger.info("Starting with iteration %d", starting_iteration)
         self.logger.info("Temperature schedule is: %s", [f"{temp:.3f}" for temp in temp_list])
 
-        # perform MC sweeps
+        # Perform MC sweeps
         results = defaultdict(list)  # TODO: make a dataclass
         for i in range(starting_iteration, self.total_sweeps):
             self.temp = temp_list[i]
