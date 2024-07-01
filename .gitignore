@@ -5,6 +5,8 @@
 *.pyc
 *.traj
 *.cif
+*.csv
+*.log
 *.in
 *.out
 *.data
@@ -12,7 +14,10 @@
 *.lammps
 __pycache__/
 *tmp_files/*
+*.egg-info/
 
 # test file should still be committed
-!tests/resources/*.pkl
-!tests/resources/*.cif
+!tests/data/**.pkl
+!tests/data/*/*.pkl
+!tests/data/**.cif
+!tests/data/*/*.cif
