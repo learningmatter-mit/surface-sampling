@@ -3,13 +3,16 @@
 import logging
 
 
-def setup_logger(name, log_file: str, level: int = logging.INFO) -> logging.Logger:
+def setup_logger(
+    name, log_file: str, level: int = logging.INFO, clear_existing=True
+) -> logging.Logger:
     """Set up a logger.
 
     Args:
         name (str): Name of the logger.
         log_file (str): Path to the log file.
         level (int, optional): Logging level. Defaults to logging.INFO.
+        clear_existing (bool, optional): Clear existing handlers. Defaults to True.
 
     Returns:
         logging.Logger: Logger object.
@@ -28,6 +31,12 @@ def setup_logger(name, log_file: str, level: int = logging.INFO) -> logging.Logg
     logger.setLevel(level)
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    # clear existing handlers
+    if clear_existing:
+        default_logger = logging.getLogger()
+        default_logger.handlers.clear()
+
     return logger
 
 
