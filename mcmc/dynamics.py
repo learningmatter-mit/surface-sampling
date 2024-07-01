@@ -94,6 +94,8 @@ def optimize_slab(
         save_traj (bool, optional): Save trajectory, by default True
         logger (logging.Logger, optional): Logger object, by default None
         **kwargs: Additional keyword arguments
+            **relax_steps (int): Number of relaxation steps, by default 20
+            **record_interval (int): Interval to record trajectory, by default 5
 
     Returns:
         tuple: slab, trajectory, energy, energy_oob
@@ -133,8 +135,6 @@ def optimize_slab(
             record_interval = kwargs.get("record_interval", 5)
             dyn.attach(obs, interval=record_interval)
 
-        # Default steps is 20 and max forces are 0.01
-        # TODO set up a config file to change this
         relax_steps = kwargs.get("relax_steps", 20)
         dyn.run(steps=relax_steps, fmax=0.01)
 
