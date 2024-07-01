@@ -1,0 +1,14 @@
+{
+    "bulk_energies": {
+        "O": -4.8005975,
+        "Sr": -1.664947875,
+        "SrTiO3": -40.0009711
+    },
+    "stoics": {
+        "Sr": 1,
+        "Ti": 1,
+        "O": 3
+    },
+    "ref_formula": "SrTiO3",
+    "ref_element": "Ti"
+}
