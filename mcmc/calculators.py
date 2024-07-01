@@ -33,6 +33,7 @@ class EnsembleNFFSurface(EnsembleNFF):
         self.chem_pots = {}
         self.offset_data = {}
         self.offset_units = kwargs.get("offset_units", "atomic")
+        self.logger = kwargs.get("logger", logging.getLogger(__name__))
 
     def get_surface_energy(
         self,
@@ -115,10 +116,10 @@ class EnsembleNFFSurface(EnsembleNFF):
         changed_parameters = EnsembleNFF.set(self, **kwargs)
         if "chem_pots" in self.parameters:
             self.chem_pots = self.parameters["chem_pots"]
-            print(f"chemical potentials: {self.chem_pots} are set from parameters")
+            self.logger.info("chemical potentials: %s are set from parameters", self.chem_pots)
         if "offset_data" in self.parameters:
             self.offset_data = self.parameters["offset_data"]
-            print(f"offset data: {self.offset_data} is set from parameters")
+            self.logger.info("offset data: %s is set from parameters", self.offset_data)
         return changed_parameters
 
     def calculate(
@@ -276,7 +277,7 @@ class LAMMMPSCalc(Calculator):
             lammps_config=f"{run_dir}/lammps_config.json",
             **kwargs,
         )
-        self.logger.debug(f"slab energy in relaxation: {energy}")
+        self.logger.debug("slab energy in relaxation: %.3f", energy)
         return opt_slab, energy, pe_per_atom
 
     def run_lammps_energy(self, slab, run_dir="./", **kwargs) -> tuple:
@@ -297,7 +298,7 @@ class LAMMMPSCalc(Calculator):
             lammps_config=f"{run_dir}/lammps_config.json",
             **kwargs,
         )
-        self.logger.debug(f"slab energy in engrad: {energy}")
+        self.logger.debug("slab energy in engrad: %.3f", energy)
         return slab, energy, pe_per_atom
 
     def set(self, **kwargs) -> dict:
@@ -315,13 +316,13 @@ class LAMMMPSCalc(Calculator):
 
         if "run_dir" in self.parameters:
             self.run_dir = self.parameters["run_dir"]
-            print(f"run directory: {self.run_dir} is set from parameters")
+            self.logger.info("run directory: %s is set from parameters", self.run_dir)
         if "relax_steps" in self.parameters:
             self.relax_steps = self.parameters["relax_steps"]
-            print(f"relaxation steps: {self.relax_steps} is set from parameters")
+            self.logger.info("relaxation steps: %s is set from parameters", self.relax_steps)
         if "kim_potential" in self.parameters:
             self.kim_potential = self.parameters["kim_potential"]
-            print(f"kim potential: {self.kim_potential} is set from parameters")
+            self.logger.info("kim potential: %s is set from parameters", self.kim_potential)
 
         return changed_parameters
 
@@ -362,6 +363,7 @@ class LAMMPSSurfCalc(LAMMMPSCalc):
     def __init__(self, *args, **kwargs):
         """Initialize the LAMMPSSurfCalc class."""
         super().__init__(*args, **kwargs)
+        self.logger = kwargs.get("logger", logging.getLogger(__name__))
 
     def get_surface_energy(self, atoms: ase.Atoms = None) -> float:
         """Get the surface energy of the system. Currently the same as the potential energy.
@@ -420,6 +422,7 @@ class LAMMPSRunSurfCalc(LAMMPSRun):
     def __init__(self, *args, **kwargs):
         """Initialize the LAMMPSRunSurfCalc class."""
         super().__init__(*args, **kwargs)
+        self.logger = kwargs.get("logger", logging.getLogger(__name__))
 
     def get_surface_energy(self, atoms: ase.Atoms = None) -> float:
         """Get the surface energy of the system. Currently the same as the potential energy.
