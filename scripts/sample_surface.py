@@ -202,7 +202,7 @@ def main(
     # Perform MCMC
     mcmc = MCMC(**sampling_settings)
     start = perf_counter()
-    results = mcmc.mcmc_run(
+    results = mcmc.run(
         surface=surface,
         **sampling_settings,
     )

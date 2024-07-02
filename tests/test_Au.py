@@ -79,7 +79,7 @@ def test_Au_energy(required_energy):
 
     # start MCMC
     mcmc = MCMC(**sampling_settings)
-    results = mcmc.mcmc_run(
+    results = mcmc.run(
         surface=surface,
         **sampling_settings,
     )

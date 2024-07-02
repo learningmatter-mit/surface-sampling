@@ -243,7 +243,7 @@ def main(
 
     start = perf_counter()
     # Call the main function
-    mcmc.mcmc_run(
+    mcmc.run(
         total_sweeps=sampling_settings["num_sweeps"],
         sweep_size=sampling_settings["sweep_size"],
         start_temp=sampling_settings["temperature"],

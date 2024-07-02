@@ -141,19 +141,6 @@ class MCMC:
             temp_list = np.repeat(self.temp, self.total_sweeps)  # constant temperature
         return temp_list
 
-    def run(self, surface: SurfaceSystem) -> dict:
-        """Alias for `mcmc_run` function.
-
-        Args:
-            surface (SurfaceSystem): The surface system on which the MCMC simulation is to be
-            performed.
-
-        Returns:
-            dict: A dictionary containing the history, trajectory, energy, adsorption count, and
-                acceptance rate.
-        """
-        return self.mcmc_run(surface)
-
     def prepare_canonical(self, even_adsorption_sites: bool = False):
         """Prepare a canonical slab by performing semi-grand canonical adsorption runs until the
         desired number of adsorbed atoms are obtained.
@@ -197,7 +184,7 @@ class MCMC:
         )
 
     def step_canonical(self, iter_num: int = 1) -> bool:
-        """Performes canonical sampling. Switches the adsorption sites of two
+        """Performs canonical sampling. Switches the adsorption sites of two
         adsorbates and calculates acceptance based on specified criterion.
 
         Args:
@@ -311,15 +298,15 @@ class MCMC:
             "acceptance_rate": num_accept / self.sweep_size,
         }
 
-    def mcmc_run(
+    def run(
         self,
         surface: SurfaceSystem,
         logger: logging.Logger | None = None,
-        total_sweeps: int = 800,
-        sweep_size: int = 300,
+        total_sweeps: int = 100,
+        sweep_size: int = 20,
         start_temp: float = 1.0,
-        perform_annealing=False,
-        alpha: float = 0.9,
+        perform_annealing: bool = True,
+        alpha: float = 0.99,
         multiple_anneal: bool = False,
         anneal_schedule: list | None = None,
         run_folder: str | None = None,
