@@ -9,6 +9,7 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
@@ -27,6 +28,15 @@ DEFAULT_CUTOFFS = {
     "CHGNetNFF": 6.0,
     "NffScaleMACE": 5.0,
     "PaiNN": 5.0,
+}
+
+DEFAULT_SAMPLING_SETTINGS = {
+    "canonical": False,
+    "total_sweeps": 100,
+    "sweep_size": 20,
+    "start_temp": 1.0,  # in terms of kT
+    "perform_annealing": False,
+    "alpha": 1.0,
 }
 
 
@@ -113,10 +123,7 @@ def main(
     # Update empty settings with default params
     system_settings["surface_name"] = system_settings.get("surface_name", run_name)
     system_settings["cutoff"] = system_settings.get("cutoff", DEFAULT_CUTOFFS[model_type])
-    sampling_settings["canonical"] = sampling_settings.get("canonical", False)
-    sampling_settings["total_sweeps"] = sampling_settings.get("total_sweeps", 100)
-    sampling_settings["start_temp"] = sampling_settings.get("start_temp", 1.0)
-    sampling_settings["alpha"] = sampling_settings.get("alpha", 1.0)
+    sampling_settings = DEFAULT_SAMPLING_SETTINGS | sampling_settings
 
     # Initialize run folder
     if not sampling_settings.get("run_folder"):
@@ -138,7 +145,7 @@ def main(
     )
 
     # Load offset data if offset path is provided
-    if calc_settings.get("offset_data"):
+    if "offset_data" in calc_settings:
         offset_data = calc_settings["offset_data"]
         if isinstance(offset_data, str | Path):
             try:
@@ -224,6 +231,17 @@ def main(
     with open(run_folder / f"{len(traj_structures)}_relaxation_structures.pkl", "wb") as f:
         pickle.dump(traj_structures, f)
     logger.info("Saving all %d slabs in relaxation trajectories", len(traj_structures))
+
+    # Save statistics in csv
+    stats_df = pd.DataFrame(
+        {
+            "energy": results["energy_hist"],
+            "frac_accept": results["frac_accept_hist"],
+            "adsorption_count": results["adsorption_count_hist"],
+        }
+    )
+    stats_df.to_csv(run_folder / "stats.csv", index=False, float_format="%.3f")
+    logger.info("Saving statistics in csv")
 
     # Plot statistics
     plot_summary_stats(
