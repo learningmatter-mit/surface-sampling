@@ -16,6 +16,7 @@ from lammps import (
     LMP_TYPE_VECTOR,
     lammps,
 )
+from nff.io.ase import AtomsBatch
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.utils.constants import HARTREE_TO_EV
 
@@ -25,6 +26,22 @@ logger = logging.getLogger(__name__)
 
 ENERGY_THRESHOLD = 1000  # eV
 MAX_FORCE_THRESHOLD = 1000  # eV/Angstrom
+
+
+def get_results_single(atoms_batch: AtomsBatch, calc: Calculator) -> dict:
+    """Calculate the results for a single AtomsBatch object.
+
+    Args:
+        atoms_batch (AtomsBatch): The AtomsBatch object to calculate the results for.
+        calc (Calculator): The calculator to use.
+
+    Returns:
+        dict: The results of the calculation
+    """
+    atoms_batch.calc = calc
+    calc.calculate(atoms_batch)
+
+    return calc.results
 
 
 class NFFPourbaix(NeuralFF):
