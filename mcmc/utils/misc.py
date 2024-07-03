@@ -1,13 +1,17 @@
 """Miscellaneous utility functions for the MCMC workflow."""
 
+import pickle as pkl
 from collections.abc import Iterable
+from pathlib import Path
 
 import numpy as np
 from ase.atoms import Atoms
+from nff.data import Dataset
 from nff.io.ase import AtomsBatch
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial import distance
 from scipy.special import softmax
+from tqdm import tqdm
 
 
 def get_atoms_batch(
@@ -49,6 +53,66 @@ def get_atoms_batch(
         # )
 
     return atoms_batch
+
+
+def get_atoms_batches(
+    data: Dataset | list[Atoms],
+    nff_cutoff: float,
+    device: str = "cpu",
+    structures_per_batch: int = 32,
+    **kwargs,
+) -> list[AtomsBatch]:
+    """Generate AtomsBatch
+
+    Args:
+        data (Union[Dataset, list[ase.Atoms]]): Dictionary or list of ase Atoms containing the
+            properties of the atoms
+        nff_cutoff (float): Neighbor cutoff for the NFF model
+        device (str, optional): cpu or cuda device. Defaults to 'cpu'.
+        structures_per_batch (int, optional): Number of structures per batch. Defaults to 32.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        list[AtomsBatch]: List of AtomsBatch objects.
+    """
+    print(f"Data has length {len(data)}")
+
+    if isinstance(data, Dataset):
+        atoms_batches = data.as_atoms_batches()
+    else:
+        atoms_batches = []
+        # TODO: select structures_per_batch structures at a time
+        for atoms in tqdm(data):
+            atoms_batch = get_atoms_batch(atoms, nff_cutoff, device, **kwargs)
+            atoms_batches.append(atoms_batch)
+
+    return atoms_batches
+
+
+def load_dataset_from_files(file_paths: list[Path]) -> list[Atoms]:
+    """Load dataset from files. Dataset can be a list of ASE Atoms objects, an NFF Dataset
+    or a list of file paths.
+
+    Args:
+        file_paths (list[Path]): List of file paths.
+
+    Returns:
+        list[Atoms]: List of ASE Atoms objects.
+    """
+    dset = []
+    for x in file_paths:
+        if x.suffix == ".txt":
+            # load file paths from a text file
+            with open(x, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                return load_dataset_from_files([Path(line.strip()) for line in lines])
+        elif x.suffix == ".pkl":
+            with open(x, "rb") as f:
+                dset.extend(pkl.load(f))
+        else:  # .pth.tar
+            data = Dataset.from_file(x)
+            dset.extend(data)
+    return dset
 
 
 def filter_distances(slab: Atoms, ads: Iterable = ("O"), cutoff_distance: float = 1.5) -> bool:

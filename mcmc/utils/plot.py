@@ -4,13 +4,169 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import ase
+
+# import warnings
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from ase.visualize.plot import plot_atoms
 from matplotlib.figure import Figure
+from scipy.cluster.hierarchy import dendrogram
 from scipy.special import softmax
 
+from mcmc.utils import plot_settings
+
+# warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
+# warnings.filterwarnings("ignore")
+
+plt.style.use("default")
+
 DEFAULT_DPI = 200
+
+LINEWIDTH = 2
+FONTSIZE = 20
+LABELSIZE = 18
+ALPHA = 0.8
+MARKERSIZE = 15 * 25
+GRIDSIZE = 40
+
+MAJOR_TICKLEN = 6
+MINOR_TICKLEN = 3
+TICKPADDING = 5
+
+SECONDARY_CMAP = "inferno"
+
+params = {"mathtext.default": "regular", "font.family": "Arial", "font.size": FONTSIZE}
+plt.rcParams.update(params)
+
+
+def plot_energy_analysis(
+    surf_df: pd.DataFrame,
+    energy_label: str,
+    x_axis_label: str,
+    phi: float,
+    y_lim: tuple[float],
+    x_ticks: Iterable[float],
+    special_df: pd.DataFrame | None = None,
+    special_scatter_labels: list[str] | None = None,
+    x_text_rel_loc: float = 0.8,
+    save_folder: str = ".",
+) -> Figure:
+    """Plot energy analysis of the MCMC run. Plot the Grand potential energy against
+    "collective variable" (e.g. number of La atoms - number of Mn atoms).
+
+
+    Args:
+        surf_df (pd.DataFrame): DataFrame containing the surface energies possibly at different
+            external conditions such as chemical potential (mu), electrical potential (phi), pH,
+            etc.
+        energy_label (str): Column label for the energy (y-axis).
+        x_axis_label (str): Column label for the x-axis.
+        phi (float): The value of the electrical potential phi. TODO update to be more general
+        y_lim (tuple[float]): The y-axis limits (min, max).
+        x_ticks (Iterable[float]): The x-axis ticks.
+        special_df (pd.DataFrame, optional): DataFrame containing special entries to plot.
+            Defaults to None.
+        special_scatter_labels (list[str], optional): Labels for the special scatter points.
+            Defaults to None.
+        x_text_rel_loc (float, optional): Relative location of the text label. Defaults to 0.8.
+        save_folder (str, optional): Folder to save the plot. Defaults to ".".
+
+    Returns:
+        Figure: The figure object.
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=DEFAULT_DPI)
+
+    # 1) Plot all data
+    data_scatter = ax.scatter(
+        surf_df[x_axis_label],
+        surf_df[energy_label],
+        c=plot_settings.colors[1 + 2],
+        s=MARKERSIZE,
+        alpha=ALPHA,
+        marker="_",
+        linewidths=LINEWIDTH,
+    )
+
+    # 2) Plot minimum surf
+    min_surf = surf_df.iloc[surf_df[energy_label].idxmin()]
+    min_line = ax.axhline(
+        y=min_surf[energy_label],
+        alpha=ALPHA,
+        c=plot_settings.colors[1],
+        ls="--",
+        lw=LINEWIDTH,
+    )
+    y_pos = (min_surf[energy_label] - y_lim[0]) / (y_lim[1] - y_lim[0])
+    ax.text(
+        x_text_rel_loc,
+        y_pos,
+        rf"{min_surf[energy_label]:.1f} eV",
+        transform=ax.transAxes,
+        va="center",
+        fontsize=LABELSIZE,
+        backgroundcolor="w",
+    )
+
+    # 3) Plot special entries
+    if special_df is not None:
+        special_scatters = [
+            ax.scatter(
+                term[x_axis_label],
+                term[energy_label],
+                s=MARKERSIZE,
+                alpha=ALPHA,
+                marker="X",
+                edgecolors="k",
+                linewidth=LINEWIDTH,
+            )
+            for _, term in special_df.iterrows()
+        ]
+    else:
+        special_scatters = []
+
+    ax.set_title(rf"$\varphi={float(phi):.2f}$", fontsize=FONTSIZE, pad=3 * TICKPADDING)
+    ax.set_xlabel(r"$\Gamma^{La}_{Mn}$ [# La - # Mn]", fontsize=FONTSIZE)
+    ax.set_ylabel(r"$\Omega_{pbx}$ [eV]", fontsize=FONTSIZE)
+    ax.set_xticks(x_ticks)
+    ax.set_ylim(y_lim)
+
+    # set the thickness of the spines
+    for ax_loc in ["bottom", "top", "left", "right"]:
+        ax.spines[ax_loc].set_linewidth(LINEWIDTH)
+
+    # increase tick size and make them point inwards
+    ax.tick_params(
+        axis="y",
+        length=MAJOR_TICKLEN,
+        width=LINEWIDTH,
+        labelsize=LABELSIZE,
+        pad=TICKPADDING,
+        direction="in",
+    )
+    ax.tick_params(
+        axis="x",
+        length=MAJOR_TICKLEN,
+        width=LINEWIDTH,
+        labelsize=LABELSIZE,
+        pad=TICKPADDING,
+        direction="in",
+    )
+
+    handles = [data_scatter, min_line, *special_scatters]
+    legends = [
+        "VS3R-MC sample",
+        r"Min. $\Omega_{pbx}$",
+    ]
+
+    leg = ax.legend(handles, legends, loc="best", fontsize=LABELSIZE, frameon=True)
+    leg.get_frame().set_edgecolor("k")
+    leg.get_frame().set_linewidth(LINEWIDTH)
+    leg.get_frame().set_boxstyle("Square", pad=0)
+
+    plt.tight_layout()
+    plt.savefig(Path(save_folder) / "summary.png")
+    return fig
 
 
 def plot_summary_stats(
@@ -107,11 +263,13 @@ def plot_anneal_schedule(
     return fig
 
 
+# TODO: make a colorbar instead of a legend
 def plot_clustering_results(
     points: np.ndarray,
     n_clusters: int,
     labels: np.ndarray,
-    closest_points_indices: np.ndarray,
+    closest_points_indices: np.ndarray = None,
+    save_prepend: str = "",
     save_folder: Path | str = ".",
 ) -> Figure:
     """Plot the clustering results.
@@ -123,6 +281,7 @@ def plot_clustering_results(
             point.
         closest_points_indices (np.ndarray): Numpy array of shape (n_clusters,) with the index of
             the closest point to the centroid in each cluster.
+        save_prepend (str, optional): Prepend string for the saved plot. Defaults to "".
         save_folder (str, optional): Folder to save the plot in. Defaults to ".".
 
     Returns:
@@ -144,29 +303,58 @@ def plot_clustering_results(
             alpha=0.6,
             edgecolor="black",
             linewidth=1,
-            s=100,
+            s=20,
             label=f"Cluster {i}",
         )
 
     # Mark the closest points to the centroid in each cluster
-    for i in range(n_clusters):
-        closest_point = points[closest_points_indices[i]]
-        ax.scatter(
-            closest_point[0],
-            closest_point[1],
-            marker="*",
-            color="black",
-            edgecolor="black",
-            linewidth=1,
-            s=200,
-        )
+    if closest_points_indices is not None:
+        for i in range(n_clusters):
+            closest_point = points[closest_points_indices[i]]
+            ax.scatter(
+                closest_point[0],
+                closest_point[1],
+                marker="*",
+                color="black",
+                edgecolor="black",
+                linewidth=1,
+                s=200,
+            )
 
-    ax.grid(True)
+    ax.grid(False)
     ax.set_xlabel("Dimension 1", fontsize=14)
     ax.set_ylabel("Dimension 2", fontsize=14)
     ax.set_title("2D representation of points and clusters", fontsize=16)
     ax.legend(fontsize=12)
-    plt.savefig(f"{save_folder}/clustering_results.png")
+    plt.savefig(Path(save_folder, save_prepend + "clustering_results.png"))
+
+    return fig
+
+
+def plot_dendrogram(
+    Z: np.ndarray,
+    save_prepend: str = "",
+    save_folder: Path | str = ".",
+) -> Figure:
+    """Plot the dendrogram of the hierarchical clustering.
+
+    Args:
+        Z (np.ndarray): The linkage matrix.
+        save_prepend (str, optional): Prepend string for the saved plot. Defaults to "".
+        save_folder (Path | str, optional): Folder to save the plot in. Defaults to ".".
+
+    Returns:
+        Figure: The figure object.
+    """
+    fig, ax = plt.subplots(figsize=(25, 10), dpi=DEFAULT_DPI)
+    dendrogram(Z, no_labels=True)
+    ax.grid(False)
+    # ax.set_ylabel("Dimension 2", fontsize=14)
+    ax.set_title(
+        "Dendrogram of structures clustered using the latent space embeddings", fontsize=16
+    )
+    ax.legend(fontsize=12)
+    plt.savefig(Path(save_folder, save_prepend + "dendrogram_Z.png"))
 
     return fig
 
