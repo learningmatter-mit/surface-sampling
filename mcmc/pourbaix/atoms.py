@@ -6,11 +6,13 @@ from ase import Atom
 from monty.serialization import loadfn
 from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.analysis.pourbaix_diagram import (
+    HydrogenPourbaixEntry,
+    IonEntry,
     MultiEntry,
     OxygenPourbaixEntry,
     PourbaixEntry,
 )
-from pymatgen.core import Composition, Element
+from pymatgen.core import Composition, Element, Ion
 from pymatgen.entries.computed_entries import ComputedEntry
 from typing_extensions import Self
 
@@ -177,7 +179,8 @@ def generate_pourbaix_atoms(
     )
     sorted_symbols = sorted(set(elements) - SYMBOLS_HO)
 
-    # H2O entries
+    # H2O entry
+    # for the reaction: 1/2 O2 or O -> H2O - 2H+ - 2e-
     H2O_entry = [x for x in phase_diagram.stable_entries if x.reduced_formula == "H2O"][
         0
     ]
@@ -189,8 +192,14 @@ def generate_pourbaix_atoms(
         )
     )
 
-    sorted_symbols += ["O"]
-    sorted_pbx_entries += [H2O_pourbaix_entry]
+    # H+ entry
+    # for the reaction: 1/2 H2 or H -> H+ + e-
+    H_ion_pourbaix_entry = HydrogenPourbaixEntry(
+        IonEntry(Ion.from_formula("H[1+]"), 0.0)
+    )
+
+    sorted_symbols += ["O", "H"]
+    sorted_pbx_entries += [H2O_pourbaix_entry, H_ion_pourbaix_entry]
 
     pourbaix_atoms = {
         element: PourbaixAtom.from_pourbaix_entry(element, pbx_entry, phase_diagram)
