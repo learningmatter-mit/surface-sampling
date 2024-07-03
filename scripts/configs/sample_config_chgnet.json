@@ -1,0 +1,38 @@
+{
+    "system_settings": {
+        "surface_name": "SrTiO3(001)",
+        "surface_depth": 1,
+        "cutoff": 6.0,
+        "near_reduce": 0.01,
+        "planar_distance": 1.5,
+        "no_obtuse_hollow": true,
+        "ads_site_type": "all"
+    },
+    "sampling_settings": {
+        "total_sweeps": 10,
+        "sweep_size": 5,
+        "start_temp": 1.0,
+        "perform_annealing": false,
+        "alpha": 1.0,
+        "adsorbates": [
+            "Sr",
+            "Ti",
+            "O"
+        ],
+        "run_folder": "SrTiO3(001)_chgnet"
+    },
+    "calc_settings": {
+        "calc_name": "NFF",
+        "optimizer": "FIRE",
+        "chem_pots": {
+            "Sr": -2,
+            "Ti": 0,
+            "O": 0
+        },
+        "relax_atoms": true,
+        "relax_steps": 10,
+        "record_interval": 2,
+        "offset": true,
+        "offset_data": "tutorials/data/nff/offset_data_chgnet_eV.json"
+    }
+}
