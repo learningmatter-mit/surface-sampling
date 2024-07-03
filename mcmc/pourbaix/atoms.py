@@ -10,9 +10,11 @@ from pymatgen.analysis.pourbaix_diagram import (
     IonEntry,
     MultiEntry,
     OxygenPourbaixEntry,
+    PourbaixDiagram,
     PourbaixEntry,
 )
-from pymatgen.core import Composition, Element, Ion
+from pymatgen.core import Composition, Element
+from pymatgen.core.ion import Ion
 from pymatgen.entries.computed_entries import ComputedEntry
 from typing_extensions import Self
 
@@ -148,8 +150,8 @@ class PourbaixAtom(Atom):
 
 
 def generate_pourbaix_atoms(
-    phase_diagram_path: Union[Path, str],
-    pourbaix_diagram_path: Union[Path, str],
+    phase_diagram: PhaseDiagram,
+    pourbaix_diagram: PourbaixDiagram,
     phi: float,
     pH: float,
     elements: list[str],
@@ -157,8 +159,8 @@ def generate_pourbaix_atoms(
     """Generate Pourbaix atoms representing the dominant species for the given elements at the given pH and phi.
 
     Args:
-        phase_diagram_path (Union[Path, str]): path to the saved pymatgen PhaseDiagram
-        pourbaix_diagram_path (Union[Path, str]): path to the saved pymatgen PourbaixDiagram
+        phase_diagram (Union[Path, str]): pymatgen PhaseDiagram
+        pourbaix_diagram (Union[Path, str]): pymatgen PourbaixDiagram
         phi (float): electrical potential
         pH (float): pH
         elements (list[str]): list of elements
@@ -166,8 +168,6 @@ def generate_pourbaix_atoms(
     Returns:
         dict: dictionary of PourbaixAtom objects
     """
-    phase_diagram = loadfn(phase_diagram_path)
-    pourbaix_diagram = loadfn(pourbaix_diagram_path)
 
     pbx_multi_entry = pourbaix_diagram.get_stable_entry(pH, phi)
     assert isinstance(pbx_multi_entry, MultiEntry), "Expected a Pourbaix MultiEntry"
