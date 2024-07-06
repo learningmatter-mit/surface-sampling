@@ -1,1 +1,0 @@
-/home/dux/surface_sampling/tutorials/data/GaN_lammps_energy_template.txt

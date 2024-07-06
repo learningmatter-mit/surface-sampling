@@ -15,15 +15,16 @@ from mcmc.system import SurfaceSystem
 from mcmc.utils import setup_logger
 
 current_dir = Path(__file__).parent
-logger = setup_logger("mcmc", current_dir / "mc.log", logging.INFO)
 
 
 @pytest.mark.parametrize("required_energy", [-25.2893])
 def test_Cu_energy(required_energy):
     """Test the energy of the Cu(100) surface. Regression test."""
-    surface_name = "Cu(100)"
+    surface_name = "Cu_100"
     run_folder = current_dir / surface_name
     run_folder.mkdir(parents=True, exist_ok=True)
+
+    logger = setup_logger("mcmc", run_folder / "mc.log", logging.INFO)  # noqa
 
     # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
     Cu_bulk = bulk("Cu", "fcc", a=3.6147)

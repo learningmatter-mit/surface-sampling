@@ -15,25 +15,26 @@ from mcmc.system import SurfaceSystem
 from mcmc.utils import setup_logger
 
 current_dir = Path(__file__).parent
-logger = setup_logger("mcmc", current_dir / "mc.log", logging.INFO)
 
 
 @pytest.mark.parametrize("required_energy", [-79.03490823689619])
 def test_Au_energy(required_energy):
     """Test the energy of the Au(110) surface. Regression test."""
-    surface_name = "Au(110)"
+    surface_name = "Au_110"
     run_folder = current_dir / surface_name
     run_folder.mkdir(parents=True, exist_ok=True)
 
+    logger = setup_logger("mcmc", run_folder / "mc.log", logging.INFO)
+
     # create slab and get proper ads sites
     try:
-        with open(current_dir / "data/Au_110_2x2_pristine_slab.pkl", "rb") as slab_pkl:
+        with open(current_dir / "data/Au_110/Au_110_2x2_pristine_slab.pkl", "rb") as slab_pkl:
             slab = pkl.load(slab_pkl)
     except FileNotFoundError as e:
-        print("Could not find the Au(110) slab file")
+        logger.info("Could not find the Au(110) slab file")
         raise e
 
-    proper_adsorbed = read(current_dir / "data/Au_110_2x2_proper_adsorbed_slab.cif")
+    proper_adsorbed = read(current_dir / "data/Au_110/Au_110_2x2_proper_adsorbed_slab.cif")
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
 
     num_ads_atoms = 4 + 2  # for canonical runs
