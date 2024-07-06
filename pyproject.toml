@@ -14,8 +14,10 @@ dependencies = [
     "ase>=3.22.1",
     "pymatgen>=2024.6.4",
     "numpy>=1.21.6,<2.0.0",
-    "nff @ git+https://github.com/learningmatter-mit/NeuralForceField.git",
     "catkit @ git+https://github.com/HojeChun/CatKit.git",
+    "torch>=2.1.0",
+    "ipykernel",
+    "pytest",
     "pre-commit"
 ]
 classifiers = [
@@ -35,7 +37,7 @@ test = ["pytest", "pytest-cov"]
 Homepage = "https://github.com/learning-matter-mit/surface-sampling/"
 
 [tool.setuptools]
-packages = ["mcmc"]
+packages.find = { where = ["."], include = ["mcmc*"] }
 
 [tool.ruff]
 include = ["**/pyproject.toml", "*.ipynb", "*.py", "*.pyi"]

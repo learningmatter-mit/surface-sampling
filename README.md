@@ -1,89 +1,139 @@
 # Virtual Surface Site Relaxation-Monte Carlo (VSSR-MC)
+<!-- TBD update with my own icons -->
+<!-- Taken from CHGNet -->
+<!-- [![Tests](https://github.com/CederGroupHub/chgnet/actions/workflows/test.yml/badge.svg)](https://github.com/CederGroupHub/chgnet/actions/workflows/test.yml)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/e3bdcea0382a495d96408e4f84408e85)](https://app.codacy.com/gh/CederGroupHub/chgnet/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
+ -->
+[![arXiv](https://img.shields.io/badge/arXiv-2305.07251-blue?logo=arXiv&logoColor=white&logoSize=auto)](https://arxiv.org/abs/2305.07251)
+[![Zenodo](https://img.shields.io/badge/data-10.5281/zenodo.7758174-14b8a6?logo=zenodo&logoColor=white&logoSize=auto)](https://zenodo.org/doi/10.5281/zenodo.7758174)
 
 ## Contents
 - [Overview](#overview)
 - [System requirements](#system-requirements)
 - [Setup](#setup)
 - [Demo](#demo)
+- [Scripts](#scripts)
+- [Citation](#citation)
+- [Development & Bugs](#development--bugs)
 
 
 # Overview
 
-This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through ASE) or a classical potential (through ASE or LAMMPS). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work:
+This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through [ASE](https://wiki.fysik.dtu.dk/ase/)) or a classical potential (through ASE or [LAMMPS](https://www.lammps.org/)). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work: [Machine-learning-accelerated simulations to enable automatic surface reconstruction](https://doi.org/10.1038/s43588-023-00571-7)
 
-"Machine-learning-accelerated simulations to enable automatic surface reconstruction", by X. Du, J.K. Damewood, J.R. Lunger, R. Millan, B. Yildiz, L. Li, and R. Gómez-Bombarelli. https://doi.org/10.1038/s43588-023-00571-7
+<!-- Read through the following in order before running our code. -->
 
-Please cite us if you find this work useful. Let us know in `issues` if you encounter any problems or have any questions.
-
-To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
-
-Read through the following in order before running our code.
 
 # System requirements
-
-## Hardware requirements
 We recommend a computer with the following specs:
 
 - RAM: 16+ GB
 - CPU: 4+ cores, 3 GHz/core
 
-We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM.
+<!-- We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM. -->
 
-To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU.
+To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU. The code has been tested on *Linux* Ubuntu 20.04.6 LTS and macOS Sonoma 14.5 but we expect it to be system agnostic.
 
-## Software requirements
-The code has been tested up to commit `02820d339eed6291b6af6ccb809f154ad6244110` on the `master` branch.
-
-### Operating system
-This package has been tested on *Linux* Ubuntu 20.04.6 LTS but we expect it to be agnostic to the *Linux* system version.
-
-### Conda environment
-[Conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) is required. Either Miniconda or Anaconda should be installed.
-
-Following that, the Python dependencies for the code can be installed with the following command
-```
-conda env create -f environment.yml
-```
-
-Installation might take 10-20 minutes to resolve dependencies.
-
-### Additional software
-1. [LAMMPS](https://docs.lammps.org/Install.html) for classical force field optimization
-2. [NFF](https://github.com/learningmatter-mit/NeuralForceField) for neural network force field
 
 # Setup
-Assuming you have cloned our `surface-sampling` repo to `/path/to/surface-sampling`.
+To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
 
-Add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`.
+## Conda environment
+We recommend creating a new [Conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) environment. Following that, the Python dependencies for the code can be installed. In the `surface-sampling` directory, run the following commands:
+```bash
+conda create -n vssr-mc python=3.11
+conda activate vssr-mc
+conda install -c conda-forge kimpy lammps openkim-models
+pip install -e .
 ```
-export SURFSAMPLINGDIR="/path/to/surface-sampling"
-export PYTHONPATH="$SURFSAMPLINGDIR:$PYTHONPATH"
 
-export LAMMPS_COMMAND="/path/to/lammps/src/lmp_serial"
+To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `pip` would have installed LAMMPS as a dependency.
+```bash
+export LAMMPS_COMMAND="/path/to/lammps/src/lmp"
 export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
 export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
-
-export NFFDIR="/path/to/NeuralForceField"
-export PYTHONPATH=$NFFDIR:$PYTHONPATH
 ```
+The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
+The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/lib/python3.11/site-packages/lammps/share/lammps/potentials/`.
+The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
+If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
 
-You might have to re-open/re-login to your shell for the new settings to take effect.
+You might have to re-open/re-login to your terminal shell for the new settings to take effect.
 
 # Demo
+A toy demo and other examples can be found in the `tutorials/` folder.
+```
+tutorials/
+├── example.ipynb
+└── GaN_0001.ipynb
+└── Si_111_5x5.ipynb
+└── SrTiO3_001.ipynb
+└── latent_space_clustering.ipynb
+```
+ More data/examples can be found in our Zenodo dataset (https://doi.org/10.5281/zenodo.7758174).
 
-A toy demo and other examples can be found in the `tutorials/` folder. More data/examples can be found in our Zenodo dataset (https://doi.org/10.5281/zenodo.7758174).
+## Toy example of Cu(100)
+A toy example to illustrate the use of VSSR-MC. It should only take about a few seconds to run. Refer to `tutorials/example.ipynb`.
 
-### Toy example of Cu(100)
-A toy example to illustrate the use of VSSR-MC. It should only take about a minute to run. Refer to `tutorials/example.ipynb`.
+## GaN(0001) surface sampling with Tersoff potential
+We explicitly generate surface sites using `pymatgen`. This example could take a few minutes to run. Refer to `tutorials/GaN_0001.ipynb`.
 
-### GaN(0001) surface sampling with Tersoff potential
-We explicitly generate surface sites using `pymatgen`. This example could take 5 minutes or more to run. Refer to `tutorials/GaN_0001.ipynb`.
+## Si(111) 5x5 surface sampling with modified Stillinger–Weber potential
+We explicitly generate surface sites using `pymatgen`. This example could take a few minutes to run. Refer to `tutorials/Si_111_5x5.ipynb`.
 
-### Si(111) 5x5 surface sampling with modified Stillinger–Weber potential
-We explicitly generate surface sites using `pymatgen`. This example could take 5 minutes or more to run. Refer to `tutorials/Si_111_5x5.ipynb`.
+## SrTiO3(001) surface sampling with machine learning potential
+Demonstrates the integration of VSSR-MC with a neural network force field. This example could take a few minutes to run. Refer to `tutorials/SrTiO3_001.ipynb`.
 
-### SrTiO3(001) surface sampling with machine learning potential
-Demonstrates the integration of VSSR-MC with a neural network force field. This example could take 10 minutes or more to run. Refer to `tutorials/SrTiO3_001.ipynb`.
-
-### Clustering MC-sampled surfaces in the latent space
+## Clustering MC-sampled surfaces in the latent space
 Retrieving the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
+
+
+# Scripts
+Scripts can be found in the `scripts/` folder, including:
+```
+scripts/
+├── sample_surface.py
+├── clustering.py
+```
+
+The arguments for the scripts can be found by running `python scripts/sample_surface.py -h` or `python scripts/clustering.py -h`.
+
+## Example usage:
+
+### Original VSSR-MC with PaiNN model trained on SrTiO3(001) surfaces
+```bash
+python scripts/sample_surface.py --run_name "SrTiO3(001)_painn" --starting_structure_path "tutorials/data/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "PaiNN" --model_paths "tutorials/data/nff/model01/best_model" "tutorials/data/nff/model02/best_model" "tutorials/data/nff/model03/best_model" --settings_path "scripts/configs/sample_config_painn.json"
+```
+
+### Pre-trained "foundational" CHGNet model on SrTiO3(001) surfaces
+```bash
+python scripts/sample_surface.py --run_name "SrTiO3(001)_chgnet" --starting_structure_path "tutorials/data/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
+```
+
+### Latent space clustering
+<!-- TODO update with my commands -->
+```bash
+python scripts/clustering.py --file_paths "/mnt/data0/dux/surf_samp_working/LaMnO3/2024_0701_LaMnO3_001_sampling_5_relax_2.0_ads_height.txt" --nff_cutoff 6.0 --nff_model_type "CHGNetNFF" --max_input_len 500 --clustering_metric "energy" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda" --save_folder "/mnt/data0/dux/surf_samp_working/LaMnO3/2024_0701_LaMnO3_001_sampling_5_relax_2.0_ads_height"
+```
+
+
+# Citation
+```bib
+@article{duMachinelearningacceleratedSimulationsEnable2023,
+  title = {Machine-Learning-Accelerated Simulations to Enable Automatic Surface Reconstruction},
+  author = {Du, Xiaochen and Damewood, James K. and Lunger, Jaclyn R. and Millan, Reisel and Yildiz, Bilge and Li, Lin and {G{\'o}mez-Bombarelli}, Rafael},
+  year = {2023},
+  month = dec,
+  journal = {Nature Computational Science},
+  pages = {1--11},
+  publisher = {Nature Publishing Group},
+  issn = {2662-8457},
+  doi = {10.1038/s43588-023-00571-7},
+  urldate = {2023-12-07},
+  keywords = {Computational methods,Computational science,Software,Surface chemistry}
+}
+```
+
+# Development & Bugs
+`surface-sampling` is under active development, if you encounter any bugs in installation and usage,
+please open an [issue](https://github.com/learningmatter-mit/surface-sampling/issues). We appreciate your contributions!

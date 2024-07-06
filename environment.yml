@@ -1,0 +1,8 @@
+name:
+  - vssr-mc
+channels:
+  - conda-forge
+dependencies:
+  - lammps
+  - kimpy
+  - openkim-models
