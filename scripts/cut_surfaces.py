@@ -1,15 +1,21 @@
+"""Cut surfaces from bulk structures."""
+
 import argparse
 import datetime
 import pickle as pkl
+from collections.abc import Iterable
+from logging import getLevelNamesMapping
 from pathlib import Path
-from typing import Iterable, List, Union
+from typing import Literal
 
 import ase
-import matplotlib.pyplot as plt
 import numpy as np
-from ase.visualize.plot import plot_atoms
 from catkit.gen.surface import SlabGenerator
 from tqdm import tqdm
+
+from mcmc.utils import setup_logger
+from mcmc.utils.misc import load_dataset_from_files
+from mcmc.utils.plot import plot_surfaces
 
 
 def parse_args():
@@ -59,35 +65,18 @@ def parse_args():
         default=10,
         help="Vacuum space in Angstroms (in each direction).",
     )
+    parser.add_argument(
+        "--logging_level",
+        type=str,
+        choices=["debug", "info", "warning", "error", "critical"],
+        default="info",
+        help="Logging level",
+    )
 
     return parser.parse_args()
 
 
-def plot_surfaces(
-    surfaces: List[ase.Atoms],
-    fig_name: str = "cut_surfaces",
-):
-    """Plot the structures before and after perturbation.
-
-    Parameters
-    ----------
-    surfaces : List[ase.Atoms]
-        List of cut structures.
-    fig_name : str, optional
-        save name for figure, by default "cut_surfaces"
-    """
-
-    # plot 2 rows of surfaces
-    fig, axes = plt.subplots(2, len(surfaces) // 2, figsize=(8, 8), dpi=200)
-    for ax, atoms in zip(axes.ravel(), surfaces):
-        ax.axis("off")
-        composition = atoms.get_chemical_formula()
-        ax.set_title(composition)
-        plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
-    plt.tight_layout()
-    plt.savefig(f"{fig_name}.png")
-
-
+# TODO move to surface.slab
 def surface_from_bulk(
     bulk: ase.Atoms,
     miller_index: Iterable[int],
@@ -96,34 +85,22 @@ def surface_from_bulk(
     size: Iterable = [1, 1],
     vacuum: float = 7.5,
     iterm: int = 0,
-):
+) -> tuple[ase.Atoms, list[bool]]:
     """Cut a surface from a bulk structure.
 
-    Parameters:
-    ----------
-    bulk : ase.Atoms
-        Bulk structure to cut surface from.
-    miller_index : Iterable[int]
-        Miller indices for the surface, length 3.
-    layers : int, optional
-        Number of layers in the slab, by default 5
-    fixed : int, optional
-        Number of fixed layers, by default 6
-    size : Iterable, optional
-        Size of the slab with respect to provided bulk, by default [1, 1]
-    vacuum : float, optional
-        Vacuum space in Angstroms (in each direction), by default 7.5
-    iterm : int, optional
-        Index of the slab termination, by default 0
+    Args:
+        bulk (ase.Atoms): Bulk structure to cut surface from.
+        miller_index (Iterable[int]): Miller indices for the surface, length 3.
+        layers (int, optional): Number of layers in the slab, by default 5
+        fixed (int, optional): Number of fixed layers, by default 6
+        size (Iterable, optional): Size of the slab with respect to provided bulk, by default [1, 1]
+        vacuum (float, optional): Vacuum space in Angstroms (in each direction), by default 7.5
+        iterm (int, optional): Index of the slab termination, by default 0
 
     Returns:
-    ----------
-    slab : ase.Atoms
-        Surface cut from the crystal.
-    surface_atoms : List[bool]
-        List of surface atoms.
+        ase.Atoms: Surface cut from the crystal.
+        list[bool]: list of surface atoms.
     """
-
     # bulk.set_initial_magnetic_moments(bulk.get_initial_magnetic_moments())
     # layers = 5
     gen = SlabGenerator(
@@ -141,9 +118,9 @@ def surface_from_bulk(
     slab = gen.get_slab(iterm=iterm)
     slab = gen.set_size(slab, size)
 
-    slab.center(vacuum=vacuum, axis=2)
+    slab.center(vacuum=vacuum, axis=2)  # center slab in z direction
 
-    surface_atom_index = slab.get_surface_atoms().tolist()  # includes top surface atoms
+    # surface_atom_index = slab.get_surface_atoms().tolist()  # includes top surface atoms
     atom_list = np.arange(len(slab.numbers))
     z_values = slab.positions[:, 2]
     highest_z = np.max(z_values)
@@ -153,83 +130,73 @@ def surface_from_bulk(
 
 
 def main(
-    file_names: List[str],
-    hkl: List[int] = [0, 0, 1],
+    file_names: list[str],
+    hkl: Iterable[int] = (0, 0, 1),
     layers: int = 6,
     fixed: int = 4,
-    size: List[int] = [1, 1],
+    size: Iterable[int] = (1, 1),
     vacuum: int = 10,
-    save_folder: Union[Path, str] = "./",
+    save_folder: Path | str = "./",
+    logging_level: Literal["debug", "info", "warning", "error", "critical"] = "info",
 ):
     """Cut surfaces from provided bulk structures.
 
-    Parameters
-    ----------
-    file_names : List[str]
-        List of file names to load structures from.
-    hkl : List[int], optional
-        Miller indices for the surface, by default [0, 0, 1]
-    layers : int, optional
-        Number of layers in the slab, by default 6
-    fixed : int, optional
-        Number of fixed layers, by default 4
-    size : List[int], optional
-        Size of the slab with respect to provided bulk, by default [1, 1]
-    vacuum : int, optional
-        Vacuum space in Angstroms (in each direction), by default 10
-    save_folder : Union[Path, str], optional
-        Folder to save cut surfaces, by default "./"
-
+    Args:
+        file_names (list[str]): list of file names to load structures from.
+        hkl (Iterable[int], optional): Miller indices for the surface, by default [0, 0, 1]
+        layers (int, optional): Number of layers in the slab, by default 6
+        fixed (int, optional): Number of fixed layers, by default 4
+        size (Iterable[int], optional): Size of the slab with respect to provided bulk,
+            by default [1, 1]
+        vacuum (int, optional): Vacuum space in Angstroms (in each direction), by default 10
+        save_folder (Path | str, optional): Folder to save cut surfaces, by default "./"
+        logging_level (Literal["debug", "info", "warning", "error", "critical"], optional):
+            Logging level, by default "info"
     """
-    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    start_timestamp = datetime.now().isoformat(sep="-", timespec="milliseconds")
 
+    # Initialize save folder
     save_path = Path(save_folder)
-    save_path.mkdir(
-        parents=True, exist_ok=True
-    )  # create save folder if it doesn't exist
+    save_path.mkdir(parents=True, exist_ok=True)
+    file_base = f"{start_timestamp}_cut_surfaces"
 
-    # TODO create new function to load structures from file
-    file_paths = [Path(file_name) for file_name in file_names]
-    print(f"There are a total of {len(file_paths)} input files")
-
-    all_structures = []
-    for full_path in file_paths:
-        with open(full_path, "rb") as f:
-            try:
-                data = pkl.load(f)
-                all_structures.extend(data)
-            except EOFError:
-                print(f"Could not load {full_path}")
-
-    print(f"Total number of structures: {len(all_structures)}")
-
-    all_slabs = []
-    # use Jackie's command for now
-    for bulk in tqdm(all_structures):
-        slab, _ = surface_from_bulk(
-            bulk, hkl, layers=layers, fixed=fixed, size=size, vacuum=vacuum
-        )
-        all_slabs.append(slab)
-
-    # plot 10 sampled surfaces
-    sampled_slabs = np.random.choice(len(all_slabs), 10, replace=False)
-    print(f"Sampling surfaces at indices: {sampled_slabs}")
-    plot_surfaces(
-        [all_slabs[x] for x in sampled_slabs],
-        fig_name=save_path / f"{start_time}_cut_surfaces",
+    # Initialize logger
+    logger = setup_logger(
+        "cut_surfaces",
+        save_path / "cut_surfaces.log",
+        level=getLevelNamesMapping()[logging_level.upper()],
     )
 
-    # save cut surfaces
+    logger.info("There are a total of %d input files", len(file_names))
+    all_structures = load_dataset_from_files(file_names)
+    logger.info("Loaded %d structures", {len(all_structures)})
+
+    all_slabs = []
+    # Cut surfaces from all structures
+    for bulk in tqdm(all_structures):
+        slab, _ = surface_from_bulk(bulk, hkl, layers=layers, fixed=fixed, size=size, vacuum=vacuum)
+        all_slabs.append(slab)
+
+    # Plot 10 sampled surfaces
+    sampled_slabs = np.random.choice(len(all_slabs), 10, replace=False)
+    logger.info("Sampling surfaces at indices: %s", sampled_slabs)
+    plot_surfaces(
+        [all_slabs[x] for x in sampled_slabs],
+        fig_name=file_base,
+        save_folder=save_path,
+    )
+
+    # Save cut surfaces
+    save_surface_path = (
+        save_path / f"{file_base}_total_{len(all_slabs)}_hkl_{hkl}_layers_{layers}.pkl"
+    )
     with open(
-        save_path
-        / f"{start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl",
+        save_surface_path,
         "wb",
     ) as f:
         pkl.dump(all_slabs, f)
 
-    print(
-        f"Surface cuts complete. Saved to {start_time}_total_{len(all_slabs)}_cut_surfaces_hkl_{hkl}_layers_{layers}.pkl"
-    )
+    logger.info("Surface cuts complete. Saved to %s", save_surface_path)
 
 
 if __name__ == "__main__":
@@ -242,4 +209,5 @@ if __name__ == "__main__":
         size=args.size,
         vacuum=args.vacuum,
         save_folder=args.save_folder,
+        logging_level=args.logging_level,
     )

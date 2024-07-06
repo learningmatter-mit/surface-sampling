@@ -4,20 +4,16 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import ase
-
-# import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from ase.visualize.plot import plot_atoms
 from matplotlib.figure import Figure
 from scipy.cluster.hierarchy import dendrogram
 from scipy.special import softmax
 
 from mcmc.utils import plot_settings
-
-# warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
-# warnings.filterwarnings("ignore")
 
 plt.style.use("default")
 
@@ -211,31 +207,68 @@ def plot_summary_stats(
     return fig
 
 
-def visualize_two_slabs(
-    slab1: ase.Atoms,
-    slab2: ase.Atoms,
+def plot_surfaces(
+    surfaces: list[ase.Atoms],
+    fig_name: str = "cut_surfaces",
     save_folder: str = ".",
 ) -> Figure:
-    """Visualize two slabs side by side.
+    """Plot cut surfaces.
 
     Args:
-        slab1 (ase.Atoms): First slab
-        slab2 (ase.Atoms): Second slab
+        surfaces (list[ase.Atoms]): List of cut structures.
+        fig_name (str, optional): Save name for figure. Defaults to "cut_surfaces".
         save_folder (str, optional): Folder to save the plot. Defaults to ".".
 
     Returns:
-        Figure: The figure object.
+        Figure: matplotlib figure object.
     """
-    fig, ax = plt.subplots(1, 2, figsize=(10, 10), dpi=DEFAULT_DPI)
-    labels = ["slab1", "slab2"]
-    for i in range(2):
-        ax[i].axis("off")
-        ax[i].set_title(labels[i])
-    plot_atoms(slab1, ax[0], radii=0.8, rotation=("90x, 15y, 90z"))
-    plot_atoms(slab2, ax[1], radii=0.8, rotation=("90x, 15y, 90z"))
+    # Plot 2 rows of surfaces
+    fig, axes = plt.subplots(2, len(surfaces) // 2, figsize=(8, 8), dpi=DEFAULT_DPI)
+    for ax, atoms in zip(axes.ravel(), surfaces, strict=False):
+        ax.axis("off")
+        composition = atoms.get_chemical_formula()
+        ax.set_title(composition)
+        plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
 
     plt.tight_layout()
-    plt.savefig(Path(save_folder) / "slab_comparison.png")
+    plt.savefig(Path(save_folder) / f"{fig_name}.png")
+    return fig
+
+
+def plot_atom_type_histograms(
+    all_stoic_dicts: list[dict[str, int]],
+    atom_types: list[str],
+    fig_name: str = "starting_stoic_hist",
+    save_folder: str = ".",
+) -> Figure:
+    """Plot histogram of each atom type and the difference in number of Sr and Ir atoms.
+
+    Args:
+        all_stoic_dicts (list[dict[str, int]]): List of stoichiometry dictionaries for each
+            structure.
+        atom_types (list[str]): List of atom types to consider.
+        fig_name (str, optional): Save name for figure. Defaults to "starting_stoic_hist".
+        save_folder (str, optional): Folder to save the plot. Defaults to ".".
+
+    Returns:
+        Figure: matplotlib figure object.
+    """
+    delta_Sr_Ir = [
+        d["Sr"] - d["Ir"] for d in all_stoic_dicts
+    ]  # difference in number of Sr and Ir atoms
+
+    n_atoms = {atom: [d[atom] for d in all_stoic_dicts] for atom in atom_types}
+
+    fig, ax = plt.subplots(2, 1, figsize=(8, 6), dpi=DEFAULT_DPI)
+
+    sns.histplot(delta_Sr_Ir, ax=ax[0], discrete=True, label="#Sr - #Ir")
+    for atom in atom_types:
+        sns.histplot(n_atoms[atom], ax=ax[1], discrete=True, label=f"#{atom}")
+    ax[0].legend()
+    ax[1].legend()
+
+    plt.tight_layout()
+    plt.savefig(Path(save_folder) / f"{fig_name}.png")
     return fig
 
 

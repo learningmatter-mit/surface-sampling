@@ -89,7 +89,7 @@ def get_atoms_batches(
     return atoms_batches
 
 
-def load_dataset_from_files(file_paths: list[Path]) -> list[Atoms]:
+def load_dataset_from_files(file_paths: list[Path | str]) -> list[Atoms]:
     """Load dataset from files. Dataset can be a list of ASE Atoms objects, an NFF Dataset
     or a list of file paths.
 
@@ -99,6 +99,8 @@ def load_dataset_from_files(file_paths: list[Path]) -> list[Atoms]:
     Returns:
         list[Atoms]: List of ASE Atoms objects.
     """
+    file_paths = [Path(file_name) for file_name in file_paths]
+
     dset = []
     for x in file_paths:
         if x.suffix == ".txt":

@@ -17,10 +17,9 @@ from lammps import (
     lammps,
 )
 from nff.io.ase import AtomsBatch
-from nff.io.ase_calcs import EnsembleNFF, NeuralFF
+from nff.io.ase_calcs import EnsembleNFF
 from nff.utils.constants import HARTREE_TO_EV
-
-from mcmc.pourbaix.atoms import PourbaixAtom
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -44,211 +43,76 @@ def get_results_single(atoms_batch: AtomsBatch, calc: Calculator) -> dict:
     return calc.results
 
 
-class NFFPourbaix(NeuralFF):
-    """Calculate Pourbaix potential for surface or bulk systems using Neural Force Field.
+def get_embeddings(atoms_batches: list[AtomsBatch], calc: Calculator) -> np.ndarray:
+    """Calculate the embeddings for a list of AtomsBatch objects
 
-    We calculate the energy difference based on consecutive desorption/adsorption reactions as in
-    Rong and Kolpak, J. Phys. Chem. Lett., 2015.
+    Args:
+        atoms_batches (list[AtomsBatch]): List of AtomsBatch objects.
+        calc (Calculator): NFF Calculator.
 
-    Each step consists of the following:
-
-    1. G_ref -> G_new + A
-    2. A + n_H2O H2O -> HxAOy^(z-) + n_H+ H+ + n_e e-
-
-    Delta G_overall = Delta G_1 + Delta G_2
-
-    The free energy change for the first step is given by:
-    Delta G_1 = G_new + mu_A - G_ref
-    where G_new is the energy of the new system, mu_A is the chemical potential of the element A,
-    and G_ref is the energy of the reference system.
-
-    The free energy change for the second step is given by:
-    Delta G_2 = Delta G_SHE - n_e (e*U_SHE) - 2.3 n_H+ k_B T pH + k_B T ln(a_HxAOy^(z-))
-    where Delta G_SHE is the energy change at standard hydrogen electrode potential,
-    e is the electron charge, U_SHE is the standard hydrogen electrode potential,
-    n_H+ is the number of protons, k_B is the Boltzmann constant, T is the temperature,
-    pH is the pH, and a_HxAOy^(z-) is the activity of the species.
-
-    Attributes:
-        implemented_properties (list): List of implemented properties.
-        chem_pots (dict): Dictionary of chemical potentials.
-        reference_slab (dict): Dictionary of reference slabs.
-        temp (float): Temperature in eV.
-        phi (float): Electric potential.
-        pH (float): pH value.
-        pourbaix_atoms (dict): Dictionary of pourbaix atoms.
-
-    Methods:
-        get_delta_G2_individual: Get the standard free energy change for the second step of the
-            Pourbaix reaction for a single atom.
-        get_delta_G2: Get the standard free energy change for the second step of the
-            Pourbaix reaction.
-        get_delta_G1: Get the dissociation energy of all atoms.
-        get_surface_energy: Get the surface energy of the system, which is equivalent to the
-            Pourbaix potential.
-        get_pourbaix_potential: Get the Pourbaix potential of the system.
-        set: Set parameters.
-        calculate: Calculate based on NeuralFF before adding surface energy calculations to results.
+    Returns:
+        np.ndarray: Latent space embeddings with each row corresponding to a structure
     """
+    print(f"Calculating embeddings for {len(atoms_batches)} structures")
+    embeddings = []
+    for atoms_batch in tqdm(atoms_batches):
+        embedding = get_embeddings_single(atoms_batch, calc)
+        embeddings.append(embedding)
+    return np.stack(embeddings)
 
-    implemented_properties = (
-        *NeuralFF.implemented_properties,
-        "pourbaix_potential",
-        "surface_energy",
-    )
 
-    def __init__(self, *args, **kwargs):
-        """Initialize the NFFPourbaix class."""
-        super().__init__(*args, **kwargs)
-        self.chem_pots = {}
-        self.reference_slab = {}
-        self.temp = kwargs.get("temp", 0.0257)  # temperature in eV
-        self.phi = kwargs.get("phi", 0)  # electric potential
-        self.pH = kwargs.get("pH", 7)  # pH
-        self.pourbaix_atoms = {}
-        self.logger = kwargs.get("logger", logging.getLogger(__name__))
+def get_embeddings_single(atoms_batch: AtomsBatch, calc: Calculator) -> np.ndarray:
+    """Calculate the embeddings for a single AtomsBatch object
 
-    def get_delta_G2_individual(self, atom: str | PourbaixAtom) -> float:
-        """Get the free energy change for the second step of the Pourbaix reaction for a
-        single atom.
+    Args:
+        atoms_batch (AtomsBatch): AtomsBatch object.
+        calc (Calculator): NFF Calculator.
 
-        Args:
-            atom (Union[str, PourbaixAtom]): The atom to calculate the free energy change for.
+    Returns:
+        np.ndarray: Latent space embeddings
+    """
+    results = get_results_single(atoms_batch, calc)
 
-        Returns:
-            float: The standard free energy change for the second step for a single atoms.
-        """
-        if isinstance(atom, str):
-            atom = self.pourbaix_atoms[atom]
-        # - n_e (e*U_SHE) - 2.3 n_H+ k_B T pH + k_B T ln(a_HxAOy^(z-))
-        delta_G2_non_std = (
-            -atom.num_e * self.phi
-            - np.log(10) * atom.num_H * self.temp * self.pH
-            + self.temp * np.log(atom.species_conc)
-        )
-        return atom.delta_G2_std + delta_G2_non_std
+    return results["embedding"].squeeze()
 
-    def get_delta_G2(self, atoms: ase.Atoms = None) -> float:
-        """Get the total free energy change for the second step of the Pourbaix reaction.
 
-        Args:
-            atoms (ase.Atoms, optional): The atoms object to calculate the free energy change for.
-                Defaults to None.
+def get_std_devs(atoms_batches: list[AtomsBatch], calc: Calculator) -> np.ndarray:
+    """Calculate the force standard deviations for a list of AtomsBatch objects
 
-        Returns:
-            float: The total standard free energy change for the second step.
-        """
-        if atoms is None:
-            atoms = self.atoms
+    Args:
+    atoms_batches (List[AtomsBatch]): List of AtomsBatch objects
+    calc (Calculator): NFF Calculator
 
-        delta_G2 = 0
-        for atom in atoms.get_chemical_symbols():
-            delta_G2 += self.get_delta_G2_individual(atom)
-        return delta_G2
+    Returns:
+        np.ndarray: Force standard deviations with each element corresponding to a structure
+    """
+    print(f"Calculating force standard deviations for {len(atoms_batches)} structures")
+    force_stds = []
+    for atoms_batch in tqdm(atoms_batches):
+        force_std = get_std_devs_single(atoms_batch, calc)
+        force_stds.append(force_std)
 
-    def get_delta_G1(self, atoms: ase.Atoms = None) -> float:
-        """Get the dissociation energy of all atoms
+    return np.stack(force_stds)
 
-        Args:
-            atoms (ase.Atoms, optional): The atoms object to calculate the dissociation energy for.
-                Defaults to None.
 
-        Returns:
-            float: The dissociation energy of all atoms.
-        """
-        if atoms is None:
-            atoms = self.atoms
+def get_std_devs_single(atoms_batch: AtomsBatch, calc: Calculator) -> np.ndarray:
+    """Calculate the force standard deviation for a single AtomsBatch object
 
-        atoms_count = Counter(atoms.get_chemical_symbols())
-        sum_chem_pots = 0
-        for atom, count in atoms_count.items():
-            sum_chem_pots += count * self.pourbaix_atoms[atom].atom_std_state_energy
-        return sum_chem_pots - self.get_potential_energy(atoms=atoms)
+    Args:
+        atoms_batch (AtomsBatch): AtomsBatch object
+        calc (Calculator): NFF Calculator
 
-    def get_surface_energy(self, atoms: ase.Atoms = None) -> float:
-        """Get the surface energy of the system, which is equivalent to the Pourbaix potential.
-        See get_pourbaix_potential for more details.
+    Returns:
+        np.ndarray: Force standard deviation
+    """
+    if len(calc.models) > 1:
+        atoms_batch.calc = calc
+        calc.calculate(atoms_batch)
+        force_std = calc.results.get("forces_std", np.array([0.0])).mean()
+    else:
+        force_std = 0.0
 
-        Args:
-            atoms (ase.Atoms, optional): The atoms object to calculate the surface energy for.
-                Defaults to None.
-
-        Returns:
-            float: The surface energy of the system.
-        """
-        if atoms is None:
-            atoms = self.atoms
-
-        return self.get_pourbaix_potential(atoms=atoms)
-
-    def get_pourbaix_potential(self, atoms: ase.Atoms = None) -> float:
-        """Get the Pourbaix potential of the system, which is the negative of the sum of the free
-        energy changes for the two steps of the Pourbaix dissolution reaction. This is also the
-        "surface free energy" and the "Grand potential" in the Pourbaix diagram.
-
-        Args:
-            atoms (ase.Atoms, optional): The atoms object to calculate the Pourbaix potential for.
-                Defaults to None.
-
-        Returns:
-            float: The Pourbaix potential of the system.
-        """
-        if atoms is None:
-            atoms = self.atoms
-
-        return -(self.get_delta_G1(atoms=atoms) + self.get_delta_G2(atoms=atoms))
-
-    def set(self, **kwargs) -> dict:
-        """Set parameters in key-value pairs. A dictionary containing the parameters that have been
-        changed is returned. The special keyword 'parameters' can be used to read parameters from a
-        file.
-
-        Args:
-            **kwargs: The parameters to set.
-
-        Returns:
-            dict: A dictionary containing the parameters that have been changed.
-        """
-        changed_params = NeuralFF.set(self, **kwargs)
-        if "temperature" in self.parameters:
-            self.temp = self.parameters["temperature"]
-            self.logger.info("temperature: %.3f in kBT", self.temp)
-        if "phi" in self.parameters:
-            self.phi = self.parameters["phi"]
-            self.logger.info("potential: %.3f is set from parameters", self.phi)
-        if "pH" in self.parameters:
-            self.pH = self.parameters["pH"]
-            self.logger.info("pH: %.3f is set from parameters", self.pH)
-        if "pourbaix_atoms" in self.parameters:
-            self.pourbaix_atoms = self.parameters["pourbaix_atoms"]
-            self.logger.info("Pourbaix atoms: %s are set from parameters", self.pourbaix_atoms)
-        return changed_params
-
-    def calculate(
-        self,
-        atoms: ase.Atoms = None,
-        properties: tuple = implemented_properties,
-        system_changes: list = all_changes,
-    ):
-        """Caculate based on NeuralFF before add in surface energy calcs to results
-
-        Args:
-            atoms: ase.Atoms
-                The atoms object to calculate the properties for.
-            properties: List
-                The properties to calculate.
-            system_changes: List
-                The system changes to calculate.
-        """
-        if atoms is None:
-            atoms = self.atoms
-
-        NeuralFF.calculate(self, atoms, properties, system_changes)
-
-        if "surface_energy" in properties:
-            self.results["surface_energy"] = self.get_pourbaix_potential(atoms=atoms)
-
-        atoms.results.update(self.results)
+    return force_std
 
 
 # TODO define abstract base class for surface energy calcs
@@ -467,7 +331,7 @@ class LAMMMPSCalc(Calculator):
         # run LAMMPS without too much output
         lmp = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
         # lmp = lammps()
-        self.logger.debug(lmp.file(lammps_in_file))
+        self.logger.info(lmp.file(lammps_in_file))
 
         energy = lmp.extract_compute("thermo_pe", LMP_STYLE_GLOBAL, LMP_TYPE_SCALAR)
         if "opt" in lammps_template:
