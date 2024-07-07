@@ -388,7 +388,6 @@ def plot_dendrogram(
     ax.set_title(
         "Dendrogram of structures clustered using the latent space embeddings", fontsize=16
     )
-    ax.legend(fontsize=12)
     plt.savefig(Path(save_folder, save_prepend + "dendrogram_Z.png"))
 
     return fig
