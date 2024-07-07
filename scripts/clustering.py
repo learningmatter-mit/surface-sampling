@@ -164,14 +164,13 @@ def main(
                 path,
                 model_type=model_type,
                 map_location=device,
-                requires_embeddings=True,
+                requires_embedding=True,
             )
             for path in nff_paths
         ]
     else:
         # raise error if no models are provided
         raise ValueError("No NFF models provided")
-
     # EnsembleNFF for force standard deviation prediction
     ensemble_calc = EnsembleNFF(
         models,

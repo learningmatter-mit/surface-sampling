@@ -362,9 +362,13 @@ class LAMMMPSCalc(Calculator):
         new_slab = ase.io.read(lammps_out_file, format="lammps-data", style="atomic")
 
         atomic_numbers_dict = config["atomic_numbers_dict"]
-        actual_atomic_numbers = [atomic_numbers_dict[str(x)] for x in new_slab.get_atomic_numbers()]
 
-        new_slab.set_atomic_numbers(actual_atomic_numbers)
+        # For some ase versions, the retrieved atomic numbers are not the 'real' atomic numbers
+        if not set(new_slab.get_atomic_numbers()) <= set(atomic_numbers_dict.values()):
+            actual_atomic_numbers = [
+                atomic_numbers_dict[str(x)] for x in new_slab.get_atomic_numbers()
+            ]
+            new_slab.set_atomic_numbers(actual_atomic_numbers)
         new_slab.calc = slab.calc
 
         return energy, pe_per_atom, new_slab
