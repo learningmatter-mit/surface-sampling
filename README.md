@@ -18,11 +18,9 @@
 
 
 # Overview
+This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through [ASE](https://wiki.fysik.dtu.dk/ase/)) or a classical potential (through ASE or [LAMMPS](https://www.lammps.org/)). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work: [Machine-learning-accelerated simulations to enable automatic surface reconstruction](https://doi.org/10.1038/s43588-023-00571-7).
 
-This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through [ASE](https://wiki.fysik.dtu.dk/ase/)) or a classical potential (through ASE or [LAMMPS](https://www.lammps.org/)). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work: [Machine-learning-accelerated simulations to enable automatic surface reconstruction](https://doi.org/10.1038/s43588-023-00571-7)
-
-<!-- Read through the following in order before running our code. -->
-
+![Cover image](site/static/vssr_cover_image.png)
 
 # System requirements
 We recommend a computer with the following specs:
@@ -30,10 +28,7 @@ We recommend a computer with the following specs:
 - RAM: 16+ GB
 - CPU: 4+ cores, 3 GHz/core
 
-<!-- We tested out the code on machines with 6+ CPU cores @ 3.0+ GHz/core with 64+ GB of RAM. -->
-
 To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU. The code has been tested on *Linux* Ubuntu 20.04.6 LTS and macOS Sonoma 14.5 but we expect it to be system agnostic.
-
 
 # Setup
 To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
@@ -55,8 +50,8 @@ export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 ```
 The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
 The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/lib/python3.11/site-packages/lammps/share/lammps/potentials/`.
-The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
-If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
+The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
+If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
 
 You might have to re-open/re-login to your terminal shell for the new settings to take effect.
 
@@ -70,22 +65,22 @@ tutorials/
 └── SrTiO3_001.ipynb
 └── latent_space_clustering.ipynb
 ```
- More data/examples can be found in our Zenodo dataset (https://doi.org/10.5281/zenodo.7758174).
+ More data/examples can be found in our [Zenodo dataset](https://doi.org/10.5281/zenodo.7758174).
 
 ## Toy example of Cu(100)
 A toy example to illustrate the use of VSSR-MC. It should only take about a few seconds to run. Refer to `tutorials/example.ipynb`.
 
 ## GaN(0001) surface sampling with Tersoff potential
-We explicitly generate surface sites using `pymatgen`. This example could take a few minutes to run. Refer to `tutorials/GaN_0001.ipynb`.
+This example could take a few minutes to run. Refer to `tutorials/GaN_0001.ipynb`.
 
 ## Si(111) 5x5 surface sampling with modified Stillinger–Weber potential
-We explicitly generate surface sites using `pymatgen`. This example could take a few minutes to run. Refer to `tutorials/Si_111_5x5.ipynb`.
+This example could take a few minutes to run. Refer to `tutorials/Si_111_5x5.ipynb`.
 
 ## SrTiO3(001) surface sampling with machine learning potential
 Demonstrates the integration of VSSR-MC with a neural network force field. This example could take a few minutes to run. Refer to `tutorials/SrTiO3_001.ipynb`.
 
 ## Clustering MC-sampled surfaces in the latent space
-Retrieving the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
+Retrieves the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
 
 
 # Scripts
@@ -102,18 +97,17 @@ The arguments for the scripts can be found by running `python scripts/sample_sur
 
 ### Original VSSR-MC with PaiNN model trained on SrTiO3(001) surfaces
 ```bash
-python scripts/sample_surface.py --run_name "SrTiO3(001)_painn" --starting_structure_path "tutorials/data/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "PaiNN" --model_paths "tutorials/data/nff/model01/best_model" "tutorials/data/nff/model02/best_model" "tutorials/data/nff/model03/best_model" --settings_path "scripts/configs/sample_config_painn.json"
+python scripts/sample_surface.py --run_name "SrTiO3_001_painn" --starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "PaiNN" --model_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" "tutorials/data/SrTiO3_001/nff/model02/best_model" "tutorials/data/SrTiO3_001/nff/model03/best_model" --settings_path "scripts/configs/sample_config_painn.json"
 ```
 
 ### Pre-trained "foundational" CHGNet model on SrTiO3(001) surfaces
 ```bash
-python scripts/sample_surface.py --run_name "SrTiO3(001)_chgnet" --starting_structure_path "tutorials/data/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
+python scripts/sample_surface.py --run_name "SrTiO3_001_chgnet" --starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
 ```
 
 ### Latent space clustering
-<!-- TODO update with my commands -->
 ```bash
-python scripts/clustering.py --file_paths "/mnt/data0/dux/surf_samp_working/LaMnO3/2024_0701_LaMnO3_001_sampling_5_relax_2.0_ads_height.txt" --nff_cutoff 6.0 --nff_model_type "CHGNetNFF" --max_input_len 500 --clustering_metric "energy" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda" --save_folder "/mnt/data0/dux/surf_samp_working/LaMnO3/2024_0701_LaMnO3_001_sampling_5_relax_2.0_ads_height"
+python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_mcmc_structures_100.pkl" --save_folder "SrTiO3_001/clustering" --nff_model_type "PaiNN" --nff_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" --clustering_metric "force_std" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda"
 ```
 
 
@@ -135,5 +129,5 @@ python scripts/clustering.py --file_paths "/mnt/data0/dux/surf_samp_working/LaMn
 ```
 
 # Development & Bugs
-`surface-sampling` is under active development, if you encounter any bugs in installation and usage,
+VSSR-MC is under active development, if you encounter any bugs in installation and usage,
 please open an [issue](https://github.com/learningmatter-mit/surface-sampling/issues). We appreciate your contributions!

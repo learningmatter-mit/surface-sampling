@@ -85,3 +85,6 @@ tmp_files/
 !tutorials/data/*/*.txt
 !tutorials/*/*.txt
 !tutorials/data/*/**/*.csv
+
+# static files should still be committed
+!site/static/**.png
