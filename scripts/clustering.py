@@ -175,14 +175,14 @@ def main(
     ensemble_calc = EnsembleNFF(
         models,
         device=device,
-        model_units="eV/atom",
+        model_units=models[0].units if model_type != "PaiNN" else "kcal/mol",
         prediction_units="eV",
     )
     # NeuralFF for latent space embedding calculation
     single_calc = NeuralFF(
         models[0],
         device=device,
-        model_units="eV/atom",
+        model_units=models[0].units if model_type != "PaiNN" else "kcal/mol",
         prediction_units="eV",
         properties=["energy", "forces", "embedding"],
     )
