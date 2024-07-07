@@ -1,0 +1,38 @@
+#performing single energy calculation
+clear
+atom_style atomic
+units metal
+boundary p p p
+atom_modify sort 0 0.0
+
+# read_data /path/to/data.data
+read_data {}
+
+### set bulk
+group bulk id <= {}
+
+### interactions
+pair_style tersoff
+# pair_coeff * * /path/to/potential Atom1 Atom2
+pair_coeff * * {} {} {}
+mass 1 69.723000
+mass 2 14.007000
+
+### run
+reset_timestep 0
+fix fix_nve all nve # fix all atoms
+thermo 1 # output thermodynamic variables every N timesteps
+
+thermo_style custom step temp press ke pe xy xz yz
+thermo_modify flush yes format float %23.16g
+
+# Output the per-site potential energy to a file
+compute        pe_per_atom all pe/atom
+# dump write_pe all custom 10 per_atom_pe.txt id x y z c_pe_per_atom
+
+run 0
+
+# write_data /path/to/data.out
+write_data {}
+print "_end of energy calculation_"
+log /dev/stdout

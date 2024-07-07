@@ -76,7 +76,12 @@ build/
 tmp_files/
 
 # test files should still be committed
-!tests/data/**.pkl
 !tests/data/*/*.pkl
-!tests/data/**.cif
 !tests/data/*/*.cif
+
+# tutorial files should still be committed
+!tutorials/data/*/*.pkl
+!tutorials/data/*/*.cif
+!tutorials/data/*/*.txt
+!tutorials/*/*.txt
+!tutorials/data/*/**/*.csv

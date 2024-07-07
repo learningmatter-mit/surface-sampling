@@ -1,0 +1,55 @@
+#performing lammps opt
+clear
+log none
+atom_style atomic
+units metal
+# atom_modify sort 0 0.0
+# kim_init         SW_StillingerWeber_1985_Si__MO_405512056662_005 metal
+boundary         p p f
+
+# read_data /path/to/data.data
+read_data        {}
+
+### set bulk
+group bulk id <= {} # relax the top layer + any adsorbates
+
+### interactions
+# kim_interactions Si
+pair_style kim ThreeBodyCluster_SRS_StephensonRadnySmith_1996_Si__MO_604248666067_000
+# pair_coeff * * /path/to/potential Atom1 Atom2 {}
+pair_coeff * * {}
+mass             1 28.0855
+
+### run
+reset_timestep   0
+fix 2 bulk setforce 0.0 0.0 0.0
+thermo 10 # output thermodynamic variables every N timesteps
+
+thermo_style custom step temp press ke pe xy xz yz
+thermo_modify flush yes format float %23.16g
+
+# write_data /path/to/data.out
+# Output the per-site potential energy to a file
+#compute        pe_per_atom all pe/atom
+#dump write_pe all custom 10 per_atom_pe.txt id x y z c_pe_per_atom
+
+
+# Compute pairwise distances using compute pair/local
+#compute pair_distances all pair/local dist
+#dump write_pd all local 10 pair_distances.txt c_pair_distances
+
+# Define a fix to calculate the average pairwise distance for each atom
+# fix ave_pair_distances all ave/atom 1 1 1 c_pair_distances
+
+# Output the computed average pairwise distances to a file
+# fix write_avg_pair_distances all print 1 "avg_pair_distances.dat" "c_ave_pair_distances" file "avg_pair_distances.dat" screen no
+
+min_style cg
+minimize 1e-3 1e-3 {} 10000
+
+compute 1 all pe/atom
+
+# write_data /path/to/data.out
+write_data {}
+print "_end of energy minimization_"
+log /dev/stdout

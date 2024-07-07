@@ -1,0 +1,1 @@
+../data/GaN_0001/GaN_0001_lammps_opt_template.txt

@@ -1,0 +1,1 @@
+../data/Si_111_5x5/Si_111_5x5_lammps_energy_template.txt
