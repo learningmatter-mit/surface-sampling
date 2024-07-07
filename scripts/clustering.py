@@ -1,34 +1,22 @@
 """Clustering of structures based on their latent space embeddings."""
 
 import argparse
-import datetime
-import logging
-import os
-import pickle as pkl
+from datetime import datetime
 from logging import getLevelNamesMapping
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
-import pandas as pd
 import torch
-from ase import Atoms
-from nff.data import Dataset
-from nff.data.dataset import concatenate_dict
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.train.builders import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem
-from scipy.cluster.hierarchy import fcluster, linkage
-from sklearn.decomposition import PCA
 from tqdm import tqdm
 
-from mcmc.calculators import (
-    get_results_single,
-    get_std_devs_single,
-)
+from mcmc.calculators import get_embeddings_single, get_results_single, get_std_devs_single
 from mcmc.utils import setup_logger
+from mcmc.utils.clustering import perform_clustering, select_data_and_save
 from mcmc.utils.misc import get_atoms_batch, load_dataset_from_files
-from mcmc.utils.plot import plot_clustering_results, plot_dendrogram
 
 np.set_printoptions(precision=3, suppress=True)
 
@@ -52,10 +40,10 @@ def parse_args():
     )
     parser.add_argument(
         "--nff_model_type",
-        choices=("CHGNetNFF", "NffScaleMACE"),
+        choices=["PaiNN", "NffScaleMACE", "CHGNetNFF"],
+        default="CHGNetNFF",
         help="NFF model type",
         type=str,
-        default="CHGNetNFF",
     )
     parser.add_argument(
         "--nff_paths", nargs="*", help="Full path to NFF model", type=str, default=[""]
@@ -112,140 +100,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def perform_clustering(
-    embeddings: np.ndarray,
-    clustering_cutoff: float,
-    cutoff_criterion: Literal["distance", "maxclust"] = "distance",
-    save_folder: Path | str = "./",
-    save_prepend: str = "",
-    logger: logging.Logger | None = None,
-    **kwargs,
-) -> np.ndarray:
-    """Perform clustering on the embeddings using PCA and hierarchical clustering.
-    Either distance or maxclust can be used as the cutoff criterion.
-
-    Args:
-        embeddings (np.ndarray): Latent space embeddings with each row corresponding to a structure
-        clustering_cutoff (float): Either the distance or the maximum number of clusters
-        cutoff_criterion (Literal['distance', 'maxclust'], optional): Either distance or maxclust,
-            by default 'distance'
-        save_folder (Union[Path, str], optional): Folder to save the plots, by default "./"
-        save_prepend (str, optional): Save directory prefix, by default ""
-        logger (logging.Logger, optional): Logger object, by default None
-        **kwargs: Additional keyword arguments
-
-    Returns:
-        np.ndarray: Each element corresponds to the cluster number of the corresponding structure
-    """
-    logger = logger or logging.getLogger(__name__)
-
-    # perform PCA
-    X = np.stack(embeddings)
-    pca = PCA(n_components=32, whiten=True).fit(X)
-    X_r = pca.transform(X)
-
-    # plot_pca(save_folder, save_prepend, X_r)
-
-    logger.info("X_r has shape %s", X_r.shape)
-    logger.info("X has shape %s", X.shape)
-
-    logger.info("The first pca explained ratios are %s", pca.explained_variance_ratio_[:5])
-
-    # Perform hierarchical clustering
-    Z = linkage(X_r[:, :3], method="ward", metric="euclidean", optimal_ordering=True)
-
-    # plot dendrogram
-    plot_dendrogram(Z, save_prepend=save_prepend, save_folder=save_folder)
-
-    # t sets the distance
-    if cutoff_criterion == "distance":
-        y = fcluster(Z, t=clustering_cutoff, criterion="distance", depth=2)
-    else:
-        y = fcluster(Z, t=clustering_cutoff, criterion="maxclust", depth=2)
-
-    num_clusters = len(np.unique(y))
-
-    logger.info("There are %s clusters", num_clusters)
-
-    # plot_pca_clusters(X_r, max_index, y, save_folder)
-    plot_clustering_results(
-        X_r, num_clusters, y, save_prepend=save_prepend, save_folder=save_folder
-    )
-
-    return y
-
-
-def select_data_and_save(
-    atoms_batches: list[Atoms],
-    y: np.ndarray,
-    metric_values: np.ndarray,
-    clustering_metric: Literal["force_std", "random", "energy"] = "force_std",
-    save_folder: Path | str = "./",
-    save_prepend: str = "",
-    logger: logging.Logger | None = None,
-) -> None:
-    """Select one structure from each cluster according and save the corresponding Atoms objects
-
-    Args:
-        atoms_batches (List[Atoms]): List of Atoms objects
-        y (np.ndarray): Each element corresponds to the cluster number of the corresponding
-            structure metric_values (np.ndarray): Metric values for each structure
-        clustering_metric (Literal['force_std', 'random', 'energy'], optional): Metric used to
-            select the structure, by default 'force_std'
-        metric_values (np.ndarray): Values for the selected clustering metric
-        save_folder (Union[Path, str], optional): Folder to save the plots, by default "./"
-        save_prepend (str, optional): Save directory prefix, by default ""
-        logger (logging.Logger, optional): Logger object, by default None
-    """
-    logger = logger or logging.getLogger(__name__)
-
-    # Find the maximum per cluster
-    data = {"cluster": y, "metric_values": metric_values}
-
-    clustering_df = pd.DataFrame(data).reset_index()
-
-    logger.info("Before selection")
-    logger.info(clustering_df.head())
-    if clustering_metric in "random":
-        # Select a random structure from each cluster
-        sorted_df = (
-            clustering_df.sort_values(["cluster", "metric_values"], ascending=[True, False])
-            .groupby("cluster", as_index=False)
-            .apply(lambda x: x.sample(1))
-        )
-    else:
-        # Select the highest variance structure from each cluster
-        sorted_df = (
-            clustering_df.sort_values(["cluster", "metric_values"], ascending=[True, False])
-            .groupby("cluster", as_index=False)
-            .first()
-        )
-
-    logger.info("After selection")
-    logger.info(sorted_df.head())
-
-    logger.info(
-        f"Cluster: {y[sorted_df['index'].iloc[0]]} "
-        f"metric value: {metric_values[sorted_df['index'].iloc[0]]}"
-    )
-
-    selected_indices = sorted_df["index"].to_numpy()
-
-    # save original atoms instead of atoms_batch
-    selected_atoms = [atoms_batches[x] for x in selected_indices.tolist()]
-
-    logger.info("Saving %d Atoms objects", len(selected_atoms))
-    if len(selected_atoms) >= 1 and isinstance(selected_atoms[0], Atoms):
-        clustered_atom_files = os.path.join(save_folder, save_prepend + "clustered.pkl")
-        with open(clustered_atom_files, "wb") as f:
-            pkl.dump(selected_atoms.copy(), f)
-    else:
-        clustered_atom_files = os.path.join(save_folder, save_prepend + "clustered.pth.tar")
-        Dataset(concatenate_dict(*selected_atoms)).save(clustered_atom_files)
-
-    logger.info("Saved to %s", clustered_atom_files)
-
-
 def main(
     file_names: list[str],
     nff_cutoff: float = 5.0,
@@ -300,7 +154,7 @@ def main(
         device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
     else:
         device = "cpu"
-    logger.info("Using %d device for NFF calculations", device)
+    logger.info("Using %s device for NFF calculations", device)
 
     if nff_paths:
         # Load existing models
@@ -364,16 +218,20 @@ def main(
         for single_dset in tqdm(dset_batch):
             atoms_batch = get_atoms_batch(single_dset, nff_cutoff, device=device)
             single_calc_results = get_results_single(atoms_batch, single_calc)
-            embedding = single_calc_results["embedding"].squeeze()
+            embedding = get_embeddings_single(
+                atoms_batch,
+                single_calc,
+                results_cache=single_calc_results,
+                flatten=True,
+                flatten_axis=0,
+            )
             if clustering_metric == "energy":
                 metric_value = single_calc_results["energy"].squeeze()
             elif clustering_metric == "force_std":
                 metric_value = get_std_devs_single(atoms_batch, ensemble_calc)
             else:
                 metric_value = np.random.rand()
-            embeddings.append(
-                embedding
-            )  # BUG: NFFScaleMace embeddings are given atomwise, which means we need to stack them
+            embeddings.append(embedding)
             metric_values.append(metric_value)
         embeddings = np.stack(embeddings)
         metric_values = np.stack(metric_values)

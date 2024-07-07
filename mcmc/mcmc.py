@@ -16,7 +16,7 @@ from mcmc.events.event import Change, Exchange
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
 from mcmc.system import SurfaceSystem
 from mcmc.utils import create_anneal_schedule, setup_folders
-from mcmc.utils.misc import (
+from mcmc.utils.clustering import (
     find_closest_points_indices,
     get_cluster_centers,
 )

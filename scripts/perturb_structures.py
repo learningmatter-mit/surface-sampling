@@ -1,18 +1,17 @@
 """Perturb structure atomic positions and lattice and save them to a new file."""
 
 import argparse
-import datetime
 import pickle as pkl
+from datetime import datetime
 from logging import getLevelNamesMapping
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
-from ase import Atoms
 from tqdm import tqdm
 
 from mcmc.utils import setup_logger
-from mcmc.utils.misc import load_dataset_from_files
+from mcmc.utils.misc import load_dataset_from_files, randomize_structure
 from mcmc.utils.plot import plot_surfaces
 
 
@@ -53,65 +52,6 @@ def parse_args():
     return parser.parse_args()
 
 
-# def plot_structures(
-#     starting_structures: List[ase.Atoms],
-#     perturbed_structures: List[ase.Atoms],
-#     fig_name: str = "structures",
-# ):
-#     """Plot the structures before and after perturbation.
-
-#     Parameters
-#     ----------
-#     starting_structures : List[ase.Atoms]
-#         List of starting structures.
-#     perturbed_structures : List[ase.Atoms]
-#         List of perturbed structures.
-#     fig_name : str, optional
-#         save name for figure, by default "structures"
-#     """
-
-#     fig, axes = plt.subplots(2, len(starting_structures), figsize=(8, 8), dpi=200)
-#     for ax, atoms in zip(axes.ravel(), starting_structures + perturbed_structures):
-#         ax.axis("off")
-#         composition = atoms.get_chemical_formula()
-#         ax.set_title(composition)
-#         plot_atoms(atoms, ax, radii=0.8, rotation=("-75x, 45y, 10z"))
-#     plt.tight_layout()
-#     plt.savefig(f"{fig_name}.png")
-
-
-def randomize_structure(atoms, amplitude, displace_lattice=True) -> Atoms:
-    """Randomly displaces the atomic coordinates (and lattice parameters)
-    by a certain amplitude. Useful to generate slightly off-equilibrium
-    configurations and starting points for MD simulations. The random
-    amplitude is sampled from a uniform distribution.
-
-    Same function as in pymatgen, but for ase.Atoms objects.
-
-    Args:
-        atoms (ase.Atoms): The input structure.
-        amplitude (float): Max value of amplitude displacement in Angstroms.
-        displace_lattice (bool): Whether to displace the lattice.
-
-    Returns:
-        ase.Atoms: The perturbed structure.
-    """
-    newcoords = atoms.get_positions() + np.random.uniform(
-        -amplitude, amplitude, size=atoms.positions.shape
-    )
-
-    newlattice = np.array(atoms.get_cell())
-    if displace_lattice:
-        newlattice += np.random.uniform(-amplitude, amplitude, size=newlattice.shape)
-
-    return Atoms(
-        positions=newcoords,
-        numbers=atoms.numbers,
-        cell=newlattice,
-        pbc=atoms.pbc,
-    )
-
-
 def main(
     file_names: list[str],
     amplitude: float = 0.3,
@@ -148,7 +88,7 @@ def main(
 
     logger.info("There are a total of %d input files", len(file_names))
     all_structures = load_dataset_from_files(file_names)
-    logger.info("Loaded %d structures", {len(all_structures)})
+    logger.info("Loaded %d structures", len(all_structures))
 
     perturbed_structures = []
     # Perturb all structures

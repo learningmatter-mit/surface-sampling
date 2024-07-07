@@ -1,6 +1,6 @@
 {
     "system_settings": {
-        "surface_name": "SrTiO3(001)",
+        "surface_name": "SrTiO3_001",
         "surface_depth": 1,
         "cutoff": 6.0,
         "near_reduce": 0.01,
@@ -19,7 +19,7 @@
             "Ti",
             "O"
         ],
-        "run_folder": "SrTiO3(001)_chgnet"
+        "run_folder": "SrTiO3_001_chgnet"
     },
     "calc_settings": {
         "calc_name": "NFF",
@@ -33,6 +33,6 @@
         "relax_steps": 10,
         "record_interval": 2,
         "offset": true,
-        "offset_data": "tutorials/data/nff/offset_data_chgnet_eV.json"
+        "offset_data": "tutorials/data/SrTiO3_001/nff/offset_data_chgnet_eV.json"
     }
 }

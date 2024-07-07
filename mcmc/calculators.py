@@ -61,19 +61,34 @@ def get_embeddings(atoms_batches: list[AtomsBatch], calc: Calculator) -> np.ndar
     return np.stack(embeddings)
 
 
-def get_embeddings_single(atoms_batch: AtomsBatch, calc: Calculator) -> np.ndarray:
+def get_embeddings_single(
+    atoms_batch: AtomsBatch,
+    calc: Calculator,
+    results_cache: dict | None = None,
+    flatten: bool = True,
+    flatten_axis: int = 0,
+) -> np.ndarray:
     """Calculate the embeddings for a single AtomsBatch object
 
     Args:
         atoms_batch (AtomsBatch): AtomsBatch object.
         calc (Calculator): NFF Calculator.
+        results_cache (dict): Cache for results.
+        flatten (bool): Whether to flatten the embeddings.
+        flatten_axis (int): Axis to flatten the embeddings.
 
     Returns:
         np.ndarray: Latent space embeddings
     """
-    results = get_results_single(atoms_batch, calc)
-
-    return results["embedding"].squeeze()
+    if results_cache is not None and "embedding" in results_cache:
+        results = results_cache
+    else:
+        results = get_results_single(atoms_batch, calc)
+    return (
+        results["embedding"].mean(axis=flatten_axis).squeeze()
+        if flatten
+        else results["embedding"].squeeze()
+    )
 
 
 def get_std_devs(atoms_batches: list[AtomsBatch], calc: Calculator) -> np.ndarray:

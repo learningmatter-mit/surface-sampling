@@ -253,15 +253,17 @@ def plot_atom_type_histograms(
     Returns:
         Figure: matplotlib figure object.
     """
-    delta_Sr_Ir = [
-        d["Sr"] - d["Ir"] for d in all_stoic_dicts
-    ]  # difference in number of Sr and Ir atoms
+    type1 = atom_types[0]
+    type2 = atom_types[1]
+    delta_atoms = [
+        d[type1] - d[type2] for d in all_stoic_dicts
+    ]  # difference in number of 1st and 2nd type atoms
 
     n_atoms = {atom: [d[atom] for d in all_stoic_dicts] for atom in atom_types}
 
     fig, ax = plt.subplots(2, 1, figsize=(8, 6), dpi=DEFAULT_DPI)
 
-    sns.histplot(delta_Sr_Ir, ax=ax[0], discrete=True, label="#Sr - #Ir")
+    sns.histplot(delta_atoms, ax=ax[0], discrete=True, label=f"#{type1} - #{type2}")
     for atom in atom_types:
         sns.histplot(n_atoms[atom], ax=ax[1], discrete=True, label=f"#{atom}")
     ax[0].legend()

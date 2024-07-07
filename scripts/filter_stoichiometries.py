@@ -1,9 +1,9 @@
 """Filter structures to select only those with a certain stoichiometric range."""
 
 import argparse
-import datetime
 import json
 import pickle as pkl
+from datetime import datetime
 from logging import getLevelNamesMapping
 from pathlib import Path
 from typing import Literal
@@ -19,7 +19,7 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description=(
-            "Filter structures to select only those with certain range for " "each type of atom."
+            "Filter structures to select only those with certain range for each type of atom."
         )
     )
     parser.add_argument(
@@ -85,7 +85,7 @@ def main(
 
     logger.info("There are a total of %d input files", len(file_names))
     all_structures = load_dataset_from_files(file_names)
-    logger.info("Loaded %d structures", {len(all_structures)})
+    logger.info("Loaded %d structures", len(all_structures))
 
     # Generate a stoichiometry dictionary for each structure
     all_stoic_dicts = [

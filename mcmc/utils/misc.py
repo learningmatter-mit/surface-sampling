@@ -8,7 +8,6 @@ import numpy as np
 from ase.atoms import Atoms
 from nff.data import Dataset
 from nff.io.ase import AtomsBatch
-from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial import distance
 from scipy.special import softmax
 from tqdm import tqdm
@@ -137,92 +136,36 @@ def filter_distances(slab: Atoms, ads: Iterable = ("O"), cutoff_distance: float 
     return not any(unique_dists[(unique_dists > 0) & (unique_dists <= cutoff_distance)])
 
 
-def get_cluster_centers(points: np.ndarray, n_clusters: int) -> tuple[np.ndarray, np.ndarray]:
-    """Peforms hierarchical clustering on a set of points and returns the centers of the resulting
-    clusters.
+def randomize_structure(atoms, amplitude, displace_lattice=True) -> Atoms:
+    """Randomly displaces the atomic coordinates (and lattice parameters)
+    by a certain amplitude. Useful to generate slightly off-equilibrium
+    configurations and starting points for MD simulations. The random
+    amplitude is sampled from a uniform distribution.
+
+    Same function as in pymatgen, but for ase.Atoms objects.
 
     Args:
-        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to
-            cluster.
-        n_clusters (int): The number of clusters to create.
+        atoms (ase.Atoms): The input structure.
+        amplitude (float): Max value of amplitude displacement in Angstroms.
+        displace_lattice (bool): Whether to displace the lattice.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: A tuple containing the centers of the resulting clusters and
-        the cluster labels shape for each point.
+        ase.Atoms: The perturbed structure.
     """
-    # Do hierarchical clustering
-    Z = linkage(points, "ward")
+    newcoords = atoms.get_positions() + np.random.uniform(
+        -amplitude, amplitude, size=atoms.positions.shape
+    )
 
-    # Cut the tree to create k clusters
-    labels = fcluster(Z, n_clusters, criterion="maxclust")
+    newlattice = np.array(atoms.get_cell())
+    if displace_lattice:
+        newlattice += np.random.uniform(-amplitude, amplitude, size=newlattice.shape)
 
-    centers = []
-    for i in range(1, n_clusters + 1):
-        # Get all points in cluster i
-        cluster_points = points[labels == i]
-
-        # Compute and store the center of the cluster
-        center = np.mean(cluster_points, axis=0)
-        centers.append(center)
-
-    return np.array(centers), labels
-
-
-# # Test
-# points = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
-# n_clusters = 3
-# centers, labels = get_cluster_centers(points, n_clusters)
-
-# for i in range(n_clusters):
-#     print(f"Center of cluster {i + 1}: {centers[i]}")
-#     print(f"Points in cluster {i + 1}: {points[labels == i + 1]}")
-
-
-def find_closest_points_indices(
-    points: np.ndarray, centers: np.ndarray, labels: np.ndarray
-) -> np.ndarray:
-    """Finds the index of the point in each cluster that is closest to the center of the cluster.
-
-    Args:
-        points (np.ndarray): Numpy array of shape (n_points, n_dimensions) containing the points to
-            cluster.
-        centers (np.ndarray): Numpy array of shape (n_clusters, n_dimensions) containing the centers
-            of the clusters.
-        labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each
-            point.
-
-    Returns:
-        np.ndarray: Numpy array of shape (n_clusters,) with the index of the closest point to the
-            centroid in each cluster.
-    """
-    closest_points_indices = []
-    for i in range(1, len(centers) + 1):
-        # Get indices of all points in cluster i
-        cluster_indices = np.where(labels == i)[0]
-
-        # Get all points in cluster i
-        cluster_points = points[cluster_indices]
-
-        # Calculate the distances from all points to the center point
-        distances = np.linalg.norm(cluster_points - centers[i - 1], axis=1)
-
-        # Find the index of the point with the smallest distance to the center point
-        closest_point_index = cluster_indices[np.argmin(distances)]
-        closest_points_indices.append(closest_point_index)
-
-    return np.array(closest_points_indices)
-
-
-# # Test
-# points = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
-# n_clusters = 3
-# centers, labels = get_cluster_centers(points, n_clusters)
-# closest_points_indices = find_closest_points_indices(points, centers, labels)
-
-# for i in range(n_clusters):
-#     print(f"Center of cluster {i + 1}: {centers[i]}")
-#     print(f"Index of closest point to center in cluster {i + 1}: {closest_points_indices[i]}")
-#     print(f"Points in cluster {i + 1}: {points[labels == i + 1]}\n")
+    return Atoms(
+        positions=newcoords,
+        numbers=atoms.numbers,
+        cell=newlattice,
+        pbc=atoms.pbc,
+    )
 
 
 def compute_distance_weight_matrix(
