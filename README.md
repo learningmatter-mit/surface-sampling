@@ -28,9 +28,11 @@ We recommend a computer with the following specs:
 - RAM: 16+ GB
 - CPU: 4+ cores, 3 GHz/core
 
-To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU. The code has been tested on *Linux* Ubuntu 20.04.6 LTS and macOS Sonoma 14.5 but we expect it to be system agnostic.
+To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU. The code has been tested on *Linux* Ubuntu 20.04.6 LTS but we expect it to work on other *Linux* distributions.
 
 # Setup
+> [!NOTE]
+> We are using the private repo `git@github.mit.edu:MLMat/surface_sampling.git` repo for development. The private repo is a mirror of the public repo.
 To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
 
 ## Conda environment
@@ -42,12 +44,19 @@ conda install -c conda-forge kimpy lammps openkim-models
 pip install -e .
 ```
 
-To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `pip` would have installed LAMMPS as a dependency.
+> [!NOTE]
+> I have yet to merge the private `NeuralForceField` to the public repo. For now, please clone the private [NFF repo](git@github.mit.edu:MLMat/NeuralForceField.git) and install it in the `vssr-mc` environment with `pip install -e .`.
+> The goal is to avoid modifying bash environment variables and paths in order to access the code.
+
+To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `conda` would have installed LAMMPS as a dependency.
 ```bash
 export LAMMPS_COMMAND="/path/to/lammps/src/lmp"
 export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
 export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 ```
+> [!NOTE]
+> This part might require a bit of time to set up. Feel free to skip because it's not the main focus of the project.
+
 The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
 The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/lib/python3.11/site-packages/lammps/share/lammps/potentials/`.
 The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
