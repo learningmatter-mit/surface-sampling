@@ -32,7 +32,8 @@ To run with a neural network force field, a GPU is recommended. We ran on a sing
 
 # Setup
 > [!NOTE]
-> We are using the private repo `git@github.mit.edu:MLMat/surface_sampling.git` repo for development. The private repo is a mirror of the public repo.
+> We are using the private repo `git@github.mit.edu:MLMat/surface_sampling.git` repo for development. The public repo will be a mirror of the private repo after I push the changes. For now, please use the private repo.
+
 To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
 
 ## Conda environment
