@@ -117,7 +117,7 @@ python scripts/sample_surface.py --run_name "SrTiO3_001_chgnet" --starting_struc
 
 ### Latent space clustering
 ```bash
-python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_mcmc_structures_100.pkl" --save_folder "SrTiO3_001/clustering" --nff_model_type "PaiNN" --nff_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" --clustering_metric "force_std" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda"
+python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_mcmc_structures_100.pkl" --save_folder "SrTiO3_001/clustering" --nff_model_type "PaiNN" --nff_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" "tutorials/data/SrTiO3_001/nff/model02/best_model" "tutorials/data/SrTiO3_001/nff/model03/best_model" --clustering_metric "force_std" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda"
 ```
 
 
