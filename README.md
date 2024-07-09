@@ -92,6 +92,9 @@ Demonstrates the integration of VSSR-MC with a neural network force field. This 
 ## Clustering MC-sampled surfaces in the latent space
 Retrieves the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
 
+## Preparing surface from a bulk structure
+This example demonstrates how to cut a surface from a bulk structure. Refer to `tutorials/prepare_surface.ipynb`.
+
 
 # Scripts
 Scripts can be found in the `scripts/` folder, including:
