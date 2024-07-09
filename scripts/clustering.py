@@ -243,10 +243,10 @@ def main(
         # del atoms_batches
 
         y = perform_clustering(
-            embeddings, clustering_cutoff, cutoff_criterion, save_path, save_prepend
+            embeddings, clustering_cutoff, cutoff_criterion, save_path, save_prepend, logger=logger
         )
         select_data_and_save(
-            dset_batch, y, metric_values, clustering_metric, save_path, save_prepend
+            dset_batch, y, metric_values, clustering_metric, save_path, save_prepend, logger=logger
         )
     logger.info("Clustering complete!")
 
