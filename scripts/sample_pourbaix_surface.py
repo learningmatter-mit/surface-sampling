@@ -2,14 +2,14 @@
 
 import argparse
 import datetime
-import logging
 import pickle
-from copy import deepcopy
+from logging import getLevelNamesMapping
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
 from nff.utils.cuda import get_final_device
@@ -20,10 +20,9 @@ from mcmc import MCMC
 from mcmc.calculators import NFFPourbaix
 from mcmc.pourbaix.atoms import generate_pourbaix_atoms
 from mcmc.system import SurfaceSystem
+from mcmc.utils import setup_logger
 from mcmc.utils.misc import get_atoms_batch
-
-logger = logging.getLogger("mcmc")
-logger.setLevel(logging.INFO)
+from mcmc.utils.plot import plot_summary_stats
 
 np.set_printoptions(precision=3, suppress=True)
 
@@ -134,7 +133,13 @@ def parse_args() -> argparse.Namespace:
         default="cuda",
         help="device to use for calculations",
     )
-
+    parser.add_argument(
+        "--logging_level",
+        type=str,
+        choices=["debug", "info", "warning", "error", "critical"],
+        default="info",
+        help="Logging level",
+    )
     return parser.parse_args()
 
 
@@ -164,6 +169,7 @@ def main(
     offset_data_path: str = "",
     device: str = "cuda",
     save_folder: str = "./",
+    logging_level: str = "info",
 ) -> None:
     """Perform VSSR-MC sampling for surfaces.
 
@@ -194,6 +200,7 @@ def main(
         offset_data_path (str): path to offset data
         device (str): device to use for calculations
         save_folder (Path): Folder to output
+        logging_level (Literal["debug", "info", "warning", "error", "critical"]): Logging level
     """
     start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_folder = save_folder / f"{start_time}_{surface_name}"
@@ -201,12 +208,21 @@ def main(
     run_path = Path(run_folder)
     run_path.mkdir(parents=True, exist_ok=True)
 
+    # Initialize logger
+    logger = setup_logger(
+        "mcmc", run_folder / "mc.log", level=getLevelNamesMapping()[logging_level.upper()]
+    )
+
     device = get_final_device(device)
+    logger.info("Using device: %s", device)
 
-    logging.info("Using device: %s", device)
-
-    with open(starting_structure_path, "rb") as f:
-        starting_slab = pickle.load(f)
+    # Load prepared pristine slab
+    try:
+        with open(starting_structure_path, "rb") as f:
+            starting_slab = pickle.load(f)
+    except FileNotFoundError as e:
+        logger.error("Pristine surface pkl file not found.")
+        raise e
 
     chem_symbols = starting_slab.get_chemical_symbols()
     elements = list(set(chem_symbols))
@@ -219,10 +235,12 @@ def main(
     logger.info("Pourbaix atoms: %s", pourbaix_atoms)
     offset_data = loadfn(offset_data_path, "r") if offset else None
 
+    # adsorbates = elements + ["OH"]
+
     system_settings = {
         "surface_name": surface_name,
+        "surface_depth": surface_depth,
         "cutoff": neighbor_cutoff,
-        "device": device,
         "near_reduce": 0.01,
         "planar_distance": ads_site_planar_distance,  # 2.0 (default)
         "no_obtuse_hollow": True,
@@ -230,10 +248,13 @@ def main(
     }
 
     sampling_settings = {
-        "alpha": alpha,  # no annealing
-        "temperature": samp_temp,  # in terms of kbT, 1000 K
-        "num_sweeps": sweeps,
+        "total_sweeps": sweeps,
         "sweep_size": sweep_size,
+        "start_temp": samp_temp,  # in terms of kbT, 1000 K
+        "perform_annealing": alpha < 1.0,  # Anneal temperature?
+        "alpha": alpha,  # annealing decay rate
+        "adsorbates": elements,
+        "run_folder": run_folder,
     }
 
     calc_settings = {
@@ -244,20 +265,20 @@ def main(
         "relax_steps": relax_steps,
         "record_interval": record_interval,  # record structure every n steps
         "offset": offset,
+        "offset_data": offset_data,
         "temperature": system_temp,
         "pH": pH,
         "phi": phi,
         "pourbaix_atoms": pourbaix_atoms,
-        "offset_data": offset_data,
     }
-    # TODO: make a load settings file as well as an alternative
-    # Save settings to file
+
+    # Save updated run settings
     all_settings = {
         "system_settings": system_settings,
         "sampling_settings": sampling_settings,
         "calc_settings": calc_settings,
     }
-    dumpfn(all_settings, run_folder / "settings.json")
+    dumpfn(all_settings, run_folder / "settings.json", indent=4)
 
     # Obtain adsorption sites
     pristine_slab = starting_slab.copy()
@@ -281,7 +302,7 @@ def main(
 
     occ = np.hstack([[0] * len(ads_positions), surf_atom_idx])
 
-    # Load Ensemble NFF Model
+    # Initialize Calculator
     models = []
     for model_path in model_paths:
         model = load_model(model_path, model_type=model_type, map_location=device)
@@ -308,8 +329,8 @@ def main(
         all_ads_coords,
         calc=nff_surf_calc,
         occ=occ,
-        surface_depth=surface_depth,
         system_settings=system_settings,
+        save_folder=run_folder,
     )
     starting_atoms_path = run_folder / "all_virtual_ads.cif"
     logger.info("Saving surface with virtual atoms to %s", starting_atoms_path)
@@ -324,54 +345,51 @@ def main(
     if hasattr(nff_surf_calc, "offset_units"):
         logger.info("Offset units: %s", nff_surf_calc.offset_units)
 
-    # Do different bulk defect sampling for the 2x2x2 cell
-    # Sample across chemical potentials
-    starting_surface = deepcopy(surface)
-    # Perform MCMC and view results.
-    mcmc = MCMC(
-        system_settings["surface_name"],
-        calc=nff_surf_calc,
-        canonical=False,
-        testing=False,
-        element=[],
-        adsorbates=list(calc_settings["chem_pots"].keys()),
-        relax=calc_settings["relax_atoms"],
-        relax_steps=calc_settings["relax_steps"],
-        offset=calc_settings["offset"],
-        offset_data=calc_settings["offset_data"],
-        optimizer=calc_settings["optimizer"],
-    )
-
+    # Perform MCMC
+    mcmc = MCMC(**sampling_settings)
     start = perf_counter()
-    # Call the main function
-    mcmc.mcmc_run(
-        total_sweeps=sampling_settings["num_sweeps"],
-        sweep_size=sampling_settings["sweep_size"],
-        start_temp=sampling_settings["temperature"],
-        pot=list(calc_settings["chem_pots"].values()),
-        alpha=sampling_settings["alpha"],
-        surface=starting_surface,
-        run_folder=run_folder,
+    results = mcmc.run(
+        surface=surface,
+        **sampling_settings,
     )
     stop = perf_counter()
-    logger.info("time taken = %.3f seconds", stop - start)
+    logger.info("Time taken = %.3f seconds", stop - start)
 
-    # Save structures for later use in latent space clustering or analysis
-    relaxed_structures = mcmc.history
-    logger.info("saving all relaxed structures with length %d", len(relaxed_structures))
+    # Save SurfaceSystem objects for later use in latent space clustering or analysis
+    structures = results["history"]
+    with open(run_folder / f"{len(structures)}_mcmc_structures.pkl", "wb") as f:
+        pickle.dump(structures, f)
+    logger.info("Saving all %d surfaces", len(structures))
 
-    with open(f"{mcmc.run_folder}/full_run_{len(relaxed_structures)}.pkl", "wb") as f:
-        pickle.dump(relaxed_structures, f)
-
-    relax_trajectories = mcmc.trajectories
-    traj_structures = [traj_info["atoms"] for traj_info in relax_trajectories]
-
-    # Flatten list of lists
-    traj_structures = [item for sublist in traj_structures for item in sublist]
-    logger.info("saving all structures in relaxation paths with length %d", len(traj_structures))
-
-    with open(f"{mcmc.run_folder}/relax_traj_{len(traj_structures)}.pkl", "wb") as f:
+    # Save relaxation trajectories
+    trajectories = results["trajectories"]
+    traj_structures = [traj_info["atoms"] for traj_info in trajectories]
+    traj_structures = [
+        item for sublist in traj_structures for item in sublist
+    ]  # flatten nested list
+    with open(run_folder / f"{len(traj_structures)}_relaxation_structures.pkl", "wb") as f:
         pickle.dump(traj_structures, f)
+    logger.info("Saving all %d slabs in relaxation trajectories", len(traj_structures))
+
+    # Save statistics in csv
+    stats_df = pd.DataFrame(
+        {
+            "energy": results["energy_hist"],
+            "frac_accept": results["frac_accept_hist"],
+            "adsorption_count": results["adsorption_count_hist"],
+        }
+    )
+    stats_df.to_csv(run_folder / "stats.csv", index=False, float_format="%.3f")
+    logger.info("Saving statistics in csv")
+
+    # Plot statistics
+    plot_summary_stats(
+        results["energy_hist"],
+        results["frac_accept_hist"],
+        results["adsorption_count_hist"],
+        mcmc.total_sweeps,
+        save_folder=run_folder,
+    )
 
 
 if __name__ == "__main__":
@@ -402,4 +420,5 @@ if __name__ == "__main__":
         args.offset_data_path,
         args.device,
         save_folder=args.save_folder,
+        logging_level=args.logging_level,
     )

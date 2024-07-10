@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
-from nff.utils.cuda import cuda_devices_sorted_by_free_mem
+from nff.utils.cuda import get_final_device
 
 from mcmc import MCMC
 from mcmc.calculators import EnsembleNFFSurface
@@ -173,9 +173,8 @@ def main(
         raise e
 
     # Initialize Calculator
-    device = (
-        f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}" if device == "cuda" else "cpu"
-    )  # get the gpu with most free memory
+    device = get_final_device(device)
+
     models = []
     for model_path in model_paths:
         model = load_model(model_path, model_type=model_type, map_location=device)

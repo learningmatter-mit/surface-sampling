@@ -265,6 +265,7 @@ def main(
             h2o_adjustments=-0.229,  # already counted in the H2O energy
         )
 
+    raw_entries = []
     surf_form_entries = []
     for i, slab in enumerate(tqdm(dset)):
         if model_type in ["DFT"]:
@@ -305,13 +306,14 @@ def main(
         raw_entry = create_computed_entry(
             slab_batch, raw_energy, slab_name=slab.get_chemical_formula()
         )
+        raw_entries.append(raw_entry)
         if model_type in ["DFT"]:
             aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
             # aqcompat.get_adjustments(raw_entry)  #
             # solid_compat.get_adjustments(raw_entry)  #
 
         surface_formation_entry = create_surface_formation_entry(raw_entry, phase_diagram)
-        surf_form_entries.append(surface_formation_entry)  #
+        surf_form_entries.append(surface_formation_entry)
 
     # Save surface formation entries
     relaxed = "relaxed" if relax else "unrelaxed"
