@@ -1,7 +1,6 @@
 """Regression test for the energy of the Cu(100) surface."""
 
 import logging
-import os
 from pathlib import Path
 
 import catkit
@@ -62,7 +61,7 @@ def test_Cu_energy(required_energy):
     }
 
     # set up the LAMMPS calculator
-    potential_file = Path(os.environ["LAMMPS_POTENTIALS"]) / "Cu_u3.eam"
+    potential_file = current_dir / "../mcmc/potentials" / "Cu_u3.eam"
     lammps_surf_calc = LAMMPSRunSurfCalc(
         files=[potential_file],
         keep_tmp_files=False,
