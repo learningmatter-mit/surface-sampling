@@ -44,10 +44,12 @@ conda activate vssr-mc
 conda install -c conda-forge kimpy lammps openkim-models
 pip install -e .
 ```
+> If you're intending to contribute to the code, you can `pip install -e '.[dev]'` instead to also install the development dependencies.
 
 > [!NOTE]
 > I have yet to merge the private `NeuralForceField` to the public repo. For now, please clone the private [NFF repo](git@github.mit.edu:MLMat/NeuralForceField.git) and install it in the `vssr-mc` environment with `pip install -e .`.
 > The goal is to avoid modifying bash environment variables and paths in order to access the code.
+
 
 To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `conda` would have installed LAMMPS as a dependency.
 ```bash
@@ -55,13 +57,12 @@ export LAMMPS_COMMAND="/path/to/lammps/src/lmp"
 export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
 export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 ```
-> [!NOTE]
-> This part might require a bit of time to set up. Feel free to skip because it's not the main focus of the project.
 
-The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
-The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/lib/python3.11/site-packages/lammps/share/lammps/potentials/`.
-The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
-If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
+The `LAMMPS_COMMAND` should point to the LAMMPS executable, which can be found here: `/path/to/[vssr-mc-env]/bin/lmp`.
+The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files, which can found here: `/path/to/[surface-sampling-repo]/mcmc/potentials/`.
+The `ASE_LAMMPSRUN_COMMAND` should point to the same LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
+
+If the `conda` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
 
 You might have to re-open/re-login to your terminal shell for the new settings to take effect.
 
@@ -70,10 +71,11 @@ A toy demo and other examples can be found in the `tutorials/` folder.
 ```
 tutorials/
 ├── example.ipynb
-└── GaN_0001.ipynb
-└── Si_111_5x5.ipynb
-└── SrTiO3_001.ipynb
-└── latent_space_clustering.ipynb
+├── GaN_0001.ipynb
+├── Si_111_5x5.ipynb
+├── SrTiO3_001.ipynb
+├── latent_space_clustering.ipynb
+└── tutorials/prepare_surface.ipynb
 ```
  More data/examples can be found in our [Zenodo dataset](https://doi.org/10.5281/zenodo.7758174).
 
@@ -101,7 +103,7 @@ Scripts can be found in the `scripts/` folder, including:
 ```
 scripts/
 ├── sample_surface.py
-├── clustering.py
+└── clustering.py
 ```
 
 The arguments for the scripts can be found by running `python scripts/sample_surface.py -h` or `python scripts/clustering.py -h`.
