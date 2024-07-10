@@ -48,6 +48,7 @@ pip install -e .
 > [!NOTE]
 > I have yet to merge the private `NeuralForceField` to the public repo. For now, please clone the private [NFF repo](git@github.mit.edu:MLMat/NeuralForceField.git) and install it in the `vssr-mc` environment with `pip install -e .`.
 > The goal is to avoid modifying bash environment variables and paths in order to access the code.
+> If you're intending to contribute to the code, you can `pip install -e '.[dev]'` to install the development dependencies.
 
 To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `conda` would have installed LAMMPS as a dependency.
 ```bash
@@ -59,7 +60,7 @@ export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 > This part might require a bit of time to set up. Feel free to skip because it's not the main focus of the project.
 
 The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
-The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/lib/python3.11/site-packages/lammps/share/lammps/potentials/`.
+The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/share/lammps/potentials/`.
 The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
 If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
 

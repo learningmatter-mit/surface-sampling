@@ -19,8 +19,7 @@ dependencies = [
     "seaborn>=0.13.1",
     "mp-api",
     "ipykernel",
-    "pytest",
-    "pre-commit"
+    "ipywidgets",
 ]
 classifiers = [
     "Intended Audience :: Science/Research",
@@ -33,7 +32,12 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
+dev = [
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "pymatgen @ file:///home/dux/pymatgen",
+]
 
 [project.urls]
 Homepage = "https://github.com/learning-matter-mit/surface-sampling/"
