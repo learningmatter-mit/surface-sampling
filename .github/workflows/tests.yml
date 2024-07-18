@@ -31,7 +31,7 @@ jobs:
       run: |
         echo "LAMMPS_POTENTIALS=$GITHUB_WORKSPACE/mcmc/potentials" >> $GITHUB_ENV
         echo "LAMMPS_COMMAND=$CONDA/vssr-mc/bin/lmp" >> $GITHUB_ENV
-        echo "ASE_LAMMPSRUN_COMMAND=$LAMMPS_COMMAND" >> $GITHUB_ENV
+        echo "ASE_LAMMPSRUN_COMMAND=$CONDA/vssr-mc/bin/lmp" >> $GITHUB_ENV
     - name: Check LAMMPS paths
       run: |
         echo "LAMMPS_POTENTIALS = $LAMMPS_POTENTIALS"
@@ -39,5 +39,4 @@ jobs:
         echo "ASE_LAMMPSRUN_COMMAND = $ASE_LAMMPSRUN_COMMAND"
     - name: Test with pytest
       run: |
-        pytest -rP
-        # pytest -rP --cov --cov-report=xml
+        pytest --capture=no --cov --cov-report=xml
