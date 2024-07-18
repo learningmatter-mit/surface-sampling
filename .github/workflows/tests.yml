@@ -37,9 +37,6 @@ jobs:
         echo "LAMMPS_POTENTIALS = $LAMMPS_POTENTIALS"
         echo "LAMMPS_COMMAND = $LAMMPS_COMMAND"
         echo "ASE_LAMMPSRUN_COMMAND = $ASE_LAMMPSRUN_COMMAND"
-        which python
-        ls $CONDA/bin/lmp
-        ls $CONDA/bin/lmp_serial
     - name: Test with pytest
       run: |
         pytest --capture=no --cov --cov-report=xml
