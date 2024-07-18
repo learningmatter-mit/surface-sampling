@@ -1,97 +1,90 @@
-import os
+"""Regression test for the energy of the Au(110) surface."""
+
+import logging
 import pickle as pkl
+from pathlib import Path
 
 import numpy as np
+import pytest
 from ase.io import read
 
 from mcmc import MCMC
 from mcmc.calculators import LAMMPSRunSurfCalc
 from mcmc.system import SurfaceSystem
+from mcmc.utils import setup_logger
 
-current_dir = os.path.dirname(__file__)
+current_dir = Path(__file__).parent
 
-# some regression testing first
-def test_Au_energy():
-    required_energy = -79.03490823689619
+
+@pytest.mark.parametrize("required_energy", [-79.03490823689619])
+def test_Au_energy(required_energy):
+    """Test the energy of the Au(110) surface. Regression test."""
+    surface_name = "Au_110"
+    run_folder = current_dir / surface_name
+    run_folder.mkdir(parents=True, exist_ok=True)
+
+    logger = setup_logger("mcmc", run_folder / "mc.log", logging.INFO)
 
     # create slab and get proper ads sites
-    slab_pkl = open(
-        os.path.join(current_dir, "data/Au_110_2x2_pristine_slab.pkl"), "rb"
-    )
+    try:
+        with open(current_dir / "data/Au_110/Au_110_2x2_pristine_slab.pkl", "rb") as slab_pkl:
+            slab = pkl.load(slab_pkl)
+    except FileNotFoundError as e:
+        logger.info("Could not find the Au(110) slab file")
+        raise e
 
-    slab = pkl.load(slab_pkl)
-
-    proper_adsorbed = read(
-        os.path.join(current_dir, "data/Au_110_2x2_proper_adsorbed_slab.cif")
-    )
+    proper_adsorbed = read(current_dir / "data/Au_110/Au_110_2x2_proper_adsorbed_slab.cif")
     ads_positions = proper_adsorbed.get_positions()[len(slab) :]
-
-    element = "Au"
 
     num_ads_atoms = 4 + 2  # for canonical runs
 
+    # define settings
+    calc_settings = {"pair_style": "eam", "pair_coeff": ["* * Au_u3.eam"]}
+
     system_settings = {
-        "surface_name": "Au(110)",
+        "surface_name": surface_name,
         "cutoff": 5.0,
-        "num_ads_atoms": num_ads_atoms,
-        "near_reduce": 0.01,
-        "planar_distance": 1.5,
-        "no_obtuse_hollow": True,
     }
 
     sampling_settings = {
-        "alpha": 0.99,  # slowly anneal
-        "temperature": 1.0,  # in terms of kbT
-        "num_sweeps": 50,
+        "total_sweeps": 50,
         "sweep_size": len(ads_positions),
+        "start_temp": 1.0,  # in terms of kbT
+        "perform_annealing": True,
+        "alpha": 0.99,  # slowly anneal
+        "canonical": True,
+        "num_ads_atoms": num_ads_atoms,
+        "adsorbates": ["Au"],
+        "run_folder": run_folder,
     }
-
-    calc_settings = {
-        "calc_name": "eam",
-        "optimizer": "FIRE",
-        "chem_pots": {"Au": 0.0},
-        "relax_atoms": False,
-        "relax_steps": 100,
-        "run_dir": os.path.join(current_dir, "data/Au_110"),
-    }
-
-    # use LAMMPS
-    parameters = {"pair_style": "eam", "pair_coeff": ["* * Au_u3.eam"]}
 
     # set up the LAMMPS calculator
-    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], "Au_u3.eam")
+    potential_file = current_dir / "../mcmc/potentials" / "Au_u3.eam"
     lammps_surf_calc = LAMMPSRunSurfCalc(
         files=[potential_file],
         keep_tmp_files=False,
         keep_alive=False,
-        tmp_dir=os.path.join(os.path.expanduser("~"), "tmp_files"),
+        tmp_dir=Path.home() / "vssr_tmp_files",
     )
-    lammps_surf_calc.set(**parameters)
+    lammps_surf_calc.set(**calc_settings)
 
     # initialize SurfaceSystem
     surface = SurfaceSystem(
-        slab, ads_positions, lammps_surf_calc, system_settings=system_settings
-    )
-
-    mcmc = MCMC(
-        system_settings["surface_name"],
+        slab,
+        ads_coords=ads_positions,
         calc=lammps_surf_calc,
-        canonical=True,
-        testing=False,
-        element=element,
-        adsorbates=list(calc_settings["chem_pots"].keys()),
-        relax=calc_settings["relax_atoms"],
-        optimizer=calc_settings["optimizer"],
-        num_ads_atoms=system_settings["num_ads_atoms"],
-    )  # no relaxation
-
-    mcmc.mcmc_run(
-        total_sweeps=sampling_settings["num_sweeps"],
-        sweep_size=sampling_settings["sweep_size"],
-        start_temp=sampling_settings["temperature"],
-        pot=list(calc_settings["chem_pots"].values()),
-        alpha=sampling_settings["alpha"],
-        surface=surface,
+        system_settings=system_settings,
+        save_folder=run_folder,
     )
 
-    assert np.allclose(np.min(mcmc.energy_hist), required_energy)
+    # start MCMC
+    mcmc = MCMC(**sampling_settings)
+    results = mcmc.run(
+        surface=surface,
+        **sampling_settings,
+    )
+
+    assert np.allclose(
+        np.min(results["energy_hist"]),
+        required_energy,
+    )

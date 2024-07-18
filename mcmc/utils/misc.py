@@ -1,36 +1,34 @@
-from typing import Union
+"""Miscellaneous utility functions for the MCMC workflow."""
 
-import matplotlib.pyplot as plt
+import pickle as pkl
+from collections.abc import Iterable
+from pathlib import Path
+
 import numpy as np
 from ase.atoms import Atoms
+from nff.data import Dataset
 from nff.io.ase import AtomsBatch
-from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial import distance
 from scipy.special import softmax
+from tqdm import tqdm
 
 
 def get_atoms_batch(
-    data: Union[dict, Atoms],
+    data: dict | Atoms,
     nff_cutoff: float,
     device: str = "cpu",
     **kwargs,
 ) -> AtomsBatch:
-    """Generate AtomsBatch
+    """Generate AtomsBatch from atoms or dictionary.
 
-    Parameters
-    ----------
-    data : Union[dict, ase.Atoms]
-        Dictionary containing the properties of the atoms
-    nff_cutoff : float
-        Neighbor cutoff for the NFF model
-    model : Calculator
-        NFF Calculator
-    device : str, optional
-        cpu or cuda device, by default 'cpu'
+    Args:
+        data (Union[dict, Atoms]): Dictionary containing the properties of the atoms
+        nff_cutoff (float): Neighbor cutoff for the NFF model
+        device (str, optional): cpu or cuda device. Defaults to 'cpu'.
+        **kwargs: Additional keyword arguments.
 
-    Returns
-    -------
-    AtomsBatch
+    Returns:
+        AtomsBatch
     """
     if isinstance(data, Atoms):
         atoms_batch = AtomsBatch.from_atoms(
@@ -56,242 +54,138 @@ def get_atoms_batch(
     return atoms_batch
 
 
-def filter_distances(slab, ads=["O"], cutoff_distance: float = 1.5):
+def get_atoms_batches(
+    data: Dataset | list[Atoms],
+    nff_cutoff: float,
+    device: str = "cpu",
+    structures_per_batch: int = 32,
+    **kwargs,
+) -> list[AtomsBatch]:
+    """Generate AtomsBatch
+
+    Args:
+        data (Union[Dataset, list[ase.Atoms]]): Dictionary or list of ase Atoms containing the
+            properties of the atoms
+        nff_cutoff (float): Neighbor cutoff for the NFF model
+        device (str, optional): cpu or cuda device. Defaults to 'cpu'.
+        structures_per_batch (int, optional): Number of structures per batch. Defaults to 32.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        list[AtomsBatch]: List of AtomsBatch objects.
+    """
+    print(f"Data has length {len(data)}")
+
+    if isinstance(data, Dataset):
+        atoms_batches = data.as_atoms_batches()
+    else:
+        atoms_batches = []
+        # TODO: select structures_per_batch structures at a time
+        for atoms in tqdm(data):
+            atoms_batch = get_atoms_batch(atoms, nff_cutoff, device, **kwargs)
+            atoms_batches.append(atoms_batch)
+
+    return atoms_batches
+
+
+def load_dataset_from_files(file_paths: list[Path | str]) -> list[Atoms]:
+    """Load dataset from files. Dataset can be a list of ASE Atoms objects, an NFF Dataset
+    or a list of file paths.
+
+    Args:
+        file_paths (list[Path]): List of file paths.
+
+    Returns:
+        list[Atoms]: List of ASE Atoms objects.
+    """
+    file_paths = [Path(file_name) for file_name in file_paths]
+
+    dset = []
+    for x in file_paths:
+        if x.suffix == ".txt":
+            # load file paths from a text file
+            with open(x, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                return load_dataset_from_files([Path(line.strip()) for line in lines])
+        elif x.suffix == ".pkl":
+            with open(x, "rb") as f:
+                dset.extend(pkl.load(f))
+        else:  # .pth.tar
+            data = Dataset.from_file(x)
+            dset.extend(data)
+    return dset
+
+
+def filter_distances(slab: Atoms, ads: Iterable = ("O"), cutoff_distance: float = 1.5) -> bool:
     """This function filters out slabs that have atoms too close to each other based on a
     specified cutoff distance.
 
-    Parameters
-    ----------
-    slab : ase.atoms.Atoms or catkit.gratoms.Gratoms or AtomsBatch
-        The `slab` is the surface structure
-    ads
-        The ads parameter is a list of chemical symbols representing the atoms that are being checked
-        for their distances from each other. By default, it is set to ["O"], which means that the function
-        will check the distances of oxygen atoms from each other.
-    cutoff_distance
-        The minimum distance allowed between any two atoms in the slab. If any two adsorbate
-        atoms are closer than this distance, the function will return False.
+    Args:
+        slab (Atoms): The slab structure to check for distances.
+        ads (Iterable, optional): The adsorbate atom types in the slab to check for. Defaults to
+            ("O").
+        cutoff_distance (float, optional): The cutoff distance to check for. Defaults to 1.5.
 
-    Returns
-    -------
-        a boolean value. It returns True if all distances between the specified adsorbates in the given
-    slab are greater than the specified cutoff distance, and False otherwise.
-
+    Returns:
+        bool: True if the distances are greater than the cutoff distance, False otherwise.
     """
     # Checks distances of all adsorbates are greater than cutoff
     ads_arr = np.isin(slab.get_chemical_symbols(), ads)
-    unique_dists = np.unique(
-        np.triu(slab.get_all_distances(mic=True)[ads_arr][:, ads_arr])
+    unique_dists = np.unique(np.triu(slab.get_all_distances(mic=True)[ads_arr][:, ads_arr]))
+    # Get upper triangular matrix of ads dist
+    return not any(unique_dists[(unique_dists > 0) & (unique_dists <= cutoff_distance)])
+
+
+def randomize_structure(atoms, amplitude, displace_lattice=True) -> Atoms:
+    """Randomly displaces the atomic coordinates (and lattice parameters)
+    by a certain amplitude. Useful to generate slightly off-equilibrium
+    configurations and starting points for MD simulations. The random
+    amplitude is sampled from a uniform distribution.
+
+    Same function as in pymatgen, but for ase.Atoms objects.
+
+    Args:
+        atoms (ase.Atoms): The input structure.
+        amplitude (float): Max value of amplitude displacement in Angstroms.
+        displace_lattice (bool): Whether to displace the lattice.
+
+    Returns:
+        ase.Atoms: The perturbed structure.
+    """
+    newcoords = atoms.get_positions() + np.random.uniform(
+        -amplitude, amplitude, size=atoms.positions.shape
     )
-    # get upper triangular matrix of ads dist
-    if any(unique_dists[(unique_dists > 0) & (unique_dists <= cutoff_distance)]):
-        return False  # fail because atoms are too close
-    return True
+
+    newlattice = np.array(atoms.get_cell())
+    if displace_lattice:
+        newlattice += np.random.uniform(-amplitude, amplitude, size=newlattice.shape)
+
+    return Atoms(
+        positions=newcoords,
+        numbers=atoms.numbers,
+        cell=newlattice,
+        pbc=atoms.pbc,
+    )
 
 
-def get_cluster_centers(points: np.ndarray, n_clusters: int):
+def compute_distance_weight_matrix(
+    ads_coords: np.ndarray, distance_decay_factor: float
+) -> np.ndarray:
+    """Compute distance weight matrix using softmax.
+
+    Args:
+        ads_coords (np.ndarray): The coordinates of the adsorption sites.
+        distance_decay_factor (float): Exponential decay factor.
+
+    Returns:
+        np.ndarray: The distance weight matrix.
     """
-    This function performs hierarchical clustering on a set of points and returns the centers of the resulting clusters.
-
-    Parameters
-    ----------
-    points : numpy.ndarray
-        A numpy array of shape (n_points, n_dimensions) containing the points to cluster.
-    n_clusters : int
-        The number of clusters to create.
-
-    Returns
-    -------
-    centers : numpy.ndarray
-        A numpy array of shape (n_clusters, n_dimensions) containing the centers of the resulting clusters.
-    labels : numpy.ndarray
-        A numpy array of shape (n_points,) containing the cluster labels for each point.
-    """
-
-    # Do hierarchical clustering
-    Z = linkage(points, "ward")
-
-    # Cut the tree to create k clusters
-    labels = fcluster(Z, n_clusters, criterion="maxclust")
-
-    centers = []
-    for i in range(1, n_clusters + 1):
-        # Get all points in cluster i
-        cluster_points = points[labels == i]
-
-        # Compute and store the center of the cluster
-        center = np.mean(cluster_points, axis=0)
-        centers.append(center)
-
-    return np.array(centers), labels
-
-
-# # Test
-# points = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
-# n_clusters = 3
-# centers, labels = get_cluster_centers(points, n_clusters)
-
-# for i in range(n_clusters):
-#     print(f"Center of cluster {i + 1}: {centers[i]}")
-#     print(f"Points in cluster {i + 1}: {points[labels == i + 1]}")
-
-
-def find_closest_points_indices(points, centers, labels):
-    closest_points_indices = []
-    for i in range(1, len(centers) + 1):
-        # Get indices of all points in cluster i
-        cluster_indices = np.where(labels == i)[0]
-
-        # Get all points in cluster i
-        cluster_points = points[cluster_indices]
-
-        # Calculate the distances from all points to the center point
-        distances = np.linalg.norm(cluster_points - centers[i - 1], axis=1)
-
-        # Find the index of the point with the smallest distance to the center point
-        closest_point_index = cluster_indices[np.argmin(distances)]
-        closest_points_indices.append(closest_point_index)
-
-    return np.array(closest_points_indices)
-
-
-def plot_clustering_results(
-    points,
-    n_clusters,
-    labels,
-    closest_points_indices,
-    save_folder=".",
-):
-    # Define colors
-    colors = ["b", "g", "r", "c", "m", "y", "k"]
-
-    # Create a larger plot
-    plt.figure(figsize=(10, 7))
-
-    # Create a scatter plot of all points, color-coded by cluster
-    for i in range(1, n_clusters + 1):
-        cluster_points = points[labels == i]
-        plt.scatter(
-            cluster_points[:, 0],
-            cluster_points[:, 1],
-            color=colors[i % len(colors)],
-            alpha=0.6,
-            edgecolor="black",
-            linewidth=1,
-            s=100,
-            label=f"Cluster {i}",
-        )
-
-    # Mark the closest points to the centroid in each cluster
-    for i in range(n_clusters):
-        closest_point = points[closest_points_indices[i]]
-        plt.scatter(
-            closest_point[0],
-            closest_point[1],
-            marker="*",
-            color="black",
-            edgecolor="black",
-            linewidth=1,
-            s=200,
-        )
-
-    plt.grid(True)
-    plt.xlabel("Dimension 1", fontsize=14)
-    plt.ylabel("Dimension 2", fontsize=14)
-    plt.title("2D representation of points and clusters", fontsize=16)
-    plt.legend(fontsize=12)
-    plt.savefig(f"{save_folder}/clustering_results.png")
-
-
-# # Test
-# points = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
-# n_clusters = 3
-# centers, labels = get_cluster_centers(points, n_clusters)
-# closest_points_indices = find_closest_points_indices(points, centers, labels)
-
-# for i in range(n_clusters):
-#     print(f"Center of cluster {i + 1}: {centers[i]}")
-#     print(f"Index of closest point to center in cluster {i + 1}: {closest_points_indices[i]}")
-#     print(f"Points in cluster {i + 1}: {points[labels == i + 1]}\n")
-
-
-def compute_distance_weight_matrix(ads_coords, distance_decay_factor):
     # Compute pairwise distance matrix
     ads_coord_distances = distance.cdist(ads_coords, ads_coords, "euclidean")
 
     # Compute distance decay matrix using softmax
-    distance_weight_matrix = softmax(
-        -ads_coord_distances / distance_decay_factor, axis=1
-    )
+    distance_weight_matrix = softmax(-ads_coord_distances / distance_decay_factor, axis=1)
 
     assert np.allclose(np.sum(distance_weight_matrix, axis=1), 1.0)
 
     return distance_weight_matrix
-
-
-def plot_distance_weight_matrix(distance_weight_matrix, save_folder="."):
-    # Define colors
-    colors = ["b", "g", "r", "c", "m", "y", "k"]
-
-    # Create a larger plot
-    plt.figure(figsize=(10, 7))
-
-    # Display the distance weight matrix as an image
-    plt.imshow(distance_weight_matrix, cmap="hot", interpolation="nearest")
-
-    # Add a colorbar to the figure to show how colors correspond to values
-    plt.colorbar()
-
-    plt.xlabel("Dimension 1", fontsize=14)
-    plt.ylabel("Dimension 2", fontsize=14)
-    plt.title("Distance Weight Matrix")
-    plt.savefig(f"{save_folder}/distance_weight_matrix.png")
-
-
-def plot_decay_curve(decay_factor, save_folder="."):
-    plt.figure(figsize=(10, 7))
-    distances = np.linspace(0, 3 * decay_factor, 100)
-    factor = softmax(-distances / decay_factor)
-    plt.plot(distances, factor, color="blue", label="Decay Factor")
-
-    plt.xlabel("Distance [Å]", fontsize=14)
-    plt.ylabel("Probability density", fontsize=14)
-    plt.title("Distance Decay Plot")
-    plt.legend(fontsize=12)
-    plt.savefig(f"{save_folder}/distance_weight_decay.png")
-
-
-def plot_specific_weights(coords, weights, site_idx, save_folder=".", run_iter=0):
-    # Create a larger plot
-    plt.figure(figsize=(10, 7))
-    curr_site = coords[site_idx]
-
-    # Create a scatter plot of all points, color-coded by weights
-    plt.scatter(
-        coords[:, 0],
-        coords[:, 1],
-        c=weights,
-        alpha=0.6,
-        edgecolor="black",
-        linewidth=1,
-        s=100,
-    )
-    plt.scatter(
-        curr_site[0],
-        curr_site[1],
-        marker="*",
-        color="black",
-        edgecolor="black",
-        linewidth=1,
-        s=200,
-    )
-    # Add a colorbar to the figure to show how colors correspond to values
-    plt.colorbar()
-    plt.grid(True)
-    plt.xlabel("Dimension 1", fontsize=14)
-    plt.ylabel("Dimension 2", fontsize=14)
-    plt.title(
-        "2D representation of adsorption sites color-coded by weights", fontsize=16
-    )
-    plt.savefig(f"{save_folder}/specific_weights_on_lattice_iter_{run_iter:06}.png")
-    plt.close()

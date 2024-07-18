@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+title: Machine-Learning-Accelerated Simulations to Enable Automatic Surface Reconstruction
+authors:
+  - family-names: Du
+    given-names: Xiaochen
+  - family-names: Damewood
+    given-names: James K.
+  - family-names: Lunger
+    given-names: Jaclyn R.
+  - family-names: Millan
+    given-names: Reisel
+  - family-names: Yildiz
+    given-names: Bilge
+  - family-names: Li
+    given-names: Lin
+  - family-names: {G{\'o}mez-Bombarelli}
+    given-names: Rafael
+date-released: 2023-11-08
+repository-code: https://github.com/learningmatter-mit/surface-sampling
+arxiv: https://arxiv.org/abs/2305.07251
+doi: 10.1038/s43588-023-00571-7
+type: software
+keywords:
+  [monte carlo, neural network, force field, active learning]
+version: 0.1.0 # replace with the version you use
+journal: Nature Computational Science

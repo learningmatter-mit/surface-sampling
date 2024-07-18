@@ -1,20 +1,93 @@
-.DS_Store
-.pytest_cache
-*runs*
-*__pycache__*
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
 *.pyc
+*.so
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+#*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# python/jupyter generated files
+.ipynb_checkpoints
+__pycache__
+*.egg-info
+.vscode
+.pytest_cache
+
+# data files #
+*.dat
+*.data
+*.xyz
+*.pdb
+*.csv
+*.pkl
+*.txt
+*.mpg
 *.traj
+*.pickle
 *.cif
 *.in
 *.out
-*.data
-*.png
 *.lammps
-__pycache__/
-*tmp_files/*
+*.png
 
-# test file should still be committed
-!tests/data/**.pkl
+# slurm output files
+slurm*.out
+
+# directory
+log/
+debug/
+sandbox*/
+backup
+dist/
+sandbox_excited/
+build/
+*runs*
+tmp_files/
+
+# test files should still be committed
 !tests/data/*/*.pkl
-!tests/data/**.cif
 !tests/data/*/*.cif
+
+# tutorial files should still be committed
+!tutorials/data/*/*.pkl
+!tutorials/data/*/*.cif
+!tutorials/data/*/*.txt
+!tutorials/*/*.txt
+!tutorials/data/*/**/*.csv
+
+# static files should still be committed
+!site/static/**.png
+
+# util files should still be committed
+!mcmc/utils/data/colors.txt

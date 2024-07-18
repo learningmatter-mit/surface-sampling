@@ -1,19 +1,26 @@
+"""Filter structures to select only those with a certain stoichiometric range."""
+
 import argparse
-import datetime
 import json
 import pickle as pkl
+from datetime import datetime
+from logging import getLevelNamesMapping
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Literal
 
 import ase
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+from mcmc.utils import setup_logger
+from mcmc.utils.misc import load_dataset_from_files
+from mcmc.utils.plot import plot_atom_type_histograms
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Filter structures to select only those with certain range for each type of atom."
+        description=(
+            "Filter structures to select only those with certain range for each type of atom."
+        )
     )
     parser.add_argument(
         "--file_paths",
@@ -33,116 +40,94 @@ def parse_args():
         type=json.loads,
         default={"Sr": [6, 10], "Ir": [6, 10], "O": [18, 30]},
     )
+    parser.add_argument(
+        "--logging_level",
+        type=str,
+        choices=["debug", "info", "warning", "error", "critical"],
+        default="info",
+        help="Logging level",
+    )
 
     return parser.parse_args()
 
 
-def plot_histograms(
-    all_stoic_dicts: List[Dict[str, int]],
-    atom_types: List[str],
-    fig_name: str = "starting_stoic_hist",
-):
-    """Plot histogram of each atom type and the difference in number of Sr and Ir atoms.
-
-    Parameters
-    ----------
-    all_stoic_dicts : List[Dict[str, int]]
-        list of stoichiometry dictionaries for each structure.
-    atom_types : List[str]
-        list of atom types to consider.
-    fig_name : str, optional
-        save name for figure, by default "starting_stoic_hist"
-    """
-
-    delta_Sr_Ir = [
-        d["Sr"] - d["Ir"] for d in all_stoic_dicts
-    ]  # difference in number of Sr and Ir atoms
-
-    n_atoms = {atom: [d[atom] for d in all_stoic_dicts] for atom in atom_types}
-
-    fig, ax = plt.subplots(2, 1, figsize=(8, 6), dpi=200)
-
-    sns.histplot(delta_Sr_Ir, ax=ax[0], discrete=True, label="#Sr - #Ir")
-    for atom in atom_types:
-        sns.histplot(n_atoms[atom], ax=ax[1], discrete=True, label=f"#{atom}")
-    ax[0].legend()
-    ax[1].legend()
-
-    plt.savefig(f"{fig_name}.png")
-
-
 def main(
-    file_paths: List[str],
-    atom_types: List[str],
-    atom_ranges: Dict[str, Tuple[int, int]],
-    save_folder: Union[Path, str] = "./",
-):
+    file_names: list[str],
+    atom_types: list[str],
+    atom_ranges: dict[str, tuple[int, int]],
+    save_folder: Path | str = "./",
+    logging_level: Literal["debug", "info", "warning", "error", "critical"] = "info",
+) -> None:
     """Filter structures to select only those with certain range for each type of atom.
 
-    Parameters
-    ----------
-    file_paths : List[str]
-        list of file paths to load structures from.
-    atom_types : List[str]
-        atom types to consider.
-    atom_ranges : Dict[str, Tuple[int, int]]
-        dictionary with the range for each type of atom allowed.
-    save_folder : Union[Path, str], optional
-        folder to save filtered structures, by default "./"
+    Args:
+        file_names (list[str]): list of file paths to load structures from.
+        atom_types (list[str]): atom types to consider.
+        atom_ranges (dict[str, tuple[int, int]]): dictionary with the range for each type of
+            atom allowed.
+        save_folder (Path | str, optional): folder to save filtered structures, by default "./"
+        logging_level (Literal["debug", "info", "warning", "error", "critical"], optional):
+            logging level, by default "info"
     """
-    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    start_timestamp = datetime.now().isoformat(sep="-", timespec="milliseconds")
 
+    # Initialize save folder
     save_path = Path(save_folder)
     save_path.mkdir(parents=True, exist_ok=True)
+    file_base = f"{start_timestamp}_filter_stoics"
 
-    all_structures = []
-    for full_path in file_paths:
-        with open(full_path, "rb") as f:
-            try:
-                data = pkl.load(f)
-                all_structures.extend(data)
-            except EOFError:
-                print(f"Could not load {full_path}")
+    # Initialize logger
+    logger = setup_logger(
+        "filter_stoics",
+        save_path / "filter_stoics.log",
+        level=getLevelNamesMapping()[logging_level.upper()],
+    )
 
-    print(f"Total number of structures before filtering: {len(all_structures)}")
+    logger.info("There are a total of %d input files", len(file_names))
+    all_structures = load_dataset_from_files(file_names)
+    logger.info("Loaded %d structures", len(all_structures))
 
-    # generate a stoichiometry dictionary for each structure
+    # Generate a stoichiometry dictionary for each structure
     all_stoic_dicts = [
         ase.formula.Formula(s.get_chemical_formula()).count() for s in all_structures
     ]
 
-    # before filtering
-    plot_histograms(
+    # Before filtering
+    plot_atom_type_histograms(
         all_stoic_dicts,
         atom_types,
-        fig_name=save_path / f"{start_time}_starting_stoic_hist",
+        fig_name=f"{start_timestamp}_starting_stoic_hist",
+        save_folder=save_path,
     )
 
-    # select only structures with certain range for each type of atom
-    filtered_structures = [
-        s
-        for s, d in zip(all_structures, all_stoic_dicts)
-        if all(
-            [
-                atom_ranges[atom][0] <= d[atom] <= atom_ranges[atom][1]
-                for atom in atom_types
-            ]
-        )
-    ]
+    # Select only structures with certain range for each type of atom
+    filtered_structures = []
+    for s, d in zip(all_structures, all_stoic_dicts, strict=False):
+        if all([atom_ranges[atom][0] <= d[atom] <= atom_ranges[atom][1] for atom in atom_types]):  # noqa
+            filtered_structures.append(s)
 
-    print(f"Number of structures after filtering: {len(filtered_structures)}")
+    logger.info("Number of structures after filtering: %d", len(filtered_structures))
 
-    # save filtered structures
+    # Save filtered structures
+    save_surface_path = save_path / (
+        f"{file_base}_total_{len(filtered_structures)}_{','.join(atom_types)}_"
+        "filtered_structures.pkl"
+    )
     with open(
-        save_path
-        / f"{start_time}_total_{len(filtered_structures)}_{','.join(atom_types)}_filtered_structures.pkl",
+        save_surface_path,
         "wb",
     ) as f:
         pkl.dump(filtered_structures, f)
+
+    logger.info("Filtering structures complete. Saved to %s", save_surface_path)
 
 
 if __name__ == "__main__":
     args = parse_args()
     main(
-        args.file_paths, args.atom_types, args.atom_ranges, save_folder=args.save_folder
+        args.file_paths,
+        args.atom_types,
+        args.atom_ranges,
+        save_folder=args.save_folder,
+        logging_level=args.logging_level,
     )

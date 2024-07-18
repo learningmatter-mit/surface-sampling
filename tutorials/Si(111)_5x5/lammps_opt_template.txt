@@ -1,1 +1,0 @@
-../data/Si_5x5_lammps_opt_template.txt
