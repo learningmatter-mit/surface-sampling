@@ -17,6 +17,7 @@ dependencies = [
     "catkit @ git+https://github.com/HojeChun/CatKit.git@588f35b",
     "torch>=2.1.0",
     "seaborn>=0.13.1",
+    "scipy",
     "mp-api",
     "ipykernel",
     "ipywidgets",
