@@ -30,13 +30,16 @@ jobs:
     - name: Append LAMMPS paths
       run: |
         echo "LAMMPS_POTENTIALS=$GITHUB_WORKSPACE/mcmc/potentials" >> $GITHUB_ENV
-        echo "LAMMPS_COMMAND=$CONDA/vssr-mc/bin/lmp" >> $GITHUB_ENV
-        echo "ASE_LAMMPSRUN_COMMAND=$CONDA/vssr-mc/bin/lmp" >> $GITHUB_ENV
+        echo "LAMMPS_COMMAND=$CONDA/bin/lmp" >> $GITHUB_ENV
+        echo "ASE_LAMMPSRUN_COMMAND=$CONDA/bin/lmp" >> $GITHUB_ENV
     - name: Check LAMMPS paths
       run: |
         echo "LAMMPS_POTENTIALS = $LAMMPS_POTENTIALS"
         echo "LAMMPS_COMMAND = $LAMMPS_COMMAND"
         echo "ASE_LAMMPSRUN_COMMAND = $ASE_LAMMPSRUN_COMMAND"
+        which python
+        ls $CONDA/bin/lmp
+        ls $CONDA/bin/lmp_serial
     - name: Test with pytest
       run: |
         pytest --capture=no --cov --cov-report=xml
