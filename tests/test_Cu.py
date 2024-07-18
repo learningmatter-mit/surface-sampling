@@ -1,51 +1,91 @@
-import os
+"""Regression test for the energy of the Cu(100) surface."""
 
+import logging
+from pathlib import Path
+
+import catkit
 import numpy as np
-from ase.calculators.lammpsrun import LAMMPS
+import pytest
+from ase.build import bulk
 
 from mcmc import MCMC
-from mcmc.slab import initialize_slab
+from mcmc.calculators import LAMMPSRunSurfCalc
+from mcmc.system import SurfaceSystem
+from mcmc.utils import setup_logger
+
+current_dir = Path(__file__).parent
 
 
-# some regression testing first
-def test_Cu_energy():
-    required_energy = -47.30809647
+@pytest.mark.parametrize("required_energy", [-25.2893])
+def test_Cu_energy(required_energy):
+    """Test the energy of the Cu(100) surface. Regression test."""
+    surface_name = "Cu_100"
+    run_folder = current_dir / surface_name
+    run_folder.mkdir(parents=True, exist_ok=True)
 
-    # initialize some parameters first
+    logger = setup_logger("mcmc", run_folder / "mc.log", logging.INFO)  # noqa
+
     # Cu alat from https://www.copper.org/resources/properties/atomic_properties.html
-    Cu_alat = 3.6147
-    slab = initialize_slab(Cu_alat, size=(2, 2, 2))
+    Cu_bulk = bulk("Cu", "fcc", a=3.6147)
+    slab = catkit.build.surface(
+        Cu_bulk,
+        size=(2, 2, 2),
+        miller=(1, 0, 0),
+        termination=0,
+        fixed=0,
+        vacuum=15.0,
+        orthogonal=False,
+    )
 
-    element = "Cu"
-    chem_pot = 0  # chem pot 0 to less complicate things
-    alpha = 0.99  # slowly anneal
-    temp = 1  # temp in terms of kbT
-    num_sweeps = 100
-    sweep_size = 16
+    # define settings
+    calc_settings = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
 
-    # use LAMMPS
-    parameters = {"pair_style": "eam", "pair_coeff": ["* * Cu_u3.eam"]}
+    system_settings = {
+        "surface_name": surface_name,
+        "cutoff": 5.0,
+        "near_reduce": 0.01,
+        "planar_distance": 1.5,
+        "symm_reduce": True,
+        "no_obtuse_hollow": True,
+        "ads_site_type": "all",
+    }
 
-    potential_file = os.path.join(os.environ["LAMMPS_POTENTIALS"], "Cu_u3.eam")
-    lammps_calc = LAMMPS(
+    sampling_settings = {
+        "total_sweeps": 10,
+        "sweep_size": 2,
+        "start_temp": 1.0,  # in terms of kbT
+        "perform_annealing": True,
+        "alpha": 0.99,  # slowly anneal
+        "adsorbates": ["Cu"],
+        "run_folder": run_folder,
+    }
+
+    # set up the LAMMPS calculator
+    potential_file = current_dir / "../mcmc/potentials" / "Cu_u3.eam"
+    lammps_surf_calc = LAMMPSRunSurfCalc(
         files=[potential_file],
         keep_tmp_files=False,
         keep_alive=False,
+        tmp_dir=Path.home() / "vssr_tmp_files",
     )
-    lammps_calc.set(**parameters)
+    lammps_surf_calc.set(**calc_settings)
 
-    # initialize object
-    Cu_mcmc = MCMC(
-        calc=lammps_calc,
-        element=element,
-    )
-    Cu_mcmc.mcmc_run(
-        total_sweeps=num_sweeps,
-        sweep_size=sweep_size,
-        start_temp=temp,
-        pot=chem_pot,
-        alpha=alpha,
-        slab=slab,
+    # initialize SurfaceSystem
+    surface = SurfaceSystem(
+        slab,
+        calc=lammps_surf_calc,
+        system_settings=system_settings,
+        save_folder=run_folder,
     )
 
-    assert np.allclose(np.min(Cu_mcmc.energy_hist), required_energy)
+    # start MCMC
+    mcmc = MCMC(**sampling_settings)
+    results = mcmc.run(
+        surface=surface,
+        **sampling_settings,
+    )
+
+    assert np.allclose(
+        np.min(results["energy_hist"]),
+        required_energy,
+    )
