@@ -94,14 +94,15 @@ def get_embeddings_single(
 
 
 def get_std_devs(atoms_batches: list[AtomsBatch], calc: Calculator) -> np.ndarray:
-    """Calculate the force standard deviations for a list of AtomsBatch objects
+    """Calculate the force standard deviations across multiple models for a list of AtomsBatch
+        objects
 
     Args:
     atoms_batches (List[AtomsBatch]): List of AtomsBatch objects
     calc (Calculator): NFF Calculator
 
     Returns:
-        np.ndarray: Force standard deviations with each element corresponding to a structure
+        np.ndarray: Force standard deviation with a single value for each structure
     """
     print(f"Calculating force standard deviations for {len(atoms_batches)} structures")
     force_stds = []
@@ -334,7 +335,7 @@ class NFFPourbaix(NeuralFF):
 # TODO define abstract base class for surface energy calcs
 # use EnsembleNFF, NeuralFF classes for NFF
 class EnsembleNFFSurface(EnsembleNFF):
-    """Based on Ensemble Neural Force Field clas to calculate surface energy"""
+    """Based on Ensemble Neural Force Field class to calculate surface energy"""
 
     implemented_properties = (*EnsembleNFF.implemented_properties, "surface_energy")
 
@@ -353,7 +354,9 @@ class EnsembleNFFSurface(EnsembleNFF):
         offset_data: dict | None = None,
     ) -> float:
         """Get the surface energy of the system by subtracting the bulk energy and the chemical
-        potential deviation from the bulk formula.
+        potential deviation from the bulk formula. Refer to Methods-Surface stability analysis
+        section of Du, X. et al. Nat Comput Sci 1-11 (2023) doi:10.1038/s43588-023-00571-7
+        for details.
 
         Args:
             atoms (ase.Atoms): The atoms object to calculate the surface energy for.
@@ -387,7 +390,6 @@ class EnsembleNFFSurface(EnsembleNFF):
         ref_element = offset_data["ref_element"]
 
         # Subtract the bulk energies
-        # TODO: write more text here
         bulk_ref_en = ads_count[ref_element] * bulk_energies[ref_formula]
         for ele in ads_count:
             if ele != ref_element:
@@ -400,8 +402,7 @@ class EnsembleNFFSurface(EnsembleNFF):
         else:
             surface_energy -= bulk_ref_en
 
-        # TODO make this a separate function
-        # subtract chemical potential deviation from bulk formula
+        # Subtract chemical potential deviation from bulk formula
         stoics = self.offset_data["stoics"]
         ref_element = self.offset_data["ref_element"]
 
@@ -459,15 +460,6 @@ class EnsembleNFFSurface(EnsembleNFF):
         atoms.results.update(self.results)
 
 
-# class NeuralFFSurface(NeuralFF):
-#     pass
-
-
-# use OpenKIM calc
-
-# use ASE calc
-
-
 class LAMMMPSCalc(Calculator):
     """Custom LAMMPSCalc class to calculate energies and forces to inteface with ASE."""
 
@@ -514,7 +506,7 @@ class LAMMMPSCalc(Calculator):
         else:
             config = lammps_config
 
-        potential_file = config["potential_file"]
+        potential_file = config.get("potential_file")
         atoms = config["atoms"]
         bulk_index = config["bulk_index"]
 

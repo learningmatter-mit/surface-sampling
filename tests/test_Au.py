@@ -1,7 +1,6 @@
 """Regression test for the energy of the Au(110) surface."""
 
 import logging
-import os
 import pickle as pkl
 from pathlib import Path
 
@@ -60,7 +59,7 @@ def test_Au_energy(required_energy):
     }
 
     # set up the LAMMPS calculator
-    potential_file = Path(os.environ["LAMMPS_POTENTIALS"]) / "Au_u3.eam"
+    potential_file = current_dir / "../mcmc/potentials" / "Au_u3.eam"
     lammps_surf_calc = LAMMPSRunSurfCalc(
         files=[potential_file],
         keep_tmp_files=False,

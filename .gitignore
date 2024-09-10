@@ -88,3 +88,6 @@ tmp_files/
 
 # static files should still be committed
 !site/static/**.png
+
+# util files should still be committed
+!mcmc/utils/data/colors.txt

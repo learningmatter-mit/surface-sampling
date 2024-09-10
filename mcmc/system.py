@@ -13,7 +13,7 @@ from ase.calculators.calculator import Calculator, PropertyNotImplementedError
 from ase.constraints import FixAtoms, FixConstraint
 from ase.io.trajectory import TrajectoryWriter
 from catkit.gen.utils import get_unique_coordinates
-from nff.io import AtomsBatch
+from nff.io.ase import AtomsBatch
 from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.core import Structure
 
@@ -82,7 +82,7 @@ class SurfaceSystem:
             results (dict): Results of the calculations.
             _states (dict): Saved states of the SurfaceSystem object.
             constraints (list): Constraints on the surface.
-            surface_area (float): Surface area. Not currently used.
+            surface_area (float): Surface area in Angstrom^2. Unused.
             surface_idx (list): Indices of the surface atoms.
             bulk_idx (list): Indices of the bulk atoms.
             ads_idx (list): Indices of the adsorbate atoms.
@@ -134,7 +134,7 @@ class SurfaceSystem:
         )
 
     def save_state(self, key: str) -> None:
-        """Save the state of the SurfaceSystem ject.
+        """Save the state of the SurfaceSystem object.
 
         Args:
             key (str): The key to save the state as.
@@ -479,7 +479,7 @@ class SurfaceSystem:
         energy = float(
             self.get_surface_energy(recalculate=False)
         )  # correct structure would be restored
-        self.logger.info("Optimized structure has Energy = %.3f", energy)
+        self.logger.info("Optimized structure has surface energy = %.3f", energy)
 
         oob_str = "oob" if energy_oob else "inb"
         if not save_folder:

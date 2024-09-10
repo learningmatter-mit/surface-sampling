@@ -2,6 +2,7 @@
 
 import logging
 import pickle
+from typing import Literal
 
 import numpy as np
 from ase import Atoms
@@ -81,7 +82,7 @@ class TrajectoryObserver:
 
 def optimize_slab(
     slab,
-    optimizer: str = "FIRE",
+    optimizer: Literal["FIRE", "BFGS", "BFGSLineSearch", "CG", "LAMMPS"] = "FIRE",
     save_traj: bool = True,
     logger: logging.Logger | None = None,
     **kwargs,
@@ -90,7 +91,8 @@ def optimize_slab(
 
     Args:
         slab (ase.Atoms): Surface slab
-        optimizer (str, optional): Optimizer to use, by default "FIRE"
+        optimizer (Literal["FIRE", "BFGS", "BFGSLineSearch", "CG", "LAMMPS"], optional): ASE
+            optimizer to use, by default "FIRE"
         save_traj (bool, optional): Save trajectory, by default True
         logger (logging.Logger, optional): Logger object, by default None
         **kwargs: Additional keyword arguments
@@ -157,7 +159,7 @@ def optimize_slab(
     if np.abs(energy) > ENERGY_THRESHOLD or max_force > MAX_FORCE_THRESHOLD:
         logger.info("encountered energy or force out of bounds")
         logger.info("energy %.3f", energy)
-        logger.info("max force %.3f}", max_force)
+        logger.info("max force %.3f", max_force)
 
         # Set a high energy for mc acceptance criteria to reject
         energy = ENERGY_THRESHOLD

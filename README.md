@@ -1,9 +1,5 @@
 # Virtual Surface Site Relaxation-Monte Carlo (VSSR-MC)
-<!-- TBD update with my own icons -->
-<!-- Taken from CHGNet -->
-<!-- [![Tests](https://github.com/CederGroupHub/chgnet/actions/workflows/test.yml/badge.svg)](https://github.com/CederGroupHub/chgnet/actions/workflows/test.yml)
-[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/e3bdcea0382a495d96408e4f84408e85)](https://app.codacy.com/gh/CederGroupHub/chgnet/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
- -->
+[![Tests](https://github.com/learningmatter-mit/surface-sampling/actions/workflows/tests.yml/badge.svg)](https://github.com/learningmatter-mit/surface-sampling/actions/workflows/tests.yml)
 [![arXiv](https://img.shields.io/badge/arXiv-2305.07251-blue?logo=arXiv&logoColor=white&logoSize=auto)](https://arxiv.org/abs/2305.07251)
 [![Zenodo](https://img.shields.io/badge/data-10.5281/zenodo.7758174-14b8a6?logo=zenodo&logoColor=white&logoSize=auto)](https://zenodo.org/doi/10.5281/zenodo.7758174)
 
@@ -31,9 +27,6 @@ We recommend a computer with the following specs:
 To run with a neural network force field, a GPU is recommended. We ran on a single NVIDIA GeForce RTX 2080 Ti 11 GB GPU. The code has been tested on *Linux* Ubuntu 20.04.6 LTS but we expect it to work on other *Linux* distributions.
 
 # Setup
-> [!NOTE]
-> We are using the private repo `git@github.mit.edu:MLMat/surface_sampling.git` repo for development. The public repo will be a mirror of the private repo after I push the changes. For now, please use the private repo.
-
 To start, run `git clone git@github.com:learningmatter-mit/surface-sampling.git` to your local directory or a workstation.
 
 ## Conda environment
@@ -44,11 +37,7 @@ conda activate vssr-mc
 conda install -c conda-forge kimpy lammps openkim-models
 pip install -e .
 ```
-
-> [!NOTE]
-> I have yet to merge the private `NeuralForceField` to the public repo. For now, please clone the private [NFF repo](git@github.mit.edu:MLMat/NeuralForceField.git) and install it in the `vssr-mc` environment with `pip install -e .`.
-> The goal is to avoid modifying bash environment variables and paths in order to access the code.
-> If you're intending to contribute to the code, you can `pip install -e '.[dev]'` to install the development dependencies.
+> If you're intending to contribute to the code, you can `pip install -e '.[dev]'` instead to also install the development dependencies.
 
 To run with LAMMPS, add the following to `~/.bashrc` or equivalent with appropriate paths and then `source ~/.bashrc`. `conda` would have installed LAMMPS as a dependency.
 ```bash
@@ -56,13 +45,12 @@ export LAMMPS_COMMAND="/path/to/lammps/src/lmp"
 export LAMMPS_POTENTIALS="/path/to/lammps/potentials/"
 export ASE_LAMMPSRUN_COMMAND="$LAMMPS_COMMAND"
 ```
-> [!NOTE]
-> This part might require a bit of time to set up. Feel free to skip because it's not the main focus of the project.
 
-The `LAMMPS_COMMAND` should point to the LAMMPS executable and might be found here `/path/to/env/bin/lmp`
-The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files and might be found here `/path/to/env/share/lammps/potentials/`.
-The `ASE_LAMMPSRUN_COMMAND` should point to the LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
-If the `pip` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
+The `LAMMPS_COMMAND` should point to the LAMMPS executable, which can be found here: `/path/to/[vssr-mc-env]/bin/lmp`.
+The `LAMMPS_POTENTIALS` directory should contain the LAMMPS potential files, which can found here: `/path/to/[surface-sampling-repo]/mcmc/potentials/`.
+The `ASE_LAMMPSRUN_COMMAND` should point to the same LAMMPS executable. More information can be found here: [ASE LAMMPS](https://wiki.fysik.dtu.dk/ase/ase/calculators/lammpsrun.html).
+
+If the `conda` installed LAMMPS does not work, you might have to install LAMMPS from source. More information can be found here: [LAMMPS](https://lammps.sandia.gov/doc/Build.html).
 
 You might have to re-open/re-login to your terminal shell for the new settings to take effect.
 
@@ -71,10 +59,11 @@ A toy demo and other examples can be found in the `tutorials/` folder.
 ```
 tutorials/
 ├── example.ipynb
-└── GaN_0001.ipynb
-└── Si_111_5x5.ipynb
-└── SrTiO3_001.ipynb
-└── latent_space_clustering.ipynb
+├── GaN_0001.ipynb
+├── Si_111_5x5.ipynb
+├── SrTiO3_001.ipynb
+├── latent_space_clustering.ipynb
+└── tutorials/prepare_surface.ipynb
 ```
  More data/examples can be found in our [Zenodo dataset](https://doi.org/10.5281/zenodo.7758174).
 
@@ -91,7 +80,7 @@ This example could take a few minutes to run. Refer to `tutorials/Si_111_5x5.ipy
 Demonstrates the integration of VSSR-MC with a neural network force field. This example could take a few minutes to run. Refer to `tutorials/SrTiO3_001.ipynb`.
 
 ## Clustering MC-sampled surfaces in the latent space
-Retrieves the neural network embeddings of VSSR-MC structures and performing clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
+Retrieves the neural network embeddings of VSSR-MC structures and performs clustering. This example should only take a minute to run. Refer to `tutorials/latent_space_clustering.ipynb`.
 
 ## Preparing surface from a bulk structure
 This example demonstrates how to cut a surface from a bulk structure. Refer to `tutorials/prepare_surface.ipynb`.
@@ -102,26 +91,38 @@ Scripts can be found in the `scripts/` folder, including:
 ```
 scripts/
 ├── sample_surface.py
-├── clustering.py
+└── clustering.py
 ```
 
 The arguments for the scripts can be found by running `python scripts/sample_surface.py -h` or `python scripts/clustering.py -h`.
 
 ## Example usage:
-
 ### Original VSSR-MC with PaiNN model trained on SrTiO3(001) surfaces
 ```bash
-python scripts/sample_surface.py --run_name "SrTiO3_001_painn" --starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "PaiNN" --model_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" "tutorials/data/SrTiO3_001/nff/model02/best_model" "tutorials/data/SrTiO3_001/nff/model03/best_model" --settings_path "scripts/configs/sample_config_painn.json"
+python scripts/sample_surface.py --run_name "SrTiO3_001_painn" \
+--starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" \
+--model_type "PaiNN" --model_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" \
+"tutorials/data/SrTiO3_001/nff/model02/best_model" \
+"tutorials/data/SrTiO3_001/nff/model03/best_model" \
+--settings_path "scripts/configs/sample_config_painn.json"
 ```
 
 ### Pre-trained "foundational" CHGNet model on SrTiO3(001) surfaces
 ```bash
-python scripts/sample_surface.py --run_name "SrTiO3_001_chgnet" --starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" --model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
+python scripts/sample_surface.py --run_name "SrTiO3_001_chgnet" \
+--starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" \
+--model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
 ```
 
 ### Latent space clustering
 ```bash
-python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_mcmc_structures_100.pkl" --save_folder "SrTiO3_001/clustering" --nff_model_type "PaiNN" --nff_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" "tutorials/data/SrTiO3_001/nff/model02/best_model" "tutorials/data/SrTiO3_001/nff/model03/best_model" --clustering_metric "force_std" --cutoff_criterion "distance" --clustering_cutoff 0.2 --nff_device "cuda"
+python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_mcmc_structures_100.pkl" \
+--save_folder "SrTiO3_001/clustering" --nff_model_type "PaiNN" \
+--nff_paths "tutorials/data/SrTiO3_001/nff/model01/best_model" \
+"tutorials/data/SrTiO3_001/nff/model02/best_model" \
+"tutorials/data/SrTiO3_001/nff/model03/best_model" \
+--clustering_metric "force_std" --cutoff_criterion "distance" \
+--clustering_cutoff 0.2 --nff_device "cuda"
 ```
 
 

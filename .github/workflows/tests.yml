@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.11'
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Install conda dependencies
+      run: |
+        conda env update --file environment.yml --name base
+    - name: Install pip dependencies
+      run: |
+        pip install -e '.[dev]'
+    - name: Append LAMMPS paths
+      run: |
+        echo "LAMMPS_POTENTIALS=$GITHUB_WORKSPACE/mcmc/potentials" >> $GITHUB_ENV
+        echo "LAMMPS_COMMAND=$CONDA/bin/lmp" >> $GITHUB_ENV
+        echo "ASE_LAMMPSRUN_COMMAND=$CONDA/bin/lmp" >> $GITHUB_ENV
+    - name: Check LAMMPS paths
+      run: |
+        echo "LAMMPS_POTENTIALS = $LAMMPS_POTENTIALS"
+        echo "LAMMPS_COMMAND = $LAMMPS_COMMAND"
+        echo "ASE_LAMMPSRUN_COMMAND = $ASE_LAMMPSRUN_COMMAND"
+    - name: Test with pytest
+      run: |
+        pytest --capture=no --cov --cov-report=xml

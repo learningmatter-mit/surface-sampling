@@ -20,7 +20,7 @@ plt.style.use("default")
 DEFAULT_DPI = 200
 
 LINEWIDTH = 2
-FONTSIZE = 20
+FONTSIZE = 10
 LABELSIZE = 18
 ALPHA = 0.8
 MARKERSIZE = 15 * 25
@@ -32,7 +32,11 @@ TICKPADDING = 5
 
 SECONDARY_CMAP = "inferno"
 
-params = {"mathtext.default": "regular", "font.family": "Arial", "font.size": FONTSIZE}
+params = {
+    "mathtext.default": "regular",
+    "font.family": ("Avenir", "Arial", "Helvetica", "sans-serif"),
+    "font.size": FONTSIZE,
+}
 plt.rcParams.update(params)
 
 
