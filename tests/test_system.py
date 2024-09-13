@@ -7,6 +7,7 @@ from ase import Atoms
 from ase.calculators.calculator import Calculator
 from catkit.gen.surface import SlabGenerator
 from numpy import array, array_equal, ndarray
+from pytest import approx
 
 from mcmc.system import SurfaceSystem
 
@@ -20,6 +21,7 @@ def surface_system():
     ads_coords = [(0, 0, 2), (0, 0, 3)]
     calc = Calculator()
     occ = [0, 1]
+    atoms.set_array("ads_group", np.array([0, 1]))
     system_settings = {"surface_depth": None}
     calc_settings = {"relax_atoms": False, "optimizer": "BFGS"}
     distance_weight_matrix = scipy.special.softmax(
@@ -148,13 +150,16 @@ def test_surface_system_constraint_setting(si_slab, test_calculator):
 def test_surface_system_save_and_restore_state(surface_system):
     """Test saving and restoring state of SurfaceSystem."""
     starting_occ = [0, 1]
+    starting_ads_group = np.array([0, 1])
     starting_results = {"energy": 0.0, "forces": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]}
     starting_positions = surface_system.real_atoms.get_positions()
     surface_system.occ = starting_occ
+    surface_system.real_atoms.set_array("ads_group", starting_ads_group)
     surface_system.results = starting_results
     surface_system.save_state("start_state")
 
-    ending_occ = [1, 0]
+    ending_occ = [1, 0]  # this is not accurate, but it's just for testing
+    ending_ads_group = np.array([0, 1])
     ending_results = {
         "energy": 1.0,
         "forces": [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
@@ -162,11 +167,13 @@ def test_surface_system_save_and_restore_state(surface_system):
     ending_positions = starting_positions + 1.0
     surface_system.real_atoms.set_positions(ending_positions)  # translate the atoms
     surface_system.occ = ending_occ
+    surface_system.real_atoms.set_array("ads_group", ending_ads_group)
     surface_system.results = ending_results
     surface_system.save_state("end_state")
 
     surface_system.restore_state("start_state")
     assert surface_system.occ == starting_occ
+    assert surface_system.real_atoms.get_array("ads_group") == approx(starting_ads_group)
     # test the restored results are a dict
     assert isinstance(surface_system.results, dict)
     assert surface_system.results == starting_results
@@ -174,6 +181,7 @@ def test_surface_system_save_and_restore_state(surface_system):
 
     surface_system.restore_state("end_state")
     assert surface_system.occ == ending_occ
+    assert surface_system.real_atoms.get_array("ads_group") == approx(ending_ads_group)
     # test the restored results are a dict
     assert isinstance(surface_system.results, dict)
     assert surface_system.results == ending_results
@@ -200,6 +208,9 @@ def test_surface_system_copy(surface_system):
     assert np.allclose(surface_system_copy.ads_idx, surface_system.ads_idx)
     assert np.allclose(surface_system_copy.ads_coords, surface_system.ads_coords)
     assert np.allclose(surface_system_copy.occ, surface_system.occ)
+    assert surface_system_copy.real_atoms.get_array("ads_group") == approx(
+        surface_system.real_atoms.get_array("ads_group")
+    )
 
 
 def test_surface_system_fromdict(surface_system):
@@ -223,6 +234,9 @@ def test_surface_system_fromdict(surface_system):
     assert np.allclose(surface_system_copy.ads_idx, surface_system.ads_idx)
     assert np.allclose(surface_system_copy.ads_coords, surface_system.ads_coords)
     assert np.allclose(surface_system_copy.occ, surface_system.occ)
+    assert surface_system_copy.real_atoms.get_array("ads_group") == approx(
+        surface_system.real_atoms.get_array("ads_group")
+    )
 
 
 # def test_surface_system_get_relaxed_energy():

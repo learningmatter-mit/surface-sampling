@@ -23,6 +23,7 @@ def system():
     atoms = Atoms(
         "GaAsGaAs", positions=[[0, 0, 0], [0, 0, 3], [1, 1, 1], [1, 1, 4]]
     )  # fake positions for now
+    atoms.set_array("ads_group", np.array([0, 1, 2, 0]))
     ads_coords = [(0, 0, 3), (1, 1, 1), (2, 2, 5)]
     occ = [1, 2, 0]
     distance_weight_matrix = np.random.rand(3, 3)
@@ -44,8 +45,9 @@ def test_change_site_with_existing_adsorbate(system):
 
     # Check that the adsorbate has been changed
     assert len(new_surface.real_atoms) == 4
-    assert new_surface.occ[0] == 3
+    assert np.allclose(new_surface.occ, [3, 1, 0])
     assert new_surface.real_atoms[3].symbol == "O"
+    assert np.allclose(new_surface.real_atoms.get_array("ads_group"), [0, 1, 0, 3])
 
 
 def test_change_site_with_empty_site(system):
@@ -55,8 +57,9 @@ def test_change_site_with_empty_site(system):
 
     # Check that the adsorbate has been added
     assert len(new_surface.real_atoms) == 5
-    assert new_surface.occ[2] == 4
+    assert np.allclose(new_surface.occ, [1, 2, 4])
     assert new_surface.real_atoms[4].symbol == "Ir"
+    assert np.allclose(new_surface.real_atoms.get_array("ads_group"), [0, 1, 2, 0, 4])
 
 
 def test_change_site_with_desorption(system):
@@ -66,7 +69,9 @@ def test_change_site_with_desorption(system):
 
     # Check that the adsorbate has been removed
     assert len(new_surface.real_atoms) == 3
-    assert new_surface.occ[0] == 0
+    assert np.allclose(new_surface.occ, [0, 1, 0])
+    assert new_surface.real_atoms[2].symbol == "As"
+    assert np.allclose(new_surface.real_atoms.get_array("ads_group"), [0, 1, 0])
 
 
 def test_change_site_with_invalid_site_index(system):

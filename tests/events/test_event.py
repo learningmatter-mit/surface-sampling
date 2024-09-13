@@ -30,7 +30,6 @@ def criterion():
 def test_change_forward(system, change_proposal, criterion):
     # Create a Change event object
     event = Change(system, change_proposal, criterion)
-
     # Perform the forward step of the event
     event.forward()
 
@@ -85,7 +84,6 @@ def test_change_acceptance(system, change_proposal, criterion):
 def test_exchange_forward(system, switch_proposal, criterion):
     # Create a Change event object
     event = Exchange(system, switch_proposal, criterion)
-
     # Perform the forward step of the event
     event.forward()
 
@@ -106,7 +104,6 @@ def test_exchange_backward(system, switch_proposal, criterion):
     intermediate_ads_pos = system.real_atoms.get_positions()[system.occ]
     intermediate_chem_symbols = system.real_atoms.get_chemical_formula()
     intermediate_occ = system.occ
-
     # Assert that the ads positions are different before and during the event
     assert ~np.allclose(start_ads_pos, intermediate_ads_pos)
 
