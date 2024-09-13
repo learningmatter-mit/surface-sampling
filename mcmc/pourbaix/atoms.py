@@ -1,8 +1,10 @@
 """Pourbaix atoms module for calculating the Pourbaix potential (energy)."""
 
+from pathlib import Path
 from typing import Self
 
 from ase import Atom
+from monty.serialization import loadfn
 from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.analysis.pourbaix_diagram import (
     HydrogenPourbaixEntry,
@@ -142,8 +144,8 @@ class PourbaixAtom(Atom):
 
 
 def generate_pourbaix_atoms(
-    phase_diagram: PhaseDiagram,
-    pourbaix_diagram: PourbaixDiagram,
+    phase_diagram: PhaseDiagram | str | Path,
+    pourbaix_diagram: PourbaixDiagram | str | Path,
     phi: float,
     pH: float,
     elements: list[str],
@@ -152,8 +154,8 @@ def generate_pourbaix_atoms(
     pH and phi.
 
     Args:
-        phase_diagram (Union[Path, str]): pymatgen PhaseDiagram
-        pourbaix_diagram (Union[Path, str]): pymatgen PourbaixDiagram
+        phase_diagram (PhaseDiagram | str | Path): pymatgen PhaseDiagram or path to the file
+        pourbaix_diagram (PourbaixDiagram | str | Path): pymatgen PourbaixDiagram or path to the file
         phi (float): electrical potential
         pH (float): pH
         elements (list[str]): list of elements
@@ -161,6 +163,10 @@ def generate_pourbaix_atoms(
     Returns:
         dict: dictionary of PourbaixAtom objects
     """
+    if not isinstance(phase_diagram, PhaseDiagram):
+        phase_diagram = loadfn(phase_diagram)
+    if not isinstance(pourbaix_diagram, PourbaixDiagram):
+        pourbaix_diagram = loadfn(pourbaix_diagram)
     pbx_multi_entry = pourbaix_diagram.get_stable_entry(pH, phi)
     assert isinstance(pbx_multi_entry, MultiEntry), "Expected a Pourbaix MultiEntry"
     sorted_pbx_entries = sorted(
