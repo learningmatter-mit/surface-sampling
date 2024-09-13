@@ -7,6 +7,8 @@ from collections import Counter
 
 import ase
 import numpy as np
+from ase import Atoms
+from ase.symbols import Symbols
 from scipy.special import softmax
 
 from mcmc.system import SurfaceSystem
@@ -16,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # Define groups of atoms
-# TODO change to ase.Atoms with positions
-ATOM_GROUPS = {"OH-": ["O", "H"], "CO3-": ["C", "O", "O", "O"]}
+ATOM_GROUPS = {"HO": Atoms("OH", positions=[[0, 0, 0], [0, 0, 1.0]])}
 
 
 def get_adsorbate_indices(surface: SurfaceSystem) -> dict[str, list[int]]:
@@ -242,18 +243,21 @@ def change_site(
 
     if surface.occ[site_idx] != 0:
         logger.debug("chosen site already adsorbed")
-        start_ads = surface.real_atoms[surface.occ[site_idx]].symbol
-        # desorb first, regardless of next chosen state
-        surface = remove_atom(surface, site_idx)
-
+        # Figure out if it's a group or single atom
+        start_ads_idx = surface.occ[site_idx]
+        ads_group_idx = np.where(surface.real_atoms.get_array("ads_group") == start_ads_idx)[0]
+        start_ads = surface.real_atoms[ads_group_idx].symbols
+        surface = remove_atom(surface, site_idx, start_ads)
     else:
         logger.debug("chosen site is empty")
         start_ads = "None"
-        # modularize
 
     if end_ads != "None":
         logger.debug("replacing %s with %s", start_ads, end_ads)
-        surface = add_atom(surface, site_idx, end_ads)
+        if end_ads in ATOM_GROUPS:
+            surface = add_atom_group(surface, site_idx, end_ads)
+        else:
+            surface = add_atom(surface, site_idx, end_ads)
     else:
         logger.debug("desorbing %s", start_ads)
 
@@ -275,6 +279,9 @@ def add_atom(surface: SurfaceSystem, site_idx: int, adsorbate: str | ase.Atoms) 
     adsorbate_idx = len(surface)
     surface.occ[site_idx] = adsorbate_idx
     surface.real_atoms.append(adsorbate)
+    new_ads_group = surface.real_atoms.get_array("ads_group")
+    new_ads_group[-1] = adsorbate_idx
+    surface.real_atoms.set_array("ads_group", new_ads_group)
     surface.real_atoms.positions[-1] = surface.ads_coords[site_idx]
     return surface
 
@@ -294,73 +301,90 @@ def add_atom_group(surface: SurfaceSystem, site_index: int, group_name: str) -> 
     if group_name not in ATOM_GROUPS:
         raise ValueError(f"Unknown group name: {group_name}")
 
+    logger.debug("Current surface has %s atoms", len(surface))
+    logger.debug("Current surface has adsorbate indices %s", surface.occ)
+    logger.debug("Adsorbate groups are %s", surface.real_atoms.get_array("ads_group"))
+
     group = ATOM_GROUPS[group_name]
-    for atom in group:
-        adsorbate_idx = len(surface)
-        surface.occ[site_index] = adsorbate_idx  # TODO only do it at the first atom
-        surface.real_atoms.append(ase.Atom(atom))
-        # TODO add ads_coords[site_index] to ase.Atoms representing group of atoms
-        # then append the group to the real_atoms
-        surface.real_atoms.positions[-1] = surface.ads_coords[site_index]
+    adsorbate_idx = len(surface)
+    surface.occ[site_index] = adsorbate_idx
+    ads_atoms = group.copy()
+    ads_atoms.set_array("ads_group", np.array([adsorbate_idx] * len(group)))
+    ads_atoms.positions += surface.ads_coords[site_index]
+    surface.real_atoms.extend(ads_atoms)
+
+    logger.debug(
+        "Added group %s at site %s with position %s", group_name, site_index, ads_atoms.positions
+    )
+    logger.debug("New surface has %s atoms", len(surface))
+    logger.debug("New surface has adsorbate indices %s", surface.occ)
+    logger.debug("Adsorbate groups are %s", surface.real_atoms.get_array("ads_group"))
     return surface
 
 
-def remove_atom(surface: SurfaceSystem, site_idx: int) -> SurfaceSystem:
-    """Remove an adsorbate from the slab and updates the state.
+def remove_atom(surface: SurfaceSystem, site_idx: int, start_ads: Symbols) -> SurfaceSystem:
+    """Remove an adsorbate (can be a group) from the slab and updates the state.
 
     Args:
         surface (SurfaceSystem): The surface system.
         site_idx (int): The index of the site to change.
+        start_ads (Symbols): The adsorbate to remove.
 
     Returns:
         SurfaceSystem: The updated surface system
     """
+    logger.debug("Current surface has %s atoms", len(surface))
+    logger.debug("Current surface has adsorbate indices %s", surface.occ)
+    logger.debug("Adsorbate groups are %s", surface.real_atoms.get_array("ads_group"))
+
     adsorbate_idx = surface.occ[site_idx]
     assert len(np.argwhere(surface.occ == adsorbate_idx)) <= 1, "more than 1 site found"
     assert len(np.argwhere(surface.occ == adsorbate_idx)) == 1, "no sites found"
 
-    del surface.real_atoms[int(adsorbate_idx)]
+    # Remove the adsorbate
+    if len(start_ads) == 1:
+        del surface.real_atoms[int(adsorbate_idx)]
+    else:
+        group_name = start_ads.get_chemical_formula()
+        if group_name not in ATOM_GROUPS:
+            raise ValueError(f"Unknown group name: {group_name}")
+        remove_atom_group(surface, site_idx, group_name)
 
-    # lower the index for higher index items
-    surface.occ = np.where(surface.occ >= int(adsorbate_idx), surface.occ - 1, surface.occ)
-    # remove negatives
+    # Lower the index for higher index items
+    surface.occ = np.where(
+        surface.occ >= int(adsorbate_idx), surface.occ - len(start_ads), surface.occ
+    )  # remove however many atoms are in the group
+    ads_group = surface.real_atoms.get_array("ads_group")
+    surface.real_atoms.set_array(
+        "ads_group", np.where(ads_group >= adsorbate_idx, ads_group - len(start_ads), ads_group)
+    )
+    # Remove negatives
     surface.occ = np.where(surface.occ < 0, 0, surface.occ)
+    ads_group = surface.real_atoms.get_array("ads_group")
+    surface.real_atoms.set_array("ads_group", np.where(ads_group < 0, 0, ads_group))
 
-    # remove the adsorbate from tracking
+    # Update the occupancy array
     surface.occ[site_idx] = 0
+    logger.debug("Removed adsorbate at site %s", site_idx)
+    logger.debug("New surface has %s atoms", len(surface))
+    logger.debug("New surface has adsorbate indices %s", surface.occ)
+    logger.debug("Adsorbate groups are %s", surface.real_atoms.get_array("ads_group"))
     return surface
 
 
-# TODO add method to main MCMC script and helper classes
-def remove_atom_group(surface: SurfaceSystem, site_index: int) -> SurfaceSystem:
+def remove_atom_group(surface: SurfaceSystem, site_index: int, group_name: str) -> SurfaceSystem:
     """Remove a group of atoms from the slab and update the state.
 
     Args:
         surface (SurfaceSystem): The surface system.
         site_index (int): The index of the site to change.
+        group_name (str): The name of the group to remove.
 
     Returns:
         SurfaceSystem: The updated surface system.
     """
     adsorbate_idx = surface.occ[site_index]
     start_num_atoms = len(surface.real_atoms)
-    assert len(np.argwhere(surface.occ == adsorbate_idx)) <= 1, "more than 1 site found"
-    assert len(np.argwhere(surface.occ == adsorbate_idx)) == 1, "no sites found"
-    if adsorbate_idx == 0:
-        raise ValueError(f"No adsorbate found at site index: {site_index}")
-
-    # Find the group associated with the adsorbate index
-    group_name = None
-    for name, group in ATOM_GROUPS.items():
-        # TODO similar logic but might need to be adjusted
-        if all(
-            surface.real_atoms[adsorbate_idx + i].symbol == atom for i, atom in enumerate(group)
-        ):
-            group_name = name
-            break
-
-    if group_name is None:
-        raise ValueError(f"No matching group found for adsorbate index: {adsorbate_idx}")
 
     group = ATOM_GROUPS[group_name]
     for _ in group:
@@ -372,13 +396,6 @@ def remove_atom_group(surface: SurfaceSystem, site_index: int) -> SurfaceSystem:
         group
     ), "Number of atoms not as expected after removing group"
 
-    # Lower the index for higher index items
-    surface.occ = np.where(surface.occ >= int(adsorbate_idx), surface.occ - 1, surface.occ)
-    # Remove negatives
-    surface.occ = np.where(surface.occ < 0, 0, surface.occ)
-
-    # Update the occupancy array
-    surface.occ[site_index] = 0
     return surface
 
 

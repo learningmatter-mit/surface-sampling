@@ -187,6 +187,8 @@ class SurfaceSystem:
                 Defaults to None.
         """
         self.real_atoms = atoms.copy()
+        if "ads_group" not in self.real_atoms.arrays:
+            self.real_atoms.set_array("ads_group", np.zeros(len(self.real_atoms)), dtype=int)
         self.relaxed_atoms = relaxed_atoms
         self.set_calc(calc)
         self.ads_coords = (
