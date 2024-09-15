@@ -592,10 +592,22 @@ class SurfaceSystem:
         Returns:
             SurfaceSystem: The SurfaceSystem object created from dict.
         """
+        # Logic for adsorbate group
+        real_atoms_ads_group = dct["real_atoms"].pop("ads_group", None)
         real_atoms = AtomsBatch.fromdict(
             dct["real_atoms"]
         )  # what if ase.Atoms was the original object?
+        if real_atoms_ads_group is not None:
+            real_atoms.set_array("ads_group", real_atoms_ads_group)
+
+        # Logic for adsorbate group
+        if dct["relaxed_atoms"] is not None:
+            relaxed_atoms_ads_group = dct["relaxed_atoms"].pop("ads_group", None)
+        else:
+            relaxed_atoms_ads_group = None
         relaxed_atoms = AtomsBatch.fromdict(dct["relaxed_atoms"]) if dct["relaxed_atoms"] else None
+        if relaxed_atoms_ads_group is not None:
+            relaxed_atoms.set_array("ads_group", relaxed_atoms_ads_group)
         calc = dct["calc"]
         ads_coords = dct["ads_coords"]
         occ = dct["occ"]
