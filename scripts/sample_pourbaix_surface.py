@@ -14,6 +14,8 @@ from default_settings import DEFAULT_CUTOFFS, DEFAULT_SAMPLING_SETTINGS
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
 from nff.utils.cuda import get_final_device
+from pymatgen.analysis.adsorption import AdsorbateSiteFinder
+from pymatgen.core import Structure
 
 from mcmc import MCMC
 from mcmc.calculators import NFFPourbaix
@@ -188,13 +190,50 @@ def main(
             elements,
         )
         calc_settings["pourbaix_atoms"] = pourbaix_atoms
+        logger.info("Generated Pourbaix atoms: %s", pourbaix_atoms)
     else:
         pourbaix_atoms = calc_settings["pourbaix_atoms"]
-    logger.info("Pourbaix atoms: %s", pourbaix_atoms)
+        logger.info("Using provided Pourbaix atoms: %s", pourbaix_atoms)
+
+    # Obtain adsorption sites
+    starting_pmg_slab = Structure.from_ase_atoms(starting_slab)
+    site_finder = AdsorbateSiteFinder(starting_pmg_slab)
+
+    all_ads_positions = site_finder.find_adsorption_sites(
+        put_inside=True,
+        symm_reduce=system_settings.get("symm_reduce", False),
+        near_reduce=system_settings.get("near_reduce", 0.01),
+        distance=system_settings.get("planar_distance", 2.0),
+        no_obtuse_hollow=system_settings.get("no_obtuse_hollow", True),
+    )
+    ads_positions = all_ads_positions[system_settings.get("ads_site_type", "all")]
+    logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
+
+    surf_atom_idx = starting_slab.get_surface_atoms()
+
+    # TODO: make it more general, let users specify if surface atoms should be included
+    # Get surface atom coordinates
+    surf_atom_positions = starting_slab.get_positions()[surf_atom_idx]
+    logger.info("Surface atom coordinates are: %s...", surf_atom_positions[:5])
+    all_ads_coords = np.vstack([surf_atom_positions, ads_positions])
+
+    # Set occupation array
+    occ = np.hstack(
+        [
+            surf_atom_idx,
+            [0] * len(ads_positions),
+        ]
+    )
+    logger.info("Starting occupation array: %s...", occ[:5])
+
+    # Set corresponding adsorbate group array
+    mask = np.isin(np.arange(len(starting_slab)), surf_atom_idx)
+    ads_group = mask * np.arange(len(starting_slab))
+    starting_slab.set_array("ads_group", ads_group, dtype=int)
+    logger.info("Starting adsorbate group array: %s...", starting_slab.get_array("ads_group")[:5])
 
     # Initialize Calculator
-    # device = get_final_device(device)
-    device = f"cuda:2"
+    device = get_final_device(device)
 
     models = []
     for model_path in model_paths:
@@ -220,6 +259,8 @@ def main(
     surface = SurfaceSystem(
         slab_batch,
         calc=nff_surf_calc,
+        ads_coords=all_ads_coords,
+        occ=occ,
         system_settings=system_settings,
         save_folder=run_folder,
     )
