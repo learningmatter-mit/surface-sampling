@@ -1,9 +1,11 @@
 """Methods for generating slabs from bulk structures."""
 
 from collections.abc import Iterable
+from copy import deepcopy
 
 import ase
 import numpy as np
+from ase.build.tools import sort
 from catkit.gen.surface import SlabGenerator
 
 
@@ -19,13 +21,13 @@ def surface_from_bulk(
     """Cut a surface from a bulk structure.
 
     Args:
-        bulk (ase.Atoms): Bulk structure to cut surface from.
-        miller_index (Iterable[int]): Miller indices for the surface, length 3.
-        layers (int, optional): Number of layers in the slab, by default 5
-        fixed (int, optional): Number of fixed layers, by default 6
-        size (Iterable, optional): Size of the slab with respect to provided bulk, by default (1, 1)
-        vacuum (float, optional): Vacuum space in Angstroms (in each direction), by default 7.5
-        iterm (int, optional): Index of the slab termination, by default 0
+        bulk: Bulk structure to cut surface from.
+        miller_index: Miller indices for the surface, length 3.
+        layers: Number of layers in the slab, by default 5
+        fixed: Number of fixed layers, by default 6
+        size: Size of the slab with respect to provided bulk, by default (1, 1)
+        vacuum: Vacuum space in Angstroms (in each direction), by default 7.5
+        iterm: Index of the slab termination, by default 0
 
     Returns:
         ase.Atoms: Surface cut from the crystal.
@@ -57,3 +59,33 @@ def surface_from_bulk(
     surface_atoms = [highest_z - z_values[atom] < 1.2 for atom in atom_list]
 
     return slab, surface_atoms
+
+
+def symmetrize_slab(slab: ase.Atoms, num_bottom_atoms: int) -> ase.Atoms:
+    """Symmetrize a slab by copying the top half to the bottom half.
+
+    Args:
+        slab: Surface slab.
+        num_bottom_atoms: Number of atoms in the bottom layer.
+
+    Returns:
+        ase.Symmetrized slab.
+    """
+    slab_copy = deepcopy(slab)
+    # Sort according to z coordinate
+    slab_copy = sort(slab_copy, tags=slab_copy.positions[:, 2])
+    # Copy symmetric half except bottom atoms
+    bottom_atoms_z_mean = slab_copy[:num_bottom_atoms].get_scaled_positions()[:, 2].mean()
+    symmetric_bottom = slab_copy[num_bottom_atoms:].copy()
+    dist_from_bottom = symmetric_bottom.get_scaled_positions()[:, 2] - bottom_atoms_z_mean
+
+    symmetric_bottom.set_scaled_positions(
+        np.hstack(
+            [
+                symmetric_bottom.get_scaled_positions()[:, :2],
+                (bottom_atoms_z_mean - dist_from_bottom)[:, None],
+            ]
+        )
+    )
+    slab_copy += symmetric_bottom
+    return slab_copy
