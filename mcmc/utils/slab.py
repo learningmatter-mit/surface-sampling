@@ -1,7 +1,6 @@
 """Methods for generating slabs from bulk structures."""
 
 from collections.abc import Iterable
-from copy import deepcopy
 
 import ase
 import numpy as np
@@ -61,19 +60,22 @@ def surface_from_bulk(
     return slab, surface_atoms
 
 
-def symmetrize_slab(slab: ase.Atoms, num_bottom_atoms: int) -> ase.Atoms:
-    """Symmetrize a slab by copying the top half to the bottom half.
+def symmetrize_slab(slab: ase.Atoms, num_bottom_atoms: int, sort_z_axis: True) -> ase.Atoms:
+    """Symmetrize a slab by copying the top half to the bottom half. Assume the slab is
+    sorted in the z direction in increasing order.
 
     Args:
         slab: Surface slab.
         num_bottom_atoms: Number of atoms in the bottom layer.
+        sort_z_axis: Whether to sort the slab in the z direction.
 
     Returns:
         ase.Symmetrized slab.
     """
-    slab_copy = deepcopy(slab)
-    # Sort according to z coordinate
-    slab_copy = sort(slab_copy, tags=slab_copy.positions[:, 2])
+    slab_copy = slab.copy()
+    if sort_z_axis:
+        # Sort according to z coordinate
+        slab_copy = sort(slab_copy, tags=slab_copy.positions[:, 2])
     # Copy symmetric half except bottom atoms
     bottom_atoms_z_mean = slab_copy[:num_bottom_atoms].get_scaled_positions()[:, 2].mean()
     symmetric_bottom = slab_copy[num_bottom_atoms:].copy()

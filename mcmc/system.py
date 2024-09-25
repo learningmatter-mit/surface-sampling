@@ -19,6 +19,7 @@ from pymatgen.core import Structure
 
 from mcmc.dynamics import optimize_slab
 from mcmc.utils import SilenceLogger
+from mcmc.utils.slab import symmetrize_slab
 
 DEFAULT_SETTINGS = {
     "planar_distance": 1.5,
@@ -107,6 +108,15 @@ class SurfaceSystem:
         self.surface_name = self.system_settings.get("surface_name", atoms.get_chemical_formula())
         self.surface_depth = self.system_settings.get("surface_depth", None)
         self.relax_atoms = self.calc_settings.get("relax_atoms", False)  # whether to relax surface
+        self.symmetric_slab = self.calc_settings.get("symmetric_slab", False)
+        self.num_base_atoms = self.calc_settings.get("num_base_atoms", 0)
+        if self.symmetric_slab and self.num_base_atoms == 0:
+            raise ValueError("Number of base atoms must be specified for symmetric slab.")
+        # Check the z coordinate of the atoms are sorted from smallest to largest
+        if self.symmetric_slab:
+            z_coords = atoms.get_scaled_positions()[:, 2]
+            if not np.all(np.diff(z_coords) >= 0):
+                raise ValueError("Atoms are not sorted in increasing z-coordinate.")
 
         # initialize attributes
         self.all_atoms = None
@@ -127,6 +137,9 @@ class SurfaceSystem:
         self.distance_weight_matrix = distance_weight_matrix
         self.logger = logger or logging.getLogger(__name__)
         self.save_folder = save_folder
+
+        if self.symmetric_slab:
+            self.logger.info("Symmetric slab with %s base atoms", self.num_base_atoms)
 
         # TODO: give all virtual atoms 'X' identity, remove when exporting or calculating
         self.initialize(
@@ -332,6 +345,17 @@ class SurfaceSystem:
         """
         return Structure.from_ase_atoms(self.real_atoms)
 
+    @property
+    def unrelaxed_atoms(self) -> ase.Atoms:
+        """Get the unrelaxed surface atoms depending on the symmetry of the slab.
+
+        Returns:
+            ase.Atoms: The unrelaxed surface atoms.
+        """
+        if self.symmetric_slab:
+            return symmetrize_slab(self.real_atoms, self.num_base_atoms, sort_z_axis=False)
+        return self.real_atoms
+
     def relax_structure(self, **kwargs) -> tuple[ase.Atoms, float | list[float]]:
         """Relax the surface structure.
 
@@ -344,7 +368,7 @@ class SurfaceSystem:
         """
         self.calc_settings.pop("logger", None)  # remove logger from calc_settings
         relaxed_slab, traj, energy, energy_oob = optimize_slab(
-            self.real_atoms, **self.calc_settings, **kwargs
+            self.unrelaxed_atoms, **self.calc_settings, **kwargs
         )
         self.relaxed_atoms = relaxed_slab
         self.relax_traj = traj
@@ -407,7 +431,7 @@ class SurfaceSystem:
         Returns:
             float: The unrelaxed potential energy of the system.
         """
-        return self.real_atoms.get_potential_energy()
+        return self.unrelaxed_atoms.get_potential_energy()
 
     @update_results(prop="energy")
     def get_potential_energy(self, **kwargs) -> float | list[float]:
@@ -443,7 +467,7 @@ class SurfaceSystem:
             if self.relaxed_atoms is None or recalculate:
                 _, raw_energy = self.relax_structure(**kwargs)
             return self.calc.get_property("surface_energy", atoms=self.relaxed_atoms, **kwargs)
-        return self.calc.get_property("surface_energy", atoms=self.real_atoms, **kwargs)
+        return self.calc.get_property("surface_energy", atoms=self.unrelaxed_atoms, **kwargs)
 
     @update_results(prop="forces")
     def get_forces(self, **kwargs) -> np.ndarray | list:
@@ -455,7 +479,7 @@ class SurfaceSystem:
         Returns:
             np.ndarray | list: The forces acting on the atoms.
         """
-        atoms = self.relaxed_atoms if self.relaxed_atoms else self.real_atoms
+        atoms = self.relaxed_atoms if self.relaxed_atoms else self.unrelaxed_atoms
         try:
             return atoms.get_forces()
         except PropertyNotImplementedError:
@@ -477,7 +501,7 @@ class SurfaceSystem:
         Raises:
             ValueError: If no relaxed atoms are available.
         """
-        chemical_formula = self.real_atoms.get_chemical_formula()
+        chemical_formula = self.unrelaxed_atoms.get_chemical_formula()
         energy = float(
             self.get_surface_energy(recalculate=False)
         )  # correct structure would be restored
@@ -490,7 +514,7 @@ class SurfaceSystem:
         # save cifs for unrelaxed and relaxed slabs (if relaxed)
         io.write(
             f"{save_folder}/{oob_str}_unrelaxed_slab_sweep_{sweep_num:03}_energy_{energy:.3f}_{chemical_formula}.cif",
-            self.real_atoms,
+            self.unrelaxed_atoms,
         )
 
         if self.relaxed_atoms:
@@ -634,7 +658,7 @@ class SurfaceSystem:
         Returns:
             int: The number of atoms in the SurfaceSystem object.
         """
-        return len(self.real_atoms)
+        return len(self.unrelaxed_atoms)
 
     def __repr__(self) -> str:
         """Return the string representation of the SurfaceSystem object.
@@ -642,7 +666,9 @@ class SurfaceSystem:
         Returns:
             str: The string representation of the SurfaceSystem object.
         """
+        symmetric = "Symmetric" if self.symmetric_slab else "Asymmetric"
         return (
-            f"SurfaceSystem({self.real_atoms.get_chemical_formula()} with {len(self.ads_coords)}"
+            f"{symmetric} SurfaceSystem({self.unrelaxed_atoms.get_chemical_formula()} with "
+            f"{len(self.ads_coords)}"
             " adsorption sites)"
         )

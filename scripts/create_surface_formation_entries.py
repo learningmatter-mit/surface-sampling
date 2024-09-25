@@ -315,6 +315,7 @@ def main(
         surface_formation_entry = create_surface_formation_entry(raw_entry, phase_diagram)
         surf_form_entries.append(surface_formation_entry)
 
+    breakpoint()
     # Save surface formation entries
     relaxed = "relaxed" if relax else "unrelaxed"
     save_entries_path = (
