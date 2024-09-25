@@ -160,14 +160,6 @@ def main(
                 logger.error("Offset data file not found at the provided path.")
                 raise e
 
-    # Save updated run settings
-    all_settings = {
-        "system_settings": system_settings,
-        "sampling_settings": sampling_settings,
-        "calc_settings": calc_settings,
-    }
-    dumpfn(all_settings, run_folder / "settings.json", indent=4)
-
     # Load prepared pristine slab
     try:
         with open(starting_structure_path, "rb") as f:
@@ -194,6 +186,14 @@ def main(
     else:
         pourbaix_atoms = calc_settings["pourbaix_atoms"]
         logger.info("Using provided Pourbaix atoms: %s", pourbaix_atoms)
+
+    # Save updated run settings
+    all_settings = {
+        "system_settings": system_settings,
+        "sampling_settings": sampling_settings,
+        "calc_settings": calc_settings,
+    }
+    dumpfn(all_settings, run_folder / "settings.json", indent=4)
 
     # Obtain adsorption sites
     starting_pmg_slab = Structure.from_ase_atoms(starting_slab)
