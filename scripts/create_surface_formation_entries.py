@@ -267,6 +267,7 @@ def main(
     raw_entries = []
     final_slab_batches = []
     surf_form_entries = []
+
     for i, slab in enumerate(tqdm(dset)):
         if model_type in ["DFT"]:
             slab_batch = slab
@@ -303,6 +304,16 @@ def main(
             results = get_results_single(slab_batch, nff_calc)
             raw_energy = float(results["energy"])  # DFT-like energy
 
+        # Use constraints to set fake surface atoms so that they relax
+        if (len(slab_batch.constraints) > 0) and (
+            slab_batch.constraints[0].__class__.__name__ == "FixAtoms"
+        ):
+            fixed_indices = slab_batch.constraints[0].get_indices()
+            surface_indices = np.isin(
+                np.arange(len(slab_batch)), fixed_indices, invert=True
+            ).astype(int)
+            slab_batch.set_tags(surface_indices)
+
         final_slab_batches.append(slab_batch)
         raw_entry = create_computed_entry(
             slab_batch, raw_energy, slab_name=slab.get_chemical_formula()
@@ -316,7 +327,6 @@ def main(
 
         surface_formation_entry = create_surface_formation_entry(raw_entry, phase_diagram)
         surf_form_entries.append(surface_formation_entry)
-
     # Save surface formation entries
     relaxed = "relaxed" if relax else "unrelaxed"
     save_entries_path = (
