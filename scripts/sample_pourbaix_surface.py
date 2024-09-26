@@ -137,6 +137,8 @@ def main(
             total_sweeps=sampling_settings["total_sweeps"],
             start_temp=sampling_settings["start_temp"],
             alpha=sampling_settings["alpha"],
+            pH=calc_settings["pH"],
+            phi=calc_settings["phi"],
         )
         sampling_settings["run_folder"] = run_folder
     else:

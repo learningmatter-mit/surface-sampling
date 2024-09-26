@@ -94,6 +94,7 @@ class MCMC:
         anneal_schedule: list | np.ndarray | None = None,
         multiple_anneal: bool = False,
         run_folder: Path | str | None = None,
+        **kwargs,
     ) -> np.ndarray:
         """Initialize the MCMC simulation by setting up the run folder, preparing the canonical
         slabs, and creating the annealing schedule.
@@ -107,6 +108,7 @@ class MCMC:
                 False.
             run_folder (Path | str | None, optional): The folder in which to save the results of the
                 simulation. Defaults to None.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             np.ndarray: The annealing schedule.
@@ -118,6 +120,7 @@ class MCMC:
                 total_sweeps=self.total_sweeps,
                 start_temp=self.temp,
                 alpha=self.alpha,
+                **kwargs,
             )
         else:
             self.run_folder = Path(run_folder)
