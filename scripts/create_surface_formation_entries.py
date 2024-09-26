@@ -18,7 +18,6 @@ from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.core import Structure
 from pymatgen.entries.compatibility import (
     MaterialsProject2020Compatibility,
-    MaterialsProjectAqueousCompatibility,
 )
 from pymatgen.entries.computed_entries import ComputedStructureEntry
 from tqdm import tqdm
@@ -258,14 +257,15 @@ def main(
     else:
         # Set up compatibility adjustments
         solid_compat = MaterialsProject2020Compatibility()
-        aqcompat = MaterialsProjectAqueousCompatibility(
-            solid_compat=solid_compat,
-            o2_energy=-4.94795546875,  # DFT energy before any entropy correction
-            h2o_energy=-5.192751548333333,  # DFT energy before any entropy correction
-            h2o_adjustments=-0.229,  # already counted in the H2O energy
-        )
+        # aqcompat = MaterialsProjectAqueousCompatibility(
+        #     solid_compat=solid_compat,
+        #     o2_energy=-4.94795546875,  # DFT energy before any entropy correction
+        #     h2o_energy=-5.192751548333333,  # DFT energy before any entropy correction
+        #     h2o_adjustments=-0.229,  # already counted in the H2O energy
+        # )
 
     raw_entries = []
+    final_slab_batches = []
     surf_form_entries = []
     for i, slab in enumerate(tqdm(dset)):
         if model_type in ["DFT"]:
@@ -303,19 +303,20 @@ def main(
             results = get_results_single(slab_batch, nff_calc)
             raw_energy = float(results["energy"])  # DFT-like energy
 
+        final_slab_batches.append(slab_batch)
         raw_entry = create_computed_entry(
             slab_batch, raw_energy, slab_name=slab.get_chemical_formula()
         )
         raw_entries.append(raw_entry)
         if model_type in ["DFT"]:
-            aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
+            # aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
+            solid_compat.process_entries([raw_entry], inplace=True)  # process the entry
             # aqcompat.get_adjustments(raw_entry)  #
             # solid_compat.get_adjustments(raw_entry)  #
 
         surface_formation_entry = create_surface_formation_entry(raw_entry, phase_diagram)
         surf_form_entries.append(surface_formation_entry)
 
-    breakpoint()
     # Save surface formation entries
     relaxed = "relaxed" if relax else "unrelaxed"
     save_entries_path = (
@@ -324,6 +325,19 @@ def main(
     with open(save_entries_path, "wb") as f:
         pkl.dump(surf_form_entries, f)
     logger.info("Create surface formation entries complete. Saved to %s", save_entries_path)
+
+    # Save final slab batches if relaxed
+    if relax:
+        save_slab_batches_path = (
+            save_path / f"{file_base}_{relaxed}_slab_batches_{len(final_slab_batches)}.pkl"
+        )
+        with open(save_slab_batches_path, "wb") as f:
+            pkl.dump(final_slab_batches, f)
+        logger.info(
+            "Saved final slab batches to %s. Total number of slabs: %d",
+            save_slab_batches_path,
+            len(final_slab_batches),
+        )
 
 
 if __name__ == "__main__":
