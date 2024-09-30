@@ -24,6 +24,7 @@ from tqdm import tqdm
 
 from mcmc.calculators import get_results_single
 from mcmc.dynamics import optimize_slab
+from mcmc.pourbaix.utils import SurfaceOHCompatibility
 from mcmc.utils import setup_logger
 from mcmc.utils.misc import get_atoms_batch, load_dataset_from_files
 
@@ -42,6 +43,8 @@ DFT_U_VALUES = {
     "O": 0.0,
     "H": 0.0,
 }
+
+OH_CORRECTION = 0.23  # eV, from Rong and Kolpak, J. Phys. Chem. Lett., 2015
 
 O2_DFT_ENERGY = -4.94795546875  # DFT energy before any entropy correction
 H2O_DFT_ENERGY = -5.192751548333333  # DFT energy before any entropy correction
@@ -106,6 +109,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--relax", action="store_true", help="perform relaxation for the steps")
     parser.add_argument("--relax_steps", type=int, default=5, help="max relaxation steps")
+    parser.add_argument(
+        "--correct_hydroxide_energy",
+        action="store_true",
+        help="correct hydroxide energy (add ZPE-TS)",
+    )
     parser.add_argument(
         "--neighbor_cutoff",
         type=float,
@@ -193,6 +201,7 @@ def main(
     model_paths: list[str],
     phase_diagram_path: Path | str,
     pourbaix_diagram_path: Path | str,
+    correct_hydroxide_energy: bool = False,
     neighbor_cutoff: float = 5.0,
     device: str = "cuda",
     relax: bool = False,
@@ -210,6 +219,8 @@ def main(
         model_paths (list[str]): list of paths to the models
         phase_diagram_path (Path | str): path to the saved pymatgen PhaseDiagram
         pourbaix_diagram_path (Path | str): path to the saved pymatgen PourbaixDiagram
+        correct_hydroxide_energy (bool, optional): correct hydroxide energy (add ZPE-TS). Defaults
+            to False.
         neighbor_cutoff (float, optional): cutoff for neighbor calculations. Defaults to 5.0.
         device (str, optional): device to use for calculations. Defaults to "cuda".
         relax (bool, optional): perform relaxation for the steps. Defaults to False.
@@ -257,6 +268,8 @@ def main(
     else:
         # Set up compatibility adjustments
         solid_compat = MaterialsProject2020Compatibility()
+    if correct_hydroxide_energy:
+        oh_compat = SurfaceOHCompatibility(correction=OH_CORRECTION)
         # aqcompat = MaterialsProjectAqueousCompatibility(
         #     solid_compat=solid_compat,
         #     o2_energy=-4.94795546875,  # DFT energy before any entropy correction
@@ -322,11 +335,15 @@ def main(
         if model_type in ["DFT"]:
             # aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
             solid_compat.process_entries([raw_entry], inplace=True)  # process the entry
-            # aqcompat.get_adjustments(raw_entry)  #
-            # solid_compat.get_adjustments(raw_entry)  #
+        if correct_hydroxide_energy:
+            oh_compat.process_entries([raw_entry], clean=False, inplace=True)
+
+        # aqcompat.get_adjustments(raw_entry)  #
+        # solid_compat.get_adjustments(raw_entry)  #
 
         surface_formation_entry = create_surface_formation_entry(raw_entry, phase_diagram)
         surf_form_entries.append(surface_formation_entry)
+
     # Save surface formation entries
     relaxed = "relaxed" if relax else "unrelaxed"
     save_entries_path = (
@@ -359,6 +376,7 @@ if __name__ == "__main__":
         args.model_paths,
         args.phase_diagram_path,
         args.pourbaix_diagram_path,
+        args.correct_hydroxide_energy,
         args.neighbor_cutoff,
         args.device,
         args.relax,
