@@ -14,6 +14,7 @@ from nff.utils.cuda import cuda_devices_sorted_by_free_mem
 from tqdm import tqdm
 
 from mcmc.calculators import get_embeddings_single, get_results_single, get_std_devs_single
+from mcmc.system import SurfaceSystem
 from mcmc.utils import setup_logger
 from mcmc.utils.clustering import perform_clustering, select_data_and_save
 from mcmc.utils.misc import get_atoms_batch, load_dataset_from_files
@@ -149,6 +150,11 @@ def main(
     logger.info("There are a total of %d input files", len(file_names))
     dset = load_dataset_from_files(file_names)
     logger.info("Loaded %d structures", len(dset))
+
+    if isinstance(dset[0], SurfaceSystem):
+        logger.info("Loaded SurfaceSystem object")
+        dset = [system.relaxed_atoms for system in dset]
+        logger.info("Converted to list of Atoms objects")
 
     if torch.cuda.is_available() and "cpu" not in device:
         device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
