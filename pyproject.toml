@@ -20,6 +20,7 @@ dependencies = [
     "seaborn>=0.13.1",
     "scipy",
     "mp-api",
+    "mpcontribs-client",
     "ipykernel",
     "ipywidgets",
 ]
