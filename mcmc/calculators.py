@@ -9,6 +9,7 @@ import ase
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.lammpsrun import LAMMPS as LAMMPSRun
+from ase.formula import Formula
 from lammps import (
     LMP_STYLE_ATOM,
     LMP_STYLE_GLOBAL,
@@ -189,6 +190,7 @@ class NFFPourbaix(NeuralFF):
         self.phi = kwargs.get("phi", 0)  # electric potential
         self.pH = kwargs.get("pH", 7)  # pH
         self.pourbaix_atoms = {}
+        self.adsorbate_corrections = {}
         self.logger = kwargs.get("logger", logging.getLogger(__name__))
 
     def get_delta_G2_individual(self, atom: str | PourbaixAtom) -> float:
@@ -245,7 +247,14 @@ class NFFPourbaix(NeuralFF):
         sum_chem_pots = 0
         for atom, count in atoms_count.items():
             sum_chem_pots += count * self.pourbaix_atoms[atom].atom_std_state_energy
-        return sum_chem_pots - self.get_potential_energy(atoms=atoms)
+        slab_energy = self.get_potential_energy(atoms=atoms)
+        # Add adsorbate corrections, e.g. OH ZPE-TS correction
+
+        formula = Formula(atoms.get_chemical_formula())
+        for adsorbate, correction in self.adsorbate_corrections.items():
+            div, _ = divmod(formula, adsorbate)
+            slab_energy += div * correction
+        return sum_chem_pots - slab_energy
 
     def get_surface_energy(self, atoms: ase.Atoms = None) -> float:
         """Get the surface energy of the system, which is equivalent to the Pourbaix potential.
@@ -304,6 +313,11 @@ class NFFPourbaix(NeuralFF):
         if "pourbaix_atoms" in self.parameters:
             self.pourbaix_atoms = self.parameters["pourbaix_atoms"]
             self.logger.info("Pourbaix atoms: %s are set from parameters", self.pourbaix_atoms)
+        if "adsorbate_corrections" in self.parameters:
+            self.adsorbate_corrections = self.parameters["adsorbate_corrections"]
+            self.logger.info(
+                "adsorbate corrections: %s are set from parameters", self.adsorbate_corrections
+            )
         return changed_params
 
     def calculate(
