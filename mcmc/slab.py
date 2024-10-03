@@ -244,9 +244,7 @@ def change_site(
     if surface.occ[site_idx] != 0:
         logger.debug("chosen site already adsorbed")
         # Figure out if it's a group or single atom
-        start_ads_idx = surface.occ[site_idx]
-        ads_group_idx = np.where(surface.real_atoms.get_array("ads_group") == start_ads_idx)[0]
-        start_ads = surface.real_atoms[ads_group_idx].symbols
+        start_ads = get_start_ads(surface, site_idx)
         surface = remove_atom(surface, site_idx, start_ads)
     else:
         logger.debug("chosen site is empty")
@@ -263,6 +261,21 @@ def change_site(
 
     logger.debug("proposed slab has %s atoms", len(surface))
     return surface
+
+
+def get_start_ads(surface: SurfaceSystem, site_idx: int) -> Symbols:
+    """Get the adsorbate at a site before a change.
+
+    Args:
+        surface (SurfaceSystem): The surface system.
+        site_idx (int): The index of the site to change.
+
+    Returns:
+        The adsorbate at the site before the change.
+    """
+    start_ads_idx = surface.occ[site_idx]
+    ads_group_idx = np.where(surface.real_atoms.get_array("ads_group") == start_ads_idx)[0]
+    return surface.real_atoms[ads_group_idx].symbols
 
 
 def add_atom(surface: SurfaceSystem, site_idx: int, adsorbate: str | ase.Atoms) -> SurfaceSystem:
@@ -286,7 +299,6 @@ def add_atom(surface: SurfaceSystem, site_idx: int, adsorbate: str | ase.Atoms) 
     return surface
 
 
-# TODO add method to main MCMC script and helper classes
 def add_atom_group(surface: SurfaceSystem, site_index: int, group_name: str) -> SurfaceSystem:
     """Add a group of atoms at a specified site and update the state.
 
