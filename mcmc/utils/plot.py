@@ -32,12 +32,40 @@ TICKPADDING = 5
 
 SECONDARY_CMAP = "inferno"
 
-params = {
+# Define custom settings in a dictionary
+custom_settings = {
     "mathtext.default": "regular",
     "font.family": ("Avenir", "Arial", "Helvetica", "sans-serif"),
     "font.size": FONTSIZE,
+    "lines.linewidth": 2,
+    "axes.labelsize": 18,
+    "axes.linewidth": 2,
+    "axes.titlesize": 18,
+    "xtick.labelsize": 18,
+    "ytick.labelsize": 18,
+    "xtick.major.size": 6,
+    "ytick.major.size": 6,
+    "xtick.minor.size": 3,
+    "ytick.minor.size": 3,
+    "xtick.major.pad": 5,
+    "ytick.major.pad": 5,
+    # "xtick.length": 6,
+    "xtick.major.width": 2,
+    "ytick.major.width": 2,
+    "xtick.minor.width": 2,
+    "ytick.minor.width": 2,
+    "xtick.direction": "in",
+    "ytick.direction": "in",
+    "legend.fontsize": 18,
+    "figure.dpi": 200,
+    "savefig.dpi": 200,
+    "savefig.format": "png",
+    "savefig.bbox": "tight",
+    "savefig.pad_inches": 0.1,
 }
-plt.rcParams.update(params)
+
+# Update Matplotlib's rcParams with custom settings
+plt.rcParams.update(custom_settings)
 
 
 def plot_energy_analysis(
