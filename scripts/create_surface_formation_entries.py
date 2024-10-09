@@ -121,6 +121,11 @@ def parse_args() -> argparse.Namespace:
         help="cutoff for neighbor calculations",
     )
     parser.add_argument(
+        "--input_slab_name",
+        action="store_true",
+        help="Input stoichiometry of the slab as the slab name",
+    )
+    parser.add_argument(
         "--device",
         choices=["cpu", "cuda"],
         default="cuda",
@@ -202,6 +207,7 @@ def main(
     phase_diagram_path: Path | str,
     pourbaix_diagram_path: Path | str,
     correct_hydroxide_energy: bool = False,
+    input_slab_name: bool = False,
     neighbor_cutoff: float = 5.0,
     device: str = "cuda",
     relax: bool = False,
@@ -220,6 +226,8 @@ def main(
         phase_diagram_path (Path | str): path to the saved pymatgen PhaseDiagram
         pourbaix_diagram_path (Path | str): path to the saved pymatgen PourbaixDiagram
         correct_hydroxide_energy (bool, optional): correct hydroxide energy (add ZPE-TS). Defaults
+            to False.
+        input_slab_name (bool, optional): Input stoichiometry of the slab as the slab name. Defaults
             to False.
         neighbor_cutoff (float, optional): cutoff for neighbor calculations. Defaults to 5.0.
         device (str, optional): device to use for calculations. Defaults to "cuda".
@@ -328,9 +336,8 @@ def main(
             slab_batch.set_tags(surface_indices)
 
         final_slab_batches.append(slab_batch)
-        raw_entry = create_computed_entry(
-            slab_batch, raw_energy, slab_name=slab.get_chemical_formula()
-        )
+        slab_name = slab.get_chemical_formula() if input_slab_name else None
+        raw_entry = create_computed_entry(slab_batch, raw_energy, slab_name=slab_name)
         raw_entries.append(raw_entry)
         if model_type in ["DFT"]:
             # aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
@@ -377,6 +384,7 @@ if __name__ == "__main__":
         args.phase_diagram_path,
         args.pourbaix_diagram_path,
         args.correct_hydroxide_energy,
+        args.input_slab_name,
         args.neighbor_cutoff,
         args.device,
         args.relax,
