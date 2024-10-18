@@ -33,6 +33,7 @@ np.set_printoptions(precision=3, suppress=True)
 SYMBOLS = {
     "La": "PAW_PBE La 06Sep2000",
     "O": "PAW_PBE O 08Apr2002",
+    "Pt": "PAW_PBE Pt 04Feb2005",
     "Mn": "PAW_PBE Mn_pv 02Aug2007",
     "H": "PAW_PBE H 15Jun2001",
 }
@@ -40,6 +41,7 @@ SYMBOLS = {
 DFT_U_VALUES = {
     "La": 0.0,
     "Mn": 3.9,
+    "Pt": 0.0,  # no need for metals
     "O": 0.0,
     "H": 0.0,
 }
