@@ -38,12 +38,13 @@ class SurfaceOHCompatibility(Compatibility):
         comp = entry.composition
 
         # Check for OH corrections
-        # Assumes each H is part of an OH group
+        # Assume the extra H is from water so subtract 1 O and 1 H from the composition
+        HO_diff = max(comp["H"] - comp["O"], 0)
         if Element("O") in comp and Element("H") in comp:
             adjustments.append(
                 CompositionEnergyAdjustment(
                     self.correction,
-                    comp["H"],
+                    min(comp["O"], comp["H"]) - HO_diff,
                     # uncertainty_per_atom=self.comp_errors[ox_type],
                     name="Surface OH ZPE-TS correction",
                     cls=self.as_dict(),
