@@ -18,6 +18,7 @@ from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.core import Structure
 from pymatgen.entries.compatibility import (
     MaterialsProject2020Compatibility,
+    MaterialsProjectAqueousCompatibility,
 )
 from pymatgen.entries.computed_entries import ComputedStructureEntry
 from tqdm import tqdm
@@ -33,6 +34,7 @@ np.set_printoptions(precision=3, suppress=True)
 SYMBOLS = {
     "La": "PAW_PBE La 06Sep2000",
     "O": "PAW_PBE O 08Apr2002",
+    "Ir": "PAW_PBE Ir 06Sep2000",
     "Pt": "PAW_PBE Pt 04Feb2005",
     "Mn": "PAW_PBE Mn_pv 02Aug2007",
     "H": "PAW_PBE H 15Jun2001",
@@ -43,6 +45,7 @@ DFT_U_VALUES = {
     "Mn": 3.9,
     "Pt": 0.0,  # no need for metals
     "O": 0.0,
+    "Ir": 0.0,
     "H": 0.0,
 }
 
@@ -115,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         "--correct_hydroxide_energy",
         action="store_true",
         help="correct hydroxide energy (add ZPE-TS)",
+    )
+    parser.add_argument(
+        "--aq_compat",
+        action="store_true",
+        help="use MaterialsProjectAqueousCompatibility",
     )
     parser.add_argument(
         "--neighbor_cutoff",
@@ -209,6 +217,7 @@ def main(
     phase_diagram_path: Path | str,
     pourbaix_diagram_path: Path | str,
     correct_hydroxide_energy: bool = False,
+    aq_compat: bool = False,
     input_slab_name: bool = False,
     neighbor_cutoff: float = 5.0,
     device: str = "cuda",
@@ -229,6 +238,7 @@ def main(
         pourbaix_diagram_path (Path | str): path to the saved pymatgen PourbaixDiagram
         correct_hydroxide_energy (bool, optional): correct hydroxide energy (add ZPE-TS). Defaults
             to False.
+        aq_compat (bool, optional): use MaterialsProjectAqueousCompatibility. Defaults to False.
         input_slab_name (bool, optional): Input stoichiometry of the slab as the slab name. Defaults
             to False.
         neighbor_cutoff (float, optional): cutoff for neighbor calculations. Defaults to 5.0.
@@ -280,12 +290,14 @@ def main(
         solid_compat = MaterialsProject2020Compatibility()
     if correct_hydroxide_energy:
         oh_compat = SurfaceOHCompatibility(correction=OH_CORRECTION)
-        # aqcompat = MaterialsProjectAqueousCompatibility(
-        #     solid_compat=solid_compat,
-        #     o2_energy=-4.94795546875,  # DFT energy before any entropy correction
-        #     h2o_energy=-5.192751548333333,  # DFT energy before any entropy correction
-        #     h2o_adjustments=-0.229,  # already counted in the H2O energy
-        # )
+
+    if aq_compat:
+        solid_compat = MaterialsProjectAqueousCompatibility(
+            solid_compat=solid_compat,
+            o2_energy=-4.94795546875,  # DFT energy before any entropy correction
+            h2o_energy=-5.192751548333333,  # DFT energy before any entropy correction
+            h2o_adjustments=-0.229,  # already counted in the H2O energy
+        )
 
     raw_entries = []
     final_slab_batches = []
@@ -386,6 +398,7 @@ if __name__ == "__main__":
         args.phase_diagram_path,
         args.pourbaix_diagram_path,
         args.correct_hydroxide_energy,
+        args.aq_compat,
         args.input_slab_name,
         args.neighbor_cutoff,
         args.device,
