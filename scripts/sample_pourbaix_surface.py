@@ -211,26 +211,33 @@ def main(
     ads_positions = all_ads_positions[system_settings.get("ads_site_type", "all")]
     logger.info("Generated adsorption coordinates are: %s...", ads_positions[:5])
 
-    surf_atom_idx = starting_slab.get_surface_atoms()
+    if system_settings.get("sample_surface_atoms", False):
+        logger.info("Sampling surface atoms")
+        surf_atom_idx = starting_slab.get_surface_atoms()
+        surf_atom_positions = starting_slab.get_positions()[surf_atom_idx]
+        logger.info("Surface atom coordinates are: %s...", surf_atom_positions[:5])
 
-    # TODO: make it more general, let users specify if surface atoms should be included
-    # Get surface atom coordinates
-    surf_atom_positions = starting_slab.get_positions()[surf_atom_idx]
-    logger.info("Surface atom coordinates are: %s...", surf_atom_positions[:5])
-    all_ads_coords = np.vstack([surf_atom_positions, ads_positions])
+        # Get surface atom coordinates
+        all_ads_coords = np.vstack([surf_atom_positions, ads_positions])
 
-    # Set occupation array
-    occ = np.hstack(
-        [
-            surf_atom_idx,
-            [0] * len(ads_positions),
-        ]
-    )
+        # Set occupation array
+        occ = np.hstack(
+            [
+                surf_atom_idx,
+                [0] * len(ads_positions),
+            ]
+        )
+
+        # Set corresponding adsorbate group array
+        mask = np.isin(np.arange(len(starting_slab)), surf_atom_idx)
+        ads_group = mask * np.arange(len(starting_slab))
+    else:
+        logger.info("Not sampling surface atoms")
+        all_ads_coords = ads_positions
+        occ = [0] * len(ads_positions)
+        ads_group = [0] * len(starting_slab)
+
     logger.info("Starting occupation array: %s...", occ[:5])
-
-    # Set corresponding adsorbate group array
-    mask = np.isin(np.arange(len(starting_slab)), surf_atom_idx)
-    ads_group = mask * np.arange(len(starting_slab))
     starting_slab.set_array("ads_group", ads_group, dtype=int)
     logger.info("Starting adsorbate group array: %s...", starting_slab.get_array("ads_group")[:5])
 
