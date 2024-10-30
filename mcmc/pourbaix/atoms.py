@@ -155,7 +155,8 @@ def generate_pourbaix_atoms(
 
     Args:
         phase_diagram (PhaseDiagram | str | Path): pymatgen PhaseDiagram or path to the file
-        pourbaix_diagram (PourbaixDiagram | str | Path): pymatgen PourbaixDiagram or path to the file
+        pourbaix_diagram (PourbaixDiagram | str | Path): pymatgen PourbaixDiagram or path to
+            the file
         phi (float): electrical potential
         pH (float): pH
         elements (list[str]): list of elements
@@ -167,12 +168,14 @@ def generate_pourbaix_atoms(
         phase_diagram = loadfn(phase_diagram)
     if not isinstance(pourbaix_diagram, PourbaixDiagram):
         pourbaix_diagram = loadfn(pourbaix_diagram)
-    pbx_multi_entry = pourbaix_diagram.get_stable_entry(pH, phi)
-    assert isinstance(pbx_multi_entry, MultiEntry), "Expected a Pourbaix MultiEntry"
-    sorted_pbx_entries = sorted(
-        pbx_multi_entry.entry_list,  # there should be only 1 non-OH element per entry
-        key=lambda entry: list(set(entry.composition.elements) - ELEMENTS_HO).pop().symbol,
-    )
+    input_pbx_entry = pourbaix_diagram.get_stable_entry(pH, phi)
+    if isinstance(input_pbx_entry, MultiEntry):
+        sorted_pbx_entries = sorted(
+            input_pbx_entry.entry_list,  # there should be only 1 non-OH element per entry
+            key=lambda entry: list(set(entry.composition.elements) - ELEMENTS_HO).pop().symbol,
+        )
+    else:
+        sorted_pbx_entries = [input_pbx_entry]
     sorted_symbols = sorted(set(elements) - SYMBOLS_HO)
 
     # H2O entry
