@@ -136,6 +136,11 @@ def parse_args() -> argparse.Namespace:
         help="Input stoichiometry of the slab as the slab name",
     )
     parser.add_argument(
+        "--input_job_id",
+        action="store_true",
+        help="Input job ID as the slab name",
+    )
+    parser.add_argument(
         "--device",
         choices=["cpu", "cuda"],
         default="cuda",
@@ -219,6 +224,7 @@ def main(
     correct_hydroxide_energy: bool = False,
     aq_compat: bool = False,
     input_slab_name: bool = False,
+    input_job_id: bool = False,
     neighbor_cutoff: float = 5.0,
     device: str = "cuda",
     relax: bool = False,
@@ -241,6 +247,7 @@ def main(
         aq_compat (bool, optional): use MaterialsProjectAqueousCompatibility. Defaults to False.
         input_slab_name (bool, optional): Input stoichiometry of the slab as the slab name. Defaults
             to False.
+        input_job_id (bool, optional): Input job ID as the slab name. Defaults to False.
         neighbor_cutoff (float, optional): cutoff for neighbor calculations. Defaults to 5.0.
         device (str, optional): device to use for calculations. Defaults to "cuda".
         relax (bool, optional): perform relaxation for the steps. Defaults to False.
@@ -348,9 +355,17 @@ def main(
                 np.arange(len(slab_batch)), fixed_indices, invert=True
             ).astype(int)
             slab_batch.set_tags(surface_indices)
-
         final_slab_batches.append(slab_batch)
-        slab_name = slab.get_chemical_formula() if input_slab_name else None
+        if input_slab_name:
+            slab_name = slab.get_chemical_formula()
+        elif input_job_id:
+            slab_name = (
+                slab_batch.props.get("job_id", None)
+                if hasattr(slab_batch, "props")
+                else slab_batch.info.get("job_id", None)
+            )
+        else:
+            slab_name = None
         raw_entry = create_computed_entry(slab_batch, raw_energy, slab_name=slab_name)
         raw_entries.append(raw_entry)
         if model_type in ["DFT"]:
@@ -400,6 +415,7 @@ if __name__ == "__main__":
         args.correct_hydroxide_energy,
         args.aq_compat,
         args.input_slab_name,
+        args.input_job_id,
         args.neighbor_cutoff,
         args.device,
         args.relax,
