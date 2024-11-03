@@ -38,9 +38,15 @@ custom_settings = {
     "font.family": ("Avenir", "Arial", "Helvetica", "sans-serif"),
     "font.size": FONTSIZE,
     "lines.linewidth": 2,
+    "lines.color": "black",
     "axes.labelsize": 18,
+    "axes.labelcolor": "black",
     "axes.linewidth": 2,
+    "axes.edgecolor": "black",
+    "axes.titlecolor": "black",
     "axes.titlesize": 18,
+    "axes.titleweight": "bold",
+    "axes.grid": False,
     "xtick.labelsize": 18,
     "ytick.labelsize": 18,
     "xtick.major.size": 6,
@@ -49,6 +55,10 @@ custom_settings = {
     "ytick.minor.size": 3,
     "xtick.major.pad": 5,
     "ytick.major.pad": 5,
+    # Change tick and tick label colors to black
+    "xtick.color": "black",
+    "ytick.color": "black",
+    "text.color": "black",
     # "xtick.length": 6,
     "xtick.major.width": 2,
     "ytick.major.width": 2,
@@ -66,6 +76,18 @@ custom_settings = {
 
 # Update Matplotlib's rcParams with custom settings
 plt.rcParams.update(custom_settings)
+
+
+def update_custom_settings(custom_settings: dict = custom_settings) -> None:
+    """Update the custom settings for Matplotlib.
+
+    Args:
+        custom_settings (dict, optional): Custom settings for Matplotlib. Defaults to
+            custom_settings.
+    """
+    current_settings = plt.rcParams.copy()
+    new_settings = current_settings | custom_settings
+    plt.rcParams.update(new_settings)
 
 
 def plot_energy_analysis(
