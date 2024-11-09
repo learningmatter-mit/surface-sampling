@@ -310,10 +310,10 @@ def plot_atom_type_histograms(
     type1 = atom_types[0]
     type2 = atom_types[1]
     delta_atoms = [
-        d[type1] - d[type2] for d in all_stoic_dicts
+        d.get(type1, 0) - d.get(type2, 0) for d in all_stoic_dicts
     ]  # difference in number of 1st and 2nd type atoms
 
-    n_atoms = {atom: [d[atom] for d in all_stoic_dicts] for atom in atom_types}
+    n_atoms = {atom: [d.get(atom, 0) for d in all_stoic_dicts] for atom in atom_types}
 
     fig, ax = plt.subplots(2, 1, figsize=(8, 6), dpi=DEFAULT_DPI)
 
