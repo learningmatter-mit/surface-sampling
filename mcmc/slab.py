@@ -2,6 +2,7 @@
 
 import itertools
 import logging
+import math
 import random
 from collections import Counter
 
@@ -18,7 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 # Define groups of atoms
-ATOM_GROUPS = {"HO": Atoms("OH", positions=[[0, 0, 0], [0, 0, 1.0]])}
+ATOM_GROUPS = {
+    "HO": Atoms("OH", positions=[[0, 0, 0], [1.0, 0, 0]]),
+    "H2O": Atoms(
+        "OHH",
+        positions=[
+            [0, 0, 0],
+            [1 / 2, -math.sqrt(3) / 2, 0],
+            [1 / 2, math.sqrt(3) / 2, 0],
+        ],
+    ),
+}
 
 
 def get_adsorbate_indices(surface: SurfaceSystem) -> dict[str, list[int]]:

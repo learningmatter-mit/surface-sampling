@@ -252,6 +252,20 @@ class NFFPourbaix(NeuralFF):
 
         formula = Formula(atoms.get_chemical_formula())
         for adsorbate, correction in self.adsorbate_corrections.items():
+            # Check for H2O
+            if "O" in adsorbate and "H" in adsorbate:
+                # Assume the extra H is from water so subtract H2O from the formula
+                HO_diff = max(formula["H"] - formula["O"], 0)
+                if HO_diff > 0:
+                    logger.info("Correcting formula %s with HO diff %s", formula, HO_diff)
+                    formula_dict_to_subtract = (Formula("H2O") * HO_diff).count()
+                    formula_dict = formula.count()
+                    formula_dict = {
+                        formula: formula_dict[formula] - formula_dict_to_subtract.get(formula, 0)
+                        for formula in formula_dict
+                    }
+                    formula = Formula.from_dict(formula_dict)
+                    logger.info("Corrected formula %s", formula)
             div, _ = divmod(formula, adsorbate)
             slab_energy += div * correction
         return sum_chem_pots - slab_energy
