@@ -373,7 +373,6 @@ def main(
             solid_compat.process_entries([raw_entry], inplace=True)  # process the entry
         if correct_hydroxide_energy:
             oh_compat.process_entries([raw_entry], clean=False, inplace=True)
-
         # aqcompat.get_adjustments(raw_entry)  #
         # solid_compat.get_adjustments(raw_entry)  #
 
