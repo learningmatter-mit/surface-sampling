@@ -13,15 +13,19 @@ class SurfaceOHCompatibility(Compatibility):
 
     def __init__(
         self,
-        correction: float = 0.23,
+        zpe_ts_correction: float = 0.23,
+        hydrogen_bond_correction: float = -0.30,
     ) -> None:
         """Initialize the compatibility module.
 
         Args:
-            correction: The energy correction to apply for surface hydroxyl groups in eV/group.
-                Default is 0.23 eV from Rong and Kolpak, J. Phys. Chem. Lett., 2015.
+            zpe_ts_correction: The ZPE-TS energy correction to apply for surface hydroxyl groups in
+                eV/group. Default is 0.23 eV from Rong and Kolpak, J. Phys. Chem. Lett., 2015.
+            hydrogen_bond_correction: The hydrogen bond energy correction to apply for surface
+                hydroxyl groups in eV/group. Default is 0.0 eV from Calle-Vallejo et al., 2011.
         """
-        self.correction = correction
+        self.zpe_ts_correction = zpe_ts_correction
+        self.hydrogen_bond_correction = hydrogen_bond_correction
 
     def get_adjustments(self, entry: ComputedEntry) -> list[CompositionEnergyAdjustment]:
         """Get the energy adjustments for a ComputedEntry or ComputedStructureEntry.
@@ -43,10 +47,19 @@ class SurfaceOHCompatibility(Compatibility):
         if Element("O") in comp and Element("H") in comp:
             adjustments.append(
                 CompositionEnergyAdjustment(
-                    self.correction,
+                    self.zpe_ts_correction,
                     min(comp["O"], comp["H"]) - HO_diff,
                     # uncertainty_per_atom=self.comp_errors[ox_type],
                     name="Surface OH ZPE-TS correction",
+                    cls=self.as_dict(),
+                )
+            )
+            adjustments.append(
+                CompositionEnergyAdjustment(
+                    self.hydrogen_bond_correction,
+                    min(comp["O"], comp["H"]) - HO_diff,
+                    # uncertainty_per_atom=self.comp_errors[ox_type],
+                    name="Surface OH hydrogen bond correction",
                     cls=self.as_dict(),
                 )
             )
