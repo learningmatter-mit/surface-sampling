@@ -21,7 +21,6 @@ from pymatgen.entries.compatibility import (
     MaterialsProjectAqueousCompatibility,
 )
 from pymatgen.entries.computed_entries import ComputedStructureEntry
-from tqdm import tqdm
 
 from mcmc.calculators import get_results_single
 from mcmc.dynamics import optimize_slab
@@ -49,7 +48,8 @@ DFT_U_VALUES = {
     "H": 0.0,
 }
 
-OH_CORRECTION = 0.23  # eV, from Rong and Kolpak, J. Phys. Chem. Lett., 2015
+DEFAULT_OH_ZPE_TS_CORRECTION = 0.23  # eV, from Rong and Kolpak, J. Phys. Chem. Lett., 2015
+DEFAULT_HYDROGEN_BOND_CORRECTION = -0.30  # eV, from Calle-Vallejo et al., 2011
 
 O2_DFT_ENERGY = -4.94795546875  # DFT energy before any entropy correction
 H2O_DFT_ENERGY = -5.192751548333333  # DFT energy before any entropy correction
@@ -118,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         "--correct_hydroxide_energy",
         action="store_true",
         help="correct hydroxide energy (add ZPE-TS)",
+    )
+    parser.add_argument(
+        "--correct_hydrogen_bond_energy",
+        action="store_true",
+        help="correct hydrogen bond energy",
     )
     parser.add_argument(
         "--aq_compat",
@@ -222,6 +227,7 @@ def main(
     phase_diagram_path: Path | str,
     pourbaix_diagram_path: Path | str,
     correct_hydroxide_energy: bool = False,
+    correct_hydrogen_bond_energy: bool = False,
     aq_compat: bool = False,
     input_slab_name: bool = False,
     input_job_id: bool = False,
@@ -244,6 +250,8 @@ def main(
         pourbaix_diagram_path (Path | str): path to the saved pymatgen PourbaixDiagram
         correct_hydroxide_energy (bool, optional): correct hydroxide energy (add ZPE-TS). Defaults
             to False.
+        correct_hydrogen_bond_energy (bool, optional): correct hydrogen bond energy.
+            Defaults to False.
         aq_compat (bool, optional): use MaterialsProjectAqueousCompatibility. Defaults to False.
         input_slab_name (bool, optional): Input stoichiometry of the slab as the slab name. Defaults
             to False.
@@ -296,7 +304,14 @@ def main(
         # Set up compatibility adjustments
         solid_compat = MaterialsProject2020Compatibility()
     if correct_hydroxide_energy:
-        oh_compat = SurfaceOHCompatibility(correction=OH_CORRECTION)
+        if correct_hydrogen_bond_energy:
+            hydrogen_bond_correction = DEFAULT_HYDROGEN_BOND_CORRECTION
+        else:
+            hydrogen_bond_correction = 0.0
+        oh_compat = SurfaceOHCompatibility(
+            zpe_ts_correction=DEFAULT_OH_ZPE_TS_CORRECTION,
+            hydrogen_bond_correction=hydrogen_bond_correction,
+        )
 
     if aq_compat:
         solid_compat = MaterialsProjectAqueousCompatibility(
@@ -310,7 +325,7 @@ def main(
     final_slab_batches = []
     surf_form_entries = []
 
-    for i, slab in enumerate(tqdm(dset)):
+    for i, slab in enumerate(dset):
         if model_type in ["DFT"]:
             slab_batch = slab
             # try to get DFT energies
@@ -326,6 +341,9 @@ def main(
                 device=device,
                 props={"energy": 0, "energy_grad": []},  # needed for NFF
             )
+            if hasattr(slab, "props"):
+                slab_batch.props = slab.props.copy()
+                slab_batch.props.pop("energy", None)
             slab_batch.set_calculator(nff_calc)
             if relax:
                 if i == 0:
@@ -367,12 +385,17 @@ def main(
         else:
             slab_name = None
         raw_entry = create_computed_entry(slab_batch, raw_energy, slab_name=slab_name)
+        print(f"Slab name: {raw_entry.formula}, raw energy: {raw_energy}")
+
         raw_entries.append(raw_entry)
         if model_type in ["DFT"]:
             # aqcompat.process_entries([raw_entry], inplace=True)  # process the entry
             solid_compat.process_entries([raw_entry], inplace=True)  # process the entry
+
         if correct_hydroxide_energy:
             oh_compat.process_entries([raw_entry], clean=False, inplace=True)
+        print(f"Slab name: {raw_entry.formula}, corrected energy: {raw_entry.energy}")
+
         # aqcompat.get_adjustments(raw_entry)  #
         # solid_compat.get_adjustments(raw_entry)  #
 
@@ -412,6 +435,7 @@ if __name__ == "__main__":
         args.phase_diagram_path,
         args.pourbaix_diagram_path,
         args.correct_hydroxide_energy,
+        args.correct_hydrogen_bond_energy,
         args.aq_compat,
         args.input_slab_name,
         args.input_job_id,
