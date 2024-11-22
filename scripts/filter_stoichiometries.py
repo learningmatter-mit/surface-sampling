@@ -85,8 +85,9 @@ def main(
 
     logger.info("There are a total of %d input files", len(file_names))
     all_structures = load_dataset_from_files(file_names)
+
     # If all_structures are SurfaceSystems, take the relaxed_atoms
-    all_structures = [s.relaxed_atoms for s in all_structures if hasattr(s, "relaxed_atoms")]
+    all_structures = [s.relaxed_atoms if hasattr(s, "relaxed_atoms") else s for s in all_structures]
     logger.info("Loaded %d structures", len(all_structures))
 
     # Generate a stoichiometry dictionary for each structure
