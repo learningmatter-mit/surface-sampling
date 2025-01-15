@@ -4,11 +4,13 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import ase
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from ase.visualize.plot import plot_atoms
+from matplotlib.colors import Colormap
 from matplotlib.figure import Figure
 from scipy.cluster.hierarchy import dendrogram
 from scipy.special import softmax
@@ -225,6 +227,7 @@ def plot_summary_stats(
     adsorption_count_hist: Iterable,
     num_sweeps: int,
     save_folder: str = ".",
+    titles: bool = True,
 ) -> Figure:
     """Plot summary statistics of MCMC run.
 
@@ -234,30 +237,34 @@ def plot_summary_stats(
         adsorption_count_hist (Iterable): Adsorption count history
         num_sweeps (int): Number of sweeps
         save_folder (str, optional): Folder to save the plot. Defaults to ".".
+        titles (bool, optional): Whether to include titles. Defaults to True.
 
     Returns:
         Figure: The figure object.
     """
-    fig, ax = plt.subplots(1, 3, figsize=(15, 4), dpi=DEFAULT_DPI)
+    fig, ax = plt.subplots(1, 3, figsize=(12, 4), dpi=DEFAULT_DPI)
     runs = range(1, num_sweeps + 1)
 
     ax[0].plot(runs, energy_hist)
     ax[0].set_xlabel("Sweep #")
     ax[0].set_ylabel("Energy (eV)")
-    ax[0].set_title("Energy (eV) vs Sweeps")
 
     ax[1].plot(runs, frac_accept_hist)
     ax[1].set_xlabel("Sweep #")
     ax[1].set_ylabel("Fraction accepted")
-    ax[1].set_title("Fraction accepted vs Sweeps")
 
     ax[2].plot(runs, adsorption_count_hist)
     ax[2].set_xlabel("Sweep #")
     ax[2].set_ylabel("Adsorption count")
-    ax[2].set_title("Adsorption count vs Sweeps")
+
+    if titles:
+        ax[0].set_title("Energy (eV) vs Sweeps")
+        ax[1].set_title("Fraction accepted vs Sweeps")
+        ax[2].set_title("Adsorption count vs Sweeps")
 
     plt.tight_layout()
-    plt.savefig(Path(save_folder) / "summary.png")
+    Path(save_folder).mkdir(parents=True, exist_ok=True)
+    plt.savefig(Path(save_folder) / "summary.pdf")
     return fig
 
 
@@ -352,70 +359,139 @@ def plot_anneal_schedule(
     return fig
 
 
-# TODO: make a colorbar instead of a legend
 def plot_clustering_results(
     points: np.ndarray,
     n_clusters: int,
     labels: np.ndarray,
     closest_points_indices: np.ndarray = None,
+    cmap: str | Colormap = "RdYlBu_r",
     save_prepend: str = "",
     save_folder: Path | str = ".",
+    title: bool = True,
 ) -> Figure:
     """Plot the clustering results.
 
     Args:
-        points (np.ndarray): 2D numpy array of shape (n_points, 2) containing the points to cluster.
+        points (np.ndarray): 2D numpy array of shape (n_points, n) containing the points to cluster.
         n_clusters (int): Total number of calculated clusters.
         labels (np.ndarray): Numpy array of shape (n_points,) with the cluster number for each
             point.
         closest_points_indices (np.ndarray): Numpy array of shape (n_clusters,) with the index of
             the closest point to the centroid in each cluster.
+        cmap (str | Colormap, optional): Colormap to use for the plot. Defaults to "RdYlBu_r".
         save_prepend (str, optional): Prepend string for the saved plot. Defaults to "".
         save_folder (str, optional): Folder to save the plot in. Defaults to ".".
+        title (bool, optional): Whether to include a title. Defaults to True.
 
     Returns:
         Figure: The figure object.
     """
-    # Define colors
-    colors = ["b", "g", "r", "c", "m", "y", "k"]
+    if isinstance(cmap, str):
+        cmap = plt.get_cmap(cmap)
 
-    # Create a larger plot
-    fig, ax = plt.subplots(figsize=(10, 7), dpi=DEFAULT_DPI)
+    # Check if points are greater than 2D
+    if points.shape[1] > 2:
+        # Create two vertical panels
+        fig, axes = plt.subplots(2, 1, figsize=(6, 6), dpi=DEFAULT_DPI, sharex=True)
+        fig.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0, hspace=0)
 
-    # Create a scatter plot of all points, color-coded by cluster
-    for i in range(1, n_clusters + 1):
-        cluster_points = points[labels == i]
-        ax.scatter(
-            cluster_points[:, 0],
-            cluster_points[:, 1],
-            color=colors[i % len(colors)],
-            alpha=0.6,
-            edgecolor="black",
-            linewidth=1,
-            s=20,
-            label=f"Cluster {i}",
-        )
-
-    # Mark the closest points to the centroid in each cluster
-    if closest_points_indices is not None:
-        for i in range(n_clusters):
-            closest_point = points[closest_points_indices[i]]
-            ax.scatter(
-                closest_point[0],
-                closest_point[1],
-                marker="*",
-                color="black",
-                edgecolor="black",
-                linewidth=1,
-                s=200,
+        # Create a scatter plot of all points, color-coded by cluster
+        for i in range(1, n_clusters + 1):
+            cluster_points = points[labels == i]
+            axes[1].scatter(
+                cluster_points[:, 0],
+                cluster_points[:, 1],
+                color=cmap(i / n_clusters),
+                alpha=0.6,
+                edgecolors=None,
+                linewidths=0,
+                s=20,
+            )
+            axes[0].scatter(
+                cluster_points[:, 0],
+                cluster_points[:, 2],
+                color=cmap(i / n_clusters),
+                alpha=0.6,
+                edgecolors=None,
+                linewidths=0,
+                s=20,
             )
 
-    ax.grid(False)
-    ax.set_xlabel("Dimension 1", fontsize=14)
-    ax.set_ylabel("Dimension 2", fontsize=14)
-    ax.set_title("2D representation of points and clusters", fontsize=16)
-    ax.legend(fontsize=12)
-    plt.savefig(Path(save_folder, save_prepend + "clustering_results.png"))
+        for ax in axes:
+            ax.grid(False)
+            # get x and y ticks to appear on top
+            ax.yaxis.set_zorder(10)
+            ax.xaxis.set_zorder(10)
+
+            if title:
+                ax.set_title("2D representation of points and clusters", fontsize=16)
+
+        # Set axes for first plot
+        axes[0].set_ylabel("PC 3")
+
+        # Set axes for second plot
+        axes[1].set_xlabel("PC 1")
+        axes[1].set_ylabel("PC 2")
+    else:
+        # Create a single panel
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=DEFAULT_DPI)
+
+        # Create a scatter plot of all points, color-coded by cluster
+        for i in range(1, n_clusters + 1):
+            cluster_points = points[labels == i]
+            ax.scatter(
+                cluster_points[:, 0],
+                cluster_points[:, 1],
+                color=cmap(i / n_clusters),
+                alpha=0.6,
+                edgecolors=None,
+                linewidths=0,
+                s=20,
+            )
+
+        # Mark the closest points to the centroid in each cluster
+        if closest_points_indices is not None:
+            for i in range(n_clusters):
+                closest_point = points[closest_points_indices[i]]
+                ax.scatter(
+                    closest_point[0],
+                    closest_point[1],
+                    marker="*",
+                    color="black",
+                    edgecolor="black",
+                    linewidth=1,
+                    s=200,
+                )
+
+        ax.grid(False)
+        ax.set_xlabel("PC 1")
+        ax.set_ylabel("PC 2")
+
+        if title:
+            ax.set_title("2D representation of points and clusters")
+
+    norm = mpl.colors.Normalize(vmin=1, vmax=n_clusters)
+
+    if points.shape[1] > 2:
+        # Create a colorbar for the plot
+        cb = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+            ax=axes.ravel().tolist(),
+            alpha=ALPHA,
+            shrink=1.00,
+        )
+    else:
+        cb = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+            ax=ax,
+            alpha=ALPHA,
+            shrink=1.00,
+        )
+    cb.set_label(r"Cluster #")
+    cb.ax.tick_params(axis="y", direction="out")
+    cb.ax.minorticks_off()
+
+    plt.savefig(Path(save_folder, save_prepend + "clustering_results.pdf"))
 
     return fig
 
@@ -450,7 +526,8 @@ def plot_dendrogram(
 def plot_distance_weight_matrix(
     distance_weight_matrix: np.ndarray, save_folder: str = "."
 ) -> Figure:
-    """Plot distance weight matrix.
+    (
+        """Plot distance weight matrix.
 
     Args:
         distance_weight_matrix (np.ndarray): Distance weight matrix.
@@ -458,7 +535,9 @@ def plot_distance_weight_matrix(
 
     Returns:
         Figure: The figure object.
-    """ ""
+    """
+        ""
+    )
     # Define colors
     # colors = ["b", "g", "r", "c", "m", "y", "k"]
 
