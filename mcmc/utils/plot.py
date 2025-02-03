@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 import ase
 import matplotlib as mpl
@@ -17,7 +18,7 @@ from scipy.special import softmax
 
 from mcmc.utils import plot_settings
 
-plt.style.use("default")
+plt.style.use("ggplot")
 
 DEFAULT_DPI = 200
 
@@ -25,7 +26,7 @@ LINEWIDTH = 2
 FONTSIZE = 10
 LABELSIZE = 18
 ALPHA = 0.8
-MARKERSIZE = 15 * 25
+MARKERSIZE = 25
 GRIDSIZE = 40
 
 MAJOR_TICKLEN = 6
@@ -39,41 +40,43 @@ custom_settings = {
     "mathtext.default": "regular",
     "font.family": ("Avenir", "Arial", "Helvetica", "sans-serif"),
     "font.size": FONTSIZE,
-    "lines.linewidth": 2,
+    "lines.linewidth": 1.25,
     "lines.color": "black",
-    "axes.labelsize": 18,
+    "axes.labelsize": 8,
     "axes.labelcolor": "black",
-    "axes.linewidth": 2,
+    "axes.linewidth": 1.25,
     "axes.edgecolor": "black",
     "axes.titlecolor": "black",
-    "axes.titlesize": 18,
+    "axes.titlesize": 8,
     "axes.titleweight": "bold",
     "axes.grid": False,
-    "xtick.labelsize": 18,
-    "ytick.labelsize": 18,
-    "xtick.major.size": 6,
-    "ytick.major.size": 6,
-    "xtick.minor.size": 3,
-    "ytick.minor.size": 3,
-    "xtick.major.pad": 5,
-    "ytick.major.pad": 5,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "xtick.major.size": 4,
+    "ytick.major.size": 4,
+    "xtick.minor.size": 2,
+    "ytick.minor.size": 2,
+    "xtick.major.pad": 3,
+    "ytick.major.pad": 3,
     # Change tick and tick label colors to black
     "xtick.color": "black",
     "ytick.color": "black",
     "text.color": "black",
     # "xtick.length": 6,
-    "xtick.major.width": 2,
-    "ytick.major.width": 2,
-    "xtick.minor.width": 2,
-    "ytick.minor.width": 2,
+    "xtick.major.width": 1.25,
+    "ytick.major.width": 1.25,
+    "xtick.minor.width": 1.25,
+    "ytick.minor.width": 1.25,
     "xtick.direction": "in",
     "ytick.direction": "in",
-    "legend.fontsize": 18,
-    "figure.dpi": 200,
-    "savefig.dpi": 200,
+    "legend.fontsize": 8,
+    "figure.dpi": 300,
+    "savefig.dpi": 300,
     "savefig.format": "png",
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.1,
+    # Set background color to white
+    "figure.facecolor": "white",
 }
 
 # Update Matplotlib's rcParams with custom settings
@@ -227,6 +230,9 @@ def plot_summary_stats(
     adsorption_count_hist: Iterable,
     num_sweeps: int,
     save_folder: str = ".",
+    fig_name: str = "summary",
+    output_format: Literal["png", "pdf"] = "png",
+    color: tuple[float] = (0.1, 0.2, 0.5, 0.7),
     titles: bool = True,
 ) -> Figure:
     """Plot summary statistics of MCMC run.
@@ -237,23 +243,28 @@ def plot_summary_stats(
         adsorption_count_hist (Iterable): Adsorption count history
         num_sweeps (int): Number of sweeps
         save_folder (str, optional): Folder to save the plot. Defaults to ".".
+        fig_name (str, optional): Save name for the figure. Defaults to "summary".
+        output_format (Literal["png", "pdf"], optional): Output format for the plot.
+            Defaults to "png".
+        color (tuple[float], optional): Color for the plot in (r, g, b, a).
+            Defaults to (0.1, 0.2, 0.5, 0.7).
         titles (bool, optional): Whether to include titles. Defaults to True.
 
     Returns:
         Figure: The figure object.
     """
-    fig, ax = plt.subplots(1, 3, figsize=(12, 4), dpi=DEFAULT_DPI)
+    fig, ax = plt.subplots(1, 3, figsize=(6, 2), dpi=DEFAULT_DPI)
     runs = range(1, num_sweeps + 1)
 
-    ax[0].plot(runs, energy_hist)
+    ax[0].plot(runs, energy_hist, color=color)
     ax[0].set_xlabel("Sweep #")
     ax[0].set_ylabel("Energy (eV)")
 
-    ax[1].plot(runs, frac_accept_hist)
+    ax[1].plot(runs, frac_accept_hist, color=color)
     ax[1].set_xlabel("Sweep #")
     ax[1].set_ylabel("Fraction accepted")
 
-    ax[2].plot(runs, adsorption_count_hist)
+    ax[2].plot(runs, adsorption_count_hist, color=color)
     ax[2].set_xlabel("Sweep #")
     ax[2].set_ylabel("Adsorption count")
 
@@ -264,7 +275,7 @@ def plot_summary_stats(
 
     plt.tight_layout()
     Path(save_folder).mkdir(parents=True, exist_ok=True)
-    plt.savefig(Path(save_folder) / "summary.pdf")
+    plt.savefig(Path(save_folder) / f"{fig_name}.{output_format}")
     return fig
 
 
@@ -392,7 +403,7 @@ def plot_clustering_results(
     # Check if points are greater than 2D
     if points.shape[1] > 2:
         # Create two vertical panels
-        fig, axes = plt.subplots(2, 1, figsize=(6, 6), dpi=DEFAULT_DPI, sharex=True)
+        fig, axes = plt.subplots(2, 1, figsize=(2.5, 2.5), dpi=DEFAULT_DPI, sharex=True)
         fig.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0, hspace=0)
 
         # Create a scatter plot of all points, color-coded by cluster
@@ -402,19 +413,19 @@ def plot_clustering_results(
                 cluster_points[:, 0],
                 cluster_points[:, 1],
                 color=cmap(i / n_clusters),
-                alpha=0.6,
+                alpha=0.75,
                 edgecolors=None,
                 linewidths=0,
-                s=20,
+                s=25,
             )
             axes[0].scatter(
                 cluster_points[:, 0],
                 cluster_points[:, 2],
                 color=cmap(i / n_clusters),
-                alpha=0.6,
+                alpha=0.75,
                 edgecolors=None,
                 linewidths=0,
-                s=20,
+                s=25,
             )
 
         for ax in axes:
@@ -491,8 +502,8 @@ def plot_clustering_results(
     cb.ax.tick_params(axis="y", direction="out")
     cb.ax.minorticks_off()
 
+    # plt.tight_layout() can't be used with tight_layout() in the axes
     plt.savefig(Path(save_folder, save_prepend + "clustering_results.pdf"))
-
     return fig
 
 
@@ -511,7 +522,7 @@ def plot_dendrogram(
     Returns:
         Figure: The figure object.
     """
-    fig, ax = plt.subplots(figsize=(25, 10), dpi=DEFAULT_DPI)
+    fig, ax = plt.subplots(figsize=(10, 4), dpi=DEFAULT_DPI)
     dendrogram(Z, no_labels=True)
     ax.grid(False)
     # ax.set_ylabel("Dimension 2", fontsize=14)
