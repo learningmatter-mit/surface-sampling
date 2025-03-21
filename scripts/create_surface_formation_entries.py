@@ -279,8 +279,10 @@ def main(
     )
 
     logger.info("There are a total of %d input files", len(file_names))
-    dset = load_dataset_from_files(file_names)
-    logger.info("Loaded %d structures", len(dset))
+    all_structures = load_dataset_from_files(file_names)
+    # If all_structures are SurfaceSystems, take the relaxed_atoms
+    all_structures = [s.relaxed_atoms if hasattr(s, "relaxed_atoms") else s for s in all_structures]
+    logger.info("Loaded %d structures", len(all_structures))
 
     device = get_final_device(device)
     logger.info("Using device: %s", device)
@@ -325,7 +327,7 @@ def main(
     final_slab_batches = []
     surf_form_entries = []
 
-    for i, slab in enumerate(dset):
+    for i, slab in enumerate(all_structures):
         if model_type in ["DFT"]:
             slab_batch = slab
             # try to get DFT energies
@@ -341,9 +343,6 @@ def main(
                 device=device,
                 props={"energy": 0, "energy_grad": []},  # needed for NFF
             )
-            if hasattr(slab, "props"):
-                slab_batch.props = slab.props.copy()
-                slab_batch.props.pop("energy", None)
             slab_batch.set_calculator(nff_calc)
             if relax:
                 if i == 0:
@@ -375,7 +374,7 @@ def main(
             slab_batch.set_tags(surface_indices)
         final_slab_batches.append(slab_batch)
         if input_slab_name:
-            slab_name = slab.get_chemical_formula()
+            slab_name = slab_batch.get_chemical_formula()
         elif input_job_id:
             slab_name = (
                 slab_batch.props.get("job_id", None)
