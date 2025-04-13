@@ -12,10 +12,10 @@ from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.train.builders import load_model
 from nff.utils.cuda import cuda_devices_sorted_by_free_mem, detach
 from tqdm import tqdm
-from vssr.sampling.uncertainty import Uncertainty
 
 from mcmc.calculators import get_embeddings_single, get_results_single, get_std_devs_single
 from mcmc.system import SurfaceSystem
+from mcmc.uncertainty import Uncertainty
 from mcmc.utils import setup_logger
 from mcmc.utils.clustering import perform_clustering, select_data_and_save
 from mcmc.utils.misc import get_atoms_batch, load_dataset_from_files
