@@ -5,6 +5,7 @@ import random
 import numpy as np
 
 from mcmc.events.proposal import ChangeProposal, SwitchProposal
+from tests.events.test_fixtures import system
 
 SEED = 11
 # Set the seed for the random module
