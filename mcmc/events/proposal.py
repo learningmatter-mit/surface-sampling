@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from mcmc.slab import get_complementary_idx
+from mcmc.slab import get_complementary_idx, get_start_ads
 from mcmc.system import SurfaceSystem
 
 
@@ -89,8 +89,9 @@ class ChangeProposal(Proposal):
 
         if self.system.occ[site_idx] != 0:
             # not an empty virtual site, remove the adsorbate
-            start_ads = self.system.real_atoms[self.system.occ[site_idx]].symbol
-            ads_choices.remove(start_ads)
+            # start_ads = self.system.real_atoms[self.system.occ[site_idx]].symbol
+            start_ads = get_start_ads(self.system, site_idx)
+            ads_choices.remove(start_ads.get_chemical_formula())
         else:
             start_ads = "None"
             ads_choices.remove("None")

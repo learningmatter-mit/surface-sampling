@@ -1,0 +1,530 @@
+{
+    "@module": "pymatgen.analysis.pourbaix_diagram",
+    "@class": "PourbaixDiagram",
+    "entries": [
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": 0.0,
+                "composition": {
+                    "La": 4.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -0.9478898750000013,
+                "composition": {
+                    "La": 1.0,
+                    "H": 2.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        },
+                        {
+                            "titel": "PAW_PBE H 15Jun2001",
+                            "hash": "bb43c666e3d36577264afe07669e9582"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -52.58611671999998,
+                "composition": {
+                    "La": 8.0,
+                    "H": 8.0,
+                    "O": 8.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        },
+                        {
+                            "titel": "PAW_PBE H 15Jun2001",
+                            "hash": "bb43c666e3d36577264afe07669e9582"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -21.018556340000004,
+                "composition": {
+                    "La": 2.0,
+                    "H": 2.0,
+                    "O": 4.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        },
+                        {
+                            "titel": "PAW_PBE H 15Jun2001",
+                            "hash": "bb43c666e3d36577264afe07669e9582"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -147.36417985000003,
+                "composition": {
+                    "La": 16.0,
+                    "O": 24.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -19.13611128172414,
+                "composition": {
+                    "Mn": 4.0,
+                    "O": 8.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE Mn_pv 07Sep2000",
+                            "hash": "fa52f891f234d49bb4cb5ea96aae8f98"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": true,
+                    "hubbards": {
+                        "Mn": 3.9,
+                        "O": 0.0
+                    },
+                    "run_type": "GGA+U"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -7.283413985862069,
+                "composition": {
+                    "Mn": 2.0,
+                    "O": 2.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE Mn_pv 07Sep2000",
+                            "hash": "fa52f891f234d49bb4cb5ea96aae8f98"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": true,
+                    "hubbards": {
+                        "Mn": 3.9,
+                        "O": 0.0
+                    },
+                    "run_type": "GGA+U"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": 0.0,
+                "composition": {
+                    "Mn": 29.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE Mn_pv 07Sep2000",
+                            "hash": "fa52f891f234d49bb4cb5ea96aae8f98"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -145.91049948379305,
+                "composition": {
+                    "Mn": 32.0,
+                    "O": 48.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE Mn_pv 07Sep2000",
+                            "hash": "fa52f891f234d49bb4cb5ea96aae8f98"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": true,
+                    "hubbards": {
+                        "Mn": 3.9,
+                        "O": 0.0
+                    },
+                    "run_type": "GGA+U"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -26.171881367586224,
+                "composition": {
+                    "Mn": 6.0,
+                    "O": 8.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE Mn_pv 07Sep2000",
+                            "hash": "fa52f891f234d49bb4cb5ea96aae8f98"
+                        },
+                        {
+                            "titel": "PAW_PBE O 08Apr2002",
+                            "hash": "7a25bc5b9a5393f46600a4939d357982"
+                        }
+                    ],
+                    "is_hubbard": true,
+                    "hubbards": {
+                        "Mn": 3.9,
+                        "O": 0.0
+                    },
+                    "run_type": "GGA+U"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Solid",
+            "entry": {
+                "@module": "pymatgen.entries.computed_entries",
+                "@class": "ComputedEntry",
+                "energy": -3.832151920000001,
+                "composition": {
+                    "La": 4.0,
+                    "H": 9.0
+                },
+                "entry_id": null,
+                "correction": 0.0,
+                "energy_adjustments": [],
+                "parameters": {
+                    "potcar_spec": [
+                        {
+                            "titel": "PAW_PBE La 06Sep2000",
+                            "hash": "9b3ce03d18f7c0b40471a817ff91b287"
+                        },
+                        {
+                            "titel": "PAW_PBE H 15Jun2001",
+                            "hash": "bb43c666e3d36577264afe07669e9582"
+                        }
+                    ],
+                    "is_hubbard": false,
+                    "hubbards": {},
+                    "run_type": "GGA"
+                },
+                "data": {}
+            },
+            "concentration": 1.0,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "charge": 2.0
+                },
+                "energy": -2.315561219404969,
+                "name": "Mn[+2]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "O": 4.0,
+                    "charge": -1.0
+                },
+                "energy": -4.58762423438139,
+                "name": "MnO4[-1]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "O": 1.0,
+                    "H": 1.0,
+                    "charge": 1.0
+                },
+                "energy": -4.151805195152495,
+                "name": "MnOH[+1]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "O": 3.0,
+                    "H": 3.0,
+                    "charge": -1.0
+                },
+                "energy": -7.6676884930744516,
+                "name": "Mn(OH)3[-1]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "La": 1.0,
+                    "charge": 3.0
+                },
+                "energy": -7.449987622964225,
+                "name": "La[+3]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "charge": 3.0
+                },
+                "energy": -0.8029219490520644,
+                "name": "Mn[+3]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        },
+        {
+            "@module": "pymatgen.analysis.pourbaix_diagram",
+            "@class": "PourbaixEntry",
+            "entry_type": "Ion",
+            "entry": {
+                "ion": {
+                    "Mn": 1.0,
+                    "O": 4.0,
+                    "charge": -2.0
+                },
+                "energy": -5.142529141879965,
+                "name": "MnO4[-2]",
+                "attribute": null
+            },
+            "concentration": 1e-06,
+            "entry_id": null
+        }
+    ],
+    "comp_dict": {
+        "La": 0.5,
+        "Mn": 0.5
+    },
+    "conc_dict": {
+        "La": 1e-06,
+        "Mn": 1e-06
+    },
+    "filter_solids": true
+}

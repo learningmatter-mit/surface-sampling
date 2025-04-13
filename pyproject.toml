@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vssr"
-version = "0.2.0"
+version = "0.3.0"
 description = "Sampling surface reconstructions at the atomic scale"
 authors = [{ name = "Xiaochen Du", email = "dux@mit.edu" }]
 requires-python = ">=3.11"
@@ -12,14 +12,16 @@ readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
     "ase>=3.22.1,<=3.23.0",
-    "pymatgen>=2024.6.4",
+    "pymatgen @ git+https://github.com/xiaochendu/pymatgen.git@master",
     "numpy>=1.21.6,<2.0.0",
-    "nff @ git+https://github.com/learningmatter-mit/NeuralForceField.git@surface-sampling-0.2.0",
+    "nff @ git+https://github.com/learningmatter-mit/NeuralForceField.git@surface-sampling-0.3.0",
     "catkit @ git+https://github.com/HojeChun/CatKit.git@588f35b",
-    "torch>=2.1.0",
+    "torch>=2.1.0,<2.6.0",
+    "torch_scatter",
     "seaborn>=0.13.1",
     "scipy",
     "mp-api",
+    "mpcontribs-client",
     "ipykernel",
     "ipywidgets",
 ]

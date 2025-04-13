@@ -14,6 +14,7 @@ from nff.data.dataset import concatenate_dict
 from scipy.cluster.hierarchy import fcluster, linkage
 from sklearn.decomposition import PCA
 
+from mcmc.utils import plot_settings
 from mcmc.utils.plot import plot_clustering_results, plot_dendrogram
 
 
@@ -72,7 +73,13 @@ def perform_clustering(
     logger.info("There are %s clusters", num_clusters)
 
     plot_clustering_results(
-        X_r, num_clusters, y, save_prepend=save_prepend, save_folder=save_folder
+        X_r,
+        num_clusters,
+        y,
+        cmap=plot_settings.cmap,
+        save_prepend=save_prepend,
+        save_folder=save_folder,
+        title=False,
     )
 
     return y

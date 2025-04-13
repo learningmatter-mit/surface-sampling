@@ -22,7 +22,7 @@ def get_atoms_batch(
     """Generate AtomsBatch from atoms or dictionary.
 
     Args:
-        data (Union[dict, Atoms]): Dictionary containing the properties of the atoms
+        data (Union[dict, Atoms]): Dictionary or ASE Atoms containing the properties of the atoms
         nff_cutoff (float): Neighbor cutoff for the NFF model
         device (str, optional): cpu or cuda device. Defaults to 'cpu'.
         **kwargs: Additional keyword arguments.
@@ -50,7 +50,6 @@ def get_atoms_batch(
         #     device=device,
         #     **kwargs,
         # )
-
     return atoms_batch
 
 

@@ -85,6 +85,9 @@ def main(
 
     logger.info("There are a total of %d input files", len(file_names))
     all_structures = load_dataset_from_files(file_names)
+
+    # If all_structures are SurfaceSystems, take the relaxed_atoms
+    all_structures = [s.relaxed_atoms if hasattr(s, "relaxed_atoms") else s for s in all_structures]
     logger.info("Loaded %d structures", len(all_structures))
 
     # Generate a stoichiometry dictionary for each structure
@@ -103,7 +106,9 @@ def main(
     # Select only structures with certain range for each type of atom
     filtered_structures = []
     for s, d in zip(all_structures, all_stoic_dicts, strict=False):
-        if all([atom_ranges[atom][0] <= d[atom] <= atom_ranges[atom][1] for atom in atom_types]):  # noqa
+        if all(
+            atom_ranges[atom][0] <= d.get(atom, 0) <= atom_ranges[atom][1] for atom in atom_types
+        ):
             filtered_structures.append(s)
 
     logger.info("Number of structures after filtering: %d", len(filtered_structures))

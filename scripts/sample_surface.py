@@ -10,9 +10,10 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from default_settings import DEFAULT_CUTOFFS, DEFAULT_SAMPLING_SETTINGS
 from monty.serialization import dumpfn, loadfn
 from nff.train.builders.model import load_model
-from nff.utils.cuda import cuda_devices_sorted_by_free_mem
+from nff.utils.cuda import get_final_device
 
 from mcmc import MCMC
 from mcmc.calculators import EnsembleNFFSurface
@@ -23,21 +24,6 @@ from mcmc.utils.plot import plot_summary_stats
 from mcmc.utils.setup import setup_folders
 
 np.set_printoptions(precision=3, suppress=True)
-
-DEFAULT_CUTOFFS = {
-    "CHGNetNFF": 6.0,
-    "NffScaleMACE": 5.0,
-    "PaiNN": 5.0,
-}
-
-DEFAULT_SAMPLING_SETTINGS = {
-    "canonical": False,
-    "total_sweeps": 100,
-    "sweep_size": 20,
-    "start_temp": 1.0,  # in terms of kT
-    "perform_annealing": False,
-    "alpha": 1.0,
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -173,9 +159,8 @@ def main(
         raise e
 
     # Initialize Calculator
-    device = (
-        f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}" if device == "cuda" else "cpu"
-    )  # get the gpu with most free memory
+    device = get_final_device(device)
+
     models = []
     for model_path in model_paths:
         model = load_model(model_path, model_type=model_type, map_location=device)

@@ -2,6 +2,8 @@
 [![Tests](https://github.com/learningmatter-mit/surface-sampling/actions/workflows/tests.yml/badge.svg)](https://github.com/learningmatter-mit/surface-sampling/actions/workflows/tests.yml)
 [![arXiv](https://img.shields.io/badge/arXiv-2305.07251-blue?logo=arXiv&logoColor=white&logoSize=auto)](https://arxiv.org/abs/2305.07251)
 [![Zenodo](https://img.shields.io/badge/data-10.5281/zenodo.7758174-14b8a6?logo=zenodo&logoColor=white&logoSize=auto)](https://zenodo.org/doi/10.5281/zenodo.7758174)
+[![arXiv](https://img.shields.io/badge/arXiv-2503.17870-blue?logo=arXiv&logoColor=white&logoSize=auto)](https://arxiv.org/abs/2503.17870)
+[![Zenodo](https://img.shields.io/badge/data-10.5281/zenodo.15066441-14b8a6?logo=zenodo&logoColor=white&logoSize=auto)](https://zenodo.org/doi/10.5281/zenodo.15066441)
 
 ## Contents
 - [Overview](#overview)
@@ -9,12 +11,12 @@
 - [Setup](#setup)
 - [Demo](#demo)
 - [Scripts](#scripts)
-- [Citation](#citation)
+- [Citations](#citations)
 - [Development & Bugs](#development--bugs)
 
 
 # Overview
-This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through [ASE](https://wiki.fysik.dtu.dk/ase/)) or a classical potential (through ASE or [LAMMPS](https://www.lammps.org/)). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work: [Machine-learning-accelerated simulations to enable automatic surface reconstruction](https://doi.org/10.1038/s43588-023-00571-7).
+This is the VSSR-MC algorithm for sampling surface reconstructions. VSSR-MC samples across both compositional and configurational spaces. It can interface with both a neural network potential (through [ASE](https://wiki.fysik.dtu.dk/ase/)) or a classical potential (through ASE or [LAMMPS](https://www.lammps.org/)). It is a key component of the Automatic Surface Reconstruction (AutoSurfRecon) pipeline described in the following work: [Machine-learning-accelerated simulations to enable automatic surface reconstruction](https://doi.org/10.1038/s43588-023-00571-7). VSSR-MC can be used to sample either surfaces under gas/vacuum conditions as demonstrated in the [original work](https://doi.org/10.1038/s43588-023-00571-7) or under aqueous electrochemical conditions as described in this work: [Accelerating and enhancing thermodynamic simulations of electrochemical interfaces](https://doi.org/10.48550/arXiv.2503.17870).
 
 ![Cover image](site/static/vssr_cover_image.png)
 
@@ -63,9 +65,9 @@ tutorials/
 ├── Si_111_5x5.ipynb
 ├── SrTiO3_001.ipynb
 ├── latent_space_clustering.ipynb
-└── tutorials/prepare_surface.ipynb
+└── prepare_surface.ipynb
 ```
- More data/examples can be found in our [Zenodo dataset](https://doi.org/10.5281/zenodo.7758174).
+ More data/examples can be found in our Zenodo datasets: [1](https://doi.org/10.5281/zenodo.7758174) and [2](https://doi.org/10.5281/zenodo.15066440).
 
 ## Toy example of Cu(100)
 A toy example to illustrate the use of VSSR-MC. It should only take about a few seconds to run. Refer to `tutorials/example.ipynb`.
@@ -91,10 +93,12 @@ Scripts can be found in the `scripts/` folder, including:
 ```
 scripts/
 ├── sample_surface.py
-└── clustering.py
+├── sample_pourbaix_surface.py
+├── clustering.py
+└── create_surface_formation_entries.py
 ```
 
-The arguments for the scripts can be found by running `python scripts/sample_surface.py -h` or `python scripts/clustering.py -h`.
+The arguments for the scripts can be found by running `python /path/to/script.py -h`.
 
 ## Example usage:
 ### Original VSSR-MC with PaiNN model trained on SrTiO3(001) surfaces
@@ -107,11 +111,20 @@ python scripts/sample_surface.py --run_name "SrTiO3_001_painn" \
 --settings_path "scripts/configs/sample_config_painn.json"
 ```
 
-### Pre-trained "foundational" CHGNet model on SrTiO3(001) surfaces
+### Pre-trained CHGNet model on SrTiO3(001) surfaces
 ```bash
 python scripts/sample_surface.py --run_name "SrTiO3_001_chgnet" \
 --starting_structure_path "tutorials/data/SrTiO3_001/SrTiO3_001_2x2_pristine_slab.pkl" \
 --model_type "CHGNetNFF" --settings_path "scripts/configs/sample_config_chgnet.json"
+```
+
+### Pre-trained CHGNet model on LaMnO3(001) under pH-$U_\mathrm{SHE}$ conditions
+```bash
+python scripts/sample_pourbaix_surface.py --run_name LaMnO3_001_chgnet \
+--starting_structure_path "tutorials/data/LaMnO3_001/LaMnO3_001_2x2x3_top_pristine.pkl" --model_type CHGNetNFF \
+--phase_diagram_path "tutorials/data/LaMnO3_001/pourbaix/LaMnO_pd_dict.json" \
+--pourbaix_diagram_path  "tutorials/data/LaMnO3_001/pourbaix/LaMnO_no_ternary_pbx_dict.json" \
+--settings_path "scripts/configs/sample_pourbaix_config.json"
 ```
 
 ### Latent space clustering
@@ -125,8 +138,18 @@ python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_
 --clustering_cutoff 0.2 --nff_device "cuda"
 ```
 
+### Create surface surface formation entries for Pourbaix analysis
+```bash
+python scripts/create_surface_formation_entries.py --surface_name "LaMnO3_001_2x2" \
+--file_paths "tutorials/data/LaMnO3_001/20241120-003720_AtomsBatch_surface_48.pkl" --model_type "CHGNetNFF" \
+--model_paths "tutorials/data/LaMnO3_001/nff/finetuned/best_model" \
+--phase_diagram_path "tutorials/data/LaMnO3_001/pourbaix/LaMnO_pd_dict.json" \
+--pourbaix_diagram_path "tutorials/data/LaMnO3_001/pourbaix/LaMnO_no_ternary_pbx_dict.json" --correct_hydroxide_energy \
+--input_job_id --elements "La" "Mn" "O" --device "cuda" --save_folder "tutorials/data/LaMnO3_001/pourbaix/"
+```
 
-# Citation
+# Citations
+1. Original VSSR-MC work:
 ```bib
 @article{duMachinelearningacceleratedSimulationsEnable2023,
   title = {Machine-Learning-Accelerated Simulations to Enable Automatic Surface Reconstruction},
@@ -140,6 +163,20 @@ python scripts/clustering.py --file_paths "tutorials/data/SrTiO3_001/SrTiO3_001_
   doi = {10.1038/s43588-023-00571-7},
   urldate = {2023-12-07},
   keywords = {Computational methods,Computational science,Software,Surface chemistry}
+}
+```
+
+2. VSSR-MC with aqueous electrochemical conditions:
+```bib
+@misc{duAcceleratingEnhancingThermodynamic2025,
+  title = {Accelerating and Enhancing Thermodynamic Simulations of Electrochemical Interfaces},
+  author = {Du, Xiaochen and Liu, Mengren and Peng, Jiayu and Chun, Hoje and Hoffman, Alexander and Yildiz, Bilge and Li, Lin and Bazant, Martin Z. and {G{\'o}mez-Bombarelli}, Rafael},
+  year = {2025},
+  month = mar,
+  number = {arXiv:2503.17870},
+  publisher = {arXiv},
+  doi = {10.48550/arXiv.2503.17870},
+  keywords = {Computer Science - Computational Engineering Finance and Science,Computer Science - Machine Learning,Condensed Matter - Materials Science,Condensed Matter - Statistical Mechanics},
 }
 ```
 

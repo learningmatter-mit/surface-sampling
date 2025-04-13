@@ -10,10 +10,12 @@ import numpy as np
 import torch
 from nff.io.ase_calcs import EnsembleNFF, NeuralFF
 from nff.train.builders import load_model
-from nff.utils.cuda import cuda_devices_sorted_by_free_mem
+from nff.utils.cuda import cuda_devices_sorted_by_free_mem, detach
 from tqdm import tqdm
 
 from mcmc.calculators import get_embeddings_single, get_results_single, get_std_devs_single
+from mcmc.system import SurfaceSystem
+from mcmc.uncertainty import Uncertainty
 from mcmc.utils import setup_logger
 from mcmc.utils.clustering import perform_clustering, select_data_and_save
 from mcmc.utils.misc import get_atoms_batch, load_dataset_from_files
@@ -69,9 +71,15 @@ def parse_args():
     parser.add_argument(
         "--clustering_metric",
         help="Metric used to select structure from each cluster",
-        choices=("force_std", "random", "energy"),
+        choices=("force_std", "random", "energy", "gmm"),
         type=str,
         default="force_std",
+    )
+    parser.add_argument(
+        "--gmm_path",
+        help="Full path to GMM model",
+        type=Path,
+        default=None,
     )
     parser.add_argument(
         "--cutoff_criterion",
@@ -107,7 +115,8 @@ def main(
     model_type: str = "CHGNetNFF",
     clustering_cutoff: float = 0.2,
     cutoff_criterion: Literal["distance", "maxclust"] = "distance",
-    clustering_metric: Literal["force_std", "random", "energy"] = "force_std",
+    clustering_metric: Literal["force_std", "random", "energy", "gmm"] = "force_std",
+    gmm_path: Path | str | None = None,
     max_input_len: int = 1000,
     nff_paths: list[Path | str] | None = None,
     save_folder: Path | str = "./",
@@ -124,8 +133,9 @@ def main(
             by default 0.2
         max_input_len (int, optional) : Maximum number of structures used in each clustering
             iteration, by default 1000
-        clustering_metric (Literal['force_std', 'random', 'energy'], optional) : Metric used to
-            select structure from each cluster, by default 'force_std'
+        clustering_metric (Literal['force_std', 'random', 'energy', 'gmm'], optional) : Metric used
+            to select structure from each cluster, by default 'force_std'
+        gmm_path (Path | str, optional) : Full path to GMM model, by default None
         nff_paths (list[Path, str], optional) : Full path to NFF model, by default None
         cutoff_criterion (Literal['distance', 'maxclust'], optional) : Either distance or maxclust,
             by default 'distance'
@@ -149,6 +159,11 @@ def main(
     logger.info("There are a total of %d input files", len(file_names))
     dset = load_dataset_from_files(file_names)
     logger.info("Loaded %d structures", len(dset))
+
+    if isinstance(dset[0], SurfaceSystem):
+        logger.info("Loaded SurfaceSystem object")
+        dset = [system.relaxed_atoms for system in dset]
+        logger.info("Converted to list of Atoms objects")
 
     if torch.cuda.is_available() and "cpu" not in device:
         device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
@@ -186,6 +201,10 @@ def main(
         prediction_units="eV",
         properties=["energy", "forces", "embedding"],
     )
+
+    # Load GMM if clustering metric is gmm
+    if clustering_metric == "gmm":
+        gmm_model = Uncertainty.load(gmm_path)
 
     # Perform clustering in batches
     num_batches = len(dset) // max_input_len + bool(
@@ -228,6 +247,12 @@ def main(
                 metric_value = single_calc_results["energy"].squeeze()
             elif clustering_metric == "force_std":
                 metric_value = get_std_devs_single(atoms_batch, ensemble_calc)
+            elif clustering_metric == "gmm":
+                props = atoms_batch.get_batch()
+                props["embedding"] = embedding
+                metric_value = detach(
+                    gmm_model(props, num_atoms=props["num_atoms"]), to_numpy=True
+                ).item()
             else:
                 metric_value = np.random.rand()
             embeddings.append(embedding)
@@ -261,6 +286,7 @@ if __name__ == "__main__":
         clustering_cutoff=args.clustering_cutoff,
         cutoff_criterion=args.cutoff_criterion,
         clustering_metric=args.clustering_metric,
+        gmm_path=args.gmm_path,
         max_input_len=args.max_input_len,
         nff_paths=args.nff_paths,
         save_folder=args.save_folder,
