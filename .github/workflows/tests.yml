@@ -26,6 +26,7 @@ jobs:
         conda env update --file environment.yml --name base
     - name: Install pip dependencies
       run: |
+        pip install "torch<2.6.0,>=2.1.0"
         pip install -e '.[dev]'
     - name: Append LAMMPS paths
       run: |
