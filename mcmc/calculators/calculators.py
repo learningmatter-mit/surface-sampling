@@ -8,7 +8,6 @@ from collections import Counter
 import ase
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
-from ase.calculators.lammpsrun import LAMMPS as LAMMPSRun
 from ase.formula import Formula
 from lammps import (
     LMP_STYLE_ATOM,
@@ -23,6 +22,8 @@ from nff.utils.constants import HARTREE_TO_EV
 from tqdm import tqdm
 
 from mcmc.pourbaix.atoms import PourbaixAtom
+
+from .lammpsrun import LAMMPS as LAMMPSRun
 
 logger = logging.getLogger(__name__)
 
