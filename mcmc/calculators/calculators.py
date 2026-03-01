@@ -353,6 +353,10 @@ class NFFPourbaix(NeuralFF):
         if atoms is None:
             atoms = self.atoms
 
+        if hasattr(atoms, "update_nbr_list"):
+            # MCMC may add/remove atoms, so update neighbor list
+            atoms.update_nbr_list(update_atoms=True)
+
         NeuralFF.calculate(self, atoms, properties, system_changes)
 
         if "surface_energy" in properties:
@@ -480,6 +484,10 @@ class EnsembleNFFSurface(EnsembleNFF):
         """
         if atoms is None:
             atoms = self.atoms
+
+        if hasattr(atoms, "update_nbr_list"):
+            # MCMC may add/remove atoms, so update neighbor list
+            atoms.update_nbr_list(update_atoms=True)
 
         EnsembleNFF.calculate(self, atoms, properties, system_changes)
 
